@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.075";
+const APP_VERSION = "v0.076";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1806,7 +1806,12 @@ $("terms-close").onclick = () => $("terms-sheet").classList.add("hidden");
 // ----- data export / import (encrypted backup & restore) -----
 function FSP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem; }
 const BACKUP_DIR = "neptunplus", BK_KEY_LS = "neptun-plus-bkkey";
-function currentStateJson() { try { return localStorage.getItem(STORE_KEY) || JSON.stringify(state); } catch (e) { return JSON.stringify(state); } }
+function currentStateJson() {
+  let obj = null; try { obj = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (e) {}
+  if (!obj || typeof obj !== "object") obj = state;
+  const copy = Object.assign({}, obj); delete copy.dlc; // DLCs are re-downloadable from GitHub — keep them out of the backup
+  return JSON.stringify(copy);
+}
 function backupTs() { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()); }
 // AES-GCM key kept in its own localStorage entry (survives "Minden adat törlése", which only clears STORE_KEY).
 // Chunked to avoid "Maximum call stack size exceeded" on large buffers (fromCharCode.apply limit).
