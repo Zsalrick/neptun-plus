@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.072";
+const APP_VERSION = "v0.073";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -595,13 +595,27 @@ function showHubSeg(seg) {
 document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.onclick = () => showHubSeg(b.dataset.seg));
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
+  el.classList.remove("hidden"); // always shown; empty state carries a read button
   const p = state.progress;
-  if (!p || !p.total) { el.classList.add("hidden"); return; }
-  el.classList.remove("hidden");
+  if (!p || !p.total) {
+    el.classList.remove("clickable"); el.onclick = null;
+    el.innerHTML = `<div class="cred-empty"><div><div class="cred-lbl">Kredit előrehaladás</div><div class="cred-emptysub">Még nincs beolvasva.</div></div>`
+      + `<button class="btn tonal narrow" id="cred-read">${icon("book")} Kredit beolvasása</button></div>`;
+    const b = el.querySelector("#cred-read"); if (b) b.onclick = (e) => { e.stopPropagation(); grabProgress(); };
+    return;
+  }
   const pct = Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
+  el.classList.add("clickable"); el.onclick = openCreditPopup;
   el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div>`
     + `<div class="cred-bar"><div class="cred-fill" style="width:${pct}%"></div></div>`
     + `<div class="cred-free">Ebből szabadon választható: <b>${p.free || 0}</b> kredit</div>`;
+}
+async function openCreditPopup() {
+  const p = state.progress; if (!p || !p.total) return;
+  const pct = Math.round((p.done / p.total) * 100);
+  const ok = await ask({ title: "Kredit előrehaladás", okText: "Frissítés", cancelText: "Mégse",
+    body: "<b>" + p.done + " / " + p.total + "</b> teljesített kredit (" + pct + "%)<br>Ebből szabadon választható: <b>" + (p.free || 0) + "</b> kredit<br><br>Frissítve: " + esc(fmtWhen(p.fetchedAt)) });
+  if (ok) grabProgress();
 }
 function nextIsland(el, e, headText, tab, now) {
   if (!el) return;
