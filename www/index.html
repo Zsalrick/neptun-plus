@@ -179,10 +179,11 @@
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
-                <div class="seg" id="hub-seg">
+                <div class="seg seg-3" id="hub-seg">
                   <span class="seg-ind" id="hub-seg-ind"></span>
                   <button class="seg-btn active" data-seg="login" type="button">Belépés</button>
                   <button class="seg-btn" data-seg="overview" type="button">Áttekintés</button>
+                  <button class="seg-btn" data-seg="upcoming" type="button">Közelgő</button>
                 </div>
 
                 <div id="hub-login">
@@ -209,15 +210,18 @@
                 <div id="hub-overview" hidden>
                   <button class="card next-card hidden" id="btn-sync" type="button"></button>
                   <div class="card cred hidden" id="hub-credit"></div>
-                  <button class="card next-card hidden" id="current-class" type="button"></button>
-                  <button class="card next-card hidden" id="next-class" type="button"></button>
-                  <button class="card next-card hidden" id="next-exam" type="button"></button>
                   <button class="card next-card" id="btn-dlc" type="button">
                     <div class="nc-head"><span data-icon="book"></span> Kiegészítők</div>
                     <div class="nc-title" style="margin-top:8px">Szak specifikus letöltések</div>
                     <div class="nc-loc" id="dlc-card-sub"><span data-icon="down"></span> Számlatükör és továbbiak</div>
                   </button>
-                  <div class="hint center" id="overview-empty" hidden style="margin-top:24px">Nincs még adat. Olvasd be a kreditet és az órarendet a beállításokban.</div>
+                </div>
+
+                <div id="hub-upcoming" hidden>
+                  <button class="card next-card hidden" id="current-class" type="button"></button>
+                  <button class="card next-card hidden" id="next-class" type="button"></button>
+                  <button class="card next-card hidden" id="next-exam" type="button"></button>
+                  <div class="hint center" id="upcoming-empty" hidden style="margin-top:24px">Nincs közelgő óra vagy számonkérés. Olvasd be az órarendet az Áttekintés fülön.</div>
                 </div>
 
                 <div class="version-tag" id="version-tag"></div>
@@ -413,7 +417,7 @@
 
           <nav class="nav-island">
             <div class="nav-ind" id="nav-ind"></div>
-            <button class="nav-btn active" data-tab="tab-home"><span data-icon="key"></span><span class="nlabel">Hub</span></button>
+            <button class="nav-btn active" data-tab="tab-home"><span data-icon="home"></span><span class="nlabel">Hub</span></button>
             <button class="nav-btn" data-tab="tab-timetable"><span data-icon="calendar"></span><span class="nlabel">Órarend</span></button>
             <button class="nav-btn" data-tab="tab-exams"><span data-icon="clipboard"></span><span class="nlabel">Vizsgák</span></button>
             <button class="nav-btn" data-tab="tab-courses"><span data-icon="book"></span><span class="nlabel">Tárgyak</span></button>

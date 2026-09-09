@@ -4,12 +4,13 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.079";
+const APP_VERSION = "v0.080";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
 const P = {
   key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3m-3 3 2 2m-4 0 2 2"/>',
+  home: '<path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/>',
   qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3m4 0v4m0-4h-4m4 7h-3m-4-4v4"/>',
   shield: '<path d="M12 3 5 6v5c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/>',
   building: '<path d="M4 21V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v15M15 10h3a2 2 0 0 1 2 2v9M3 21h18M8 8h2m-2 4h2m-2 4h2"/>',
@@ -526,7 +527,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
       // On the hub, a swipe first moves between the inner segments; only cross to the next tab at the edge.
       pendingSeg = 0;
       if (curEl.id === "tab-home") {
-        if (dir === 1 && hubSeg < 1) { pendingSeg = 1; nbrEl = null; }
+        if (dir === 1 && hubSeg < HUB_SEGS.length - 1) { pendingSeg = 1; nbrEl = null; }
         else if (dir === -1 && hubSeg > 0) { pendingSeg = -1; nbrEl = null; }
       }
       if (nbrEl) { prepTab(nbrEl.id); nbrEl.classList.add("active", "dragging"); nbrEl.style.transition = "none"; nbrEl.style.transform = "translate3d(" + (dir * w) + "px,0,0)"; }
@@ -541,8 +542,8 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     const ind = $("nav-ind"); if (ind) ind.style.transition = "";
     if (!decided) { if (curEl) curEl.classList.remove("dragging"); return; }
-    // In-hub segment swipe: switch Belépés ↔ Áttekintés (pane rubber-bands back below).
-    if (pendingSeg !== 0 && Math.abs(lastDx) > w * 0.22) showHubSeg(pendingSeg > 0 ? "overview" : "login");
+    // In-hub segment swipe: move Belépés ↔ Áttekintés ↔ Közelgő (pane rubber-bands back below).
+    if (pendingSeg !== 0 && Math.abs(lastDx) > w * 0.22) showHubSeg(HUB_SEGS[hubSeg + pendingSeg] || HUB_SEGS[hubSeg]);
     const commit = nbrEl && Math.abs(lastDx) > w * 0.25;
     curEl.style.transition = ""; curEl.classList.add("sliding");
     if (nbrEl) { nbrEl.style.transition = ""; nbrEl.classList.add("sliding"); }
@@ -609,6 +610,8 @@ function renderHome() {
   renderNextExam();
   renderProgress();
   renderSyncCard();
+  const noUpcoming = ["current-class", "next-class", "next-exam"].every((id) => $(id).classList.contains("hidden"));
+  $("upcoming-empty").hidden = !noUpcoming;
 }
 // Hub card that opens the unified data read. Prominent when data is missing; a quiet
 // "refresh" entry once everything is in.
@@ -631,12 +634,14 @@ function renderSyncCard() {
     el.onclick = () => openDataSync(null);
   }
 }
-let hubSeg = 0; // 0 = Belépés, 1 = Áttekintés (used by the pager for in-hub swipe)
+const HUB_SEGS = ["login", "overview", "upcoming"]; // ordered for the in-hub swipe
+let hubSeg = 0; // index into HUB_SEGS (used by the pager for in-hub swipe)
 function showHubSeg(seg) {
-  hubSeg = seg === "overview" ? 1 : 0;
+  hubSeg = Math.max(0, HUB_SEGS.indexOf(seg));
   document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.seg === seg));
   $("hub-login").hidden = seg !== "login";
   $("hub-overview").hidden = seg !== "overview";
+  $("hub-upcoming").hidden = seg !== "upcoming";
 }
 document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.onclick = () => showHubSeg(b.dataset.seg));
 function renderProgress() {
