@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.059";
+const APP_VERSION = "v0.060";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1464,6 +1464,20 @@ async function toggleNotifyCat(key) {
   saveState(); syncNotifySettings(); rescheduleNotifications();
 }
 function removeLead(key, m) { const c = state.notify[key]; c.leads = (c.leads || []).filter((x) => x !== m); saveState(); syncNotifySettings(); rescheduleNotifications(); }
+$("notify-test").onclick = async () => {
+  const ln = LN();
+  if (!isNative || !ln) { toast("A teszt értesítés a telefonos alkalmazásban működik."); return; }
+  if (!(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell."); return; }
+  const start = new Date(Date.now() + 60 * 60000); // pretend a class starts in 1h
+  try {
+    await ln.schedule({ notifications: [{
+      id: 424242, title: "Teszt értesítés", body: "Így néz ki egy emlékeztető. Koppints rá!",
+      schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
+      extra: { kind: "class", head: "Teszt értesítés", lead: 60, summary: "Teszt óra – Példa tárgy", location: "A.fsz.A1", s: start.toISOString(), e: new Date(start.getTime() + 90 * 60000).toISOString() },
+    }] });
+    toast("Teszt értesítés 5 másodperc múlva. Tedd háttérbe az appot!");
+  } catch (e) { toast("Hiba: " + (e && e.message ? e.message : e)); }
+};
 function addLead(key) {
   const c = state.notify[key];
   const opts = (key === "classes" ? CLASS_LEADS : EXAM_LEADS).filter((m) => (c.leads || []).indexOf(m) < 0);
