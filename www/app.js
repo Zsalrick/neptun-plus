@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.068";
+const APP_VERSION = "v0.069";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1759,14 +1759,15 @@ async function confirmAndApply(data, name) {
   applyImported(data);
 }
 $("btn-export").onclick = async () => {
+ try {
   if (!state.password) { toast("Előbb állítsd be a Neptun jelszót (azzal titkosítunk)."); return; }
+  if (!(window.crypto && crypto.subtle)) { toast("A titkosítás nem elérhető ezen az eszközön."); return; }
   if (!(await requireAuthFor("sensitive"))) return; // backup contains the password + 2FA secret
   const enc = await encryptBackup(currentStateJson()), fs = FSP();
   if (fs) {
     const name = "neptun-plus-mentes-" + backupTs() + ".npb";
-    try { await fs.writeFile({ path: BACKUP_DIR + "/" + name, data: enc, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
-      await ask({ title: "Mentés elkészült", okText: "OK", cancelText: "Bezárás", body: "Titkosított mentés ide:<br><span class='mono'>Dokumentumok/" + esc(BACKUP_DIR) + "/" + esc(name) + "</span><br><br>A <b>Neptun jelszavaddal</b> fejthető vissza." });
-    } catch (e) { toast("Mentés hiba: " + (e && e.message ? e.message : e)); }
+    await fs.writeFile({ path: BACKUP_DIR + "/" + name, data: enc, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+    await ask({ title: "Mentés elkészült", okText: "OK", cancelText: "Bezárás", body: "Titkosított mentés ide:<br><span class='mono'>Dokumentumok/" + esc(BACKUP_DIR) + "/" + esc(name) + "</span><br><br>A <b>Neptun jelszavaddal</b> fejthető vissza." });
     return;
   }
   // fallback (preview / no plugin): show encrypted text + clipboard
@@ -1776,6 +1777,7 @@ $("btn-export").onclick = async () => {
   $("backup-copy").hidden = false; $("backup-import-ok").hidden = true;
   $("backup-sheet").classList.remove("hidden");
   try { await navigator.clipboard.writeText(enc); toast("Vágólapra másolva."); } catch (e) {}
+ } catch (e) { toast("Export hiba: " + (e && e.message ? e.message : e)); }
 };
 $("btn-import").onclick = async () => {
   const fs = FSP(); let files = [];
