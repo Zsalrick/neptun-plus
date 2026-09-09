@@ -434,3 +434,40 @@ button.row:active { background: var(--surface-2); }
 }
 body.native .topbar { padding-top: calc(18px + env(safe-area-inset-top)); }
 body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
+
+/* ============ BOOT / LOADING SCREEN ============ */
+.boot {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  background: linear-gradient(180deg, #1c1e22 0%, #121316 100%);
+  color: var(--ink);
+  transition: opacity .38s ease;
+}
+.boot.boot--hide { opacity: 0; pointer-events: none; }
+.boot-mark {
+  color: var(--ink);
+  animation: boot-pulse 1.6s ease-in-out infinite;
+}
+.boot-mark svg { display: block; }
+.boot-name {
+  font-size: 20px; font-weight: 650; letter-spacing: .01em; color: var(--ink);
+}
+.boot-bar {
+  position: relative; width: 148px; height: 3px; border-radius: 3px;
+  background: rgba(236,237,238,.12); overflow: hidden; margin-top: 4px;
+}
+.boot-bar span {
+  position: absolute; top: 0; left: 0; height: 100%; width: 40%; border-radius: 3px;
+  background: var(--accent); animation: boot-slide 1.15s ease-in-out infinite;
+}
+.boot-text {
+  font-size: 13px; color: var(--ink-2); letter-spacing: .02em; min-height: 1em;
+}
+@keyframes boot-pulse {
+  0%, 100% { opacity: .55; transform: scale(.97); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+@keyframes boot-slide {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}

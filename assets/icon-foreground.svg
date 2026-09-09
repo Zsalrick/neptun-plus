@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Mark kept inside the adaptive-icon safe zone (central ~66%). Porcelain "N" + plus. -->
+  <g fill="none" stroke="#ECEDEE" stroke-width="66" stroke-linecap="round" stroke-linejoin="round">
+    <!-- N: left bar, diagonal, right bar -->
+    <path d="M376 656 L376 392"/>
+    <path d="M376 400 L600 648"/>
+    <path d="M600 656 L600 392"/>
+  </g>
+  <!-- Plus, top-right of the N -->
+  <g fill="#ECEDEE">
+    <rect x="640" y="372" width="88" height="26" rx="13"/>
+    <rect x="672" y="340" width="26" height="88" rx="13"/>
+  </g>
+</svg>

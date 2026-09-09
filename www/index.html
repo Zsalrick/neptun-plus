@@ -7,6 +7,26 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- Boot / loading screen: shown on cold start while checking for an OTA update, before login. -->
+  <div id="boot" class="boot">
+    <div class="boot-mark" aria-hidden="true">
+      <svg viewBox="0 0 1024 1024" width="88" height="88">
+        <g fill="none" stroke="currentColor" stroke-width="66" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M376 656 L376 392"/>
+          <path d="M376 400 L600 648"/>
+          <path d="M600 656 L600 392"/>
+        </g>
+        <g fill="currentColor">
+          <rect x="640" y="372" width="88" height="26" rx="13"/>
+          <rect x="672" y="340" width="26" height="88" rx="13"/>
+        </g>
+      </svg>
+    </div>
+    <div class="boot-name">Neptun+</div>
+    <div class="boot-bar"><span></span></div>
+    <div class="boot-text" id="boot-text">Indítás</div>
+  </div>
+
   <div class="preview-stage">
     <div class="phone">
       <div class="phone-notch"></div>

@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.033";
+const APP_VERSION = "v0.034";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1307,8 +1307,23 @@ attachPTR($("tt-scroll"), $("tt-ptr"), fetchTimetable);
 attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
 if (isNative) { document.body.classList.add("native"); document.querySelectorAll("[data-preview-only]").forEach((el) => el.remove()); }
 initOnboarding();
+function setBootText(t) { const b = $("boot-text"); if (b) b.textContent = t; }
+function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot--hide"); setTimeout(() => { b.hidden = true; }, 420); }
+
 (async () => {
+  const bootTs = Date.now();
   bioOK = await bioAvailable(); // resolve BEFORE the first lock so biometrics is offered on cold start
+  // Cold start: behind the loading screen, check for an OTA update and apply it before login.
+  if (isNative && window.OTA && window.OTA.configured()) {
+    setBootText("Frissítés keresése");
+    try {
+      await Promise.race([
+        window.OTA.check({ current: APP_VERSION, apply: "now", onFound: () => setBootText("Új verzió letöltése") }),
+        new Promise((r) => setTimeout(r, 8000)), // don't let a slow network hold the app hostage
+      ]);
+    } catch (e) { /* proceed into the app regardless */ }
+  }
+  setBootText("Betöltés");
   if (state.setupComplete) { enterApp(); showTab("tab-home"); lockNow(); }
   else {
     obStep = 0;
@@ -1318,11 +1333,6 @@ initOnboarding();
     renderOb();
   }
   totpTick();
-  // OTA: check for a newer web bundle on GitHub and pre-download it (applies on next launch).
-  if (isNative && window.OTA) {
-    window.OTA.check({
-      current: APP_VERSION,
-      onDone: (m) => toast("Új verzió letöltve (" + m.version + "). A következő indításkor frissül."),
-    });
-  }
+  // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
+  setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
 })();
