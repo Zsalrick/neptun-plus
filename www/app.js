@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.034";
+const APP_VERSION = "v0.035";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -346,7 +346,7 @@ function moveNavIndicator(id) {
   const btn = document.querySelector(`.nav-btn[data-tab="${id}"]`);
   if (!btn) { ind.style.opacity = "0"; return; }
   ind.style.width = btn.offsetWidth + "px";
-  ind.style.transform = `translateX(${btn.offsetLeft}px)`;
+  ind.style.transform = `translate3d(${btn.offsetLeft}px,0,0)`;
   ind.style.opacity = "1";
 }
 function setActive(id) {
@@ -385,55 +385,82 @@ $("settings-back").onclick = () => showTab(lastMainTab);
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
+// Smoothness: nav-button geometry is cached at gesture start (no per-frame layout reads),
+// all writes are batched into one requestAnimationFrame, and panes ride their own GPU layer
+// (translate3d + will-change via .dragging) so the browser only composites — never reflows.
 (function () {
   const host = document.querySelector(".tab-host"); if (!host) return;
   const swErr = (t) => t.closest(".chips, input, textarea");
-  const btnRect = (id) => { const b = document.querySelector('.nav-btn[data-tab="' + id + '"]'); return b ? { left: b.offsetLeft, w: b.offsetWidth } : null; };
+  let navRects = {};
+  const cacheNavRects = () => { navRects = {}; document.querySelectorAll(".nav-btn").forEach((b) => { navRects[b.dataset.tab] = { left: b.offsetLeft, w: b.offsetWidth }; }); };
+  window.addEventListener("resize", cacheNavRects);
   let active = false, startX = 0, startY = 0, decided = 0, curEl = null, nbrEl = null, dir = 0, w = 0, curIdx = 0, lastDx = 0;
+  let raf = 0, pendingDx = 0;
+
+  const applyFrame = () => {
+    raf = 0;
+    if (!active || !decided) return;
+    const d = nbrEl ? pendingDx : pendingDx * 0.3; // rubber-band when there's no neighbour
+    curEl.style.transform = "translate3d(" + d + "px,0,0)";
+    if (nbrEl) nbrEl.style.transform = "translate3d(" + (dir * w + d) + "px,0,0)";
+    const ind = $("nav-ind"), cr = navRects[curEl.id];
+    if (ind && cr) {
+      const nr = nbrEl ? navRects[nbrEl.id] : null, tr = nr || cr, t = Math.min(1, Math.abs(d) / w);
+      ind.style.width = (cr.w + (tr.w - cr.w) * t) + "px";
+      ind.style.transform = "translate3d(" + (cr.left + (tr.left - cr.left) * t) + "px,0,0)";
+    }
+  };
+
   host.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 1 || swErr(e.target)) { active = false; return; }
     if (document.querySelector(".backdrop:not(.hidden)") || !$("lock").classList.contains("hidden")) { active = false; return; }
     const cur = document.querySelector(".tabscreen.active"); curIdx = MAIN_TABS.indexOf(cur ? cur.id : "");
     if (curIdx < 0) { active = false; return; }
     startX = e.touches[0].clientX; startY = e.touches[0].clientY; w = host.offsetWidth || 360;
-    curEl = cur; nbrEl = null; dir = 0; decided = 0; lastDx = 0; active = true;
+    curEl = cur; nbrEl = null; dir = 0; decided = 0; lastDx = 0; pendingDx = 0; active = true;
+    cacheNavRects();
   }, { passive: true });
+
   host.addEventListener("touchmove", (e) => {
     if (!active) return;
     const dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
-    if (!decided) { if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) decided = 1; else if (Math.abs(dy) > 8) { active = false; return; } else return; }
+    if (!decided) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        decided = 1;
+        curEl.style.transition = "none"; curEl.classList.add("dragging");
+        const ind = $("nav-ind"); if (ind) ind.style.transition = "none";
+      } else if (Math.abs(dy) > 8) { active = false; return; } else return;
+    }
     e.preventDefault();
     lastDx = dx;
     const ndir = dx < 0 ? 1 : -1;
     if (dir !== ndir) {
-      if (nbrEl) { nbrEl.classList.remove("active"); nbrEl.style.transition = ""; nbrEl.style.transform = ""; }
+      if (nbrEl) { nbrEl.classList.remove("active", "dragging"); nbrEl.style.transition = ""; nbrEl.style.transform = ""; }
       dir = ndir;
       const ni = curIdx + dir;
       nbrEl = (ni >= 0 && ni < MAIN_TABS.length) ? document.getElementById(MAIN_TABS[ni]) : null;
-      if (nbrEl) { renderForTab(nbrEl.id); nbrEl.classList.add("active"); nbrEl.style.transition = "none"; }
-      curEl.style.transition = "none";
+      if (nbrEl) { renderForTab(nbrEl.id); nbrEl.classList.add("active", "dragging"); nbrEl.style.transition = "none"; nbrEl.style.transform = "translate3d(" + (dir * w) + "px,0,0)"; }
     }
-    const d = nbrEl ? dx : dx * 0.3;
-    curEl.style.transform = "translateX(" + d + "px)";
-    if (nbrEl) nbrEl.style.transform = "translateX(" + (dir * w + d) + "px)";
-    const ind = $("nav-ind"), cr = btnRect(curEl.id), nr = nbrEl ? btnRect(nbrEl.id) : null;
-    if (ind && cr) { const t = Math.min(1, Math.abs(d) / w); const tr = nr || cr; ind.style.transition = "none"; ind.style.width = (cr.w + (tr.w - cr.w) * t) + "px"; ind.style.transform = "translateX(" + (cr.left + (tr.left - cr.left) * t) + "px)"; }
+    pendingDx = dx;
+    if (!raf) raf = requestAnimationFrame(applyFrame); // coalesce all moves into one paint per frame
   }, { passive: false });
+
   const settle = () => {
     if (!active) return; active = false;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
     const ind = $("nav-ind"); if (ind) ind.style.transition = "";
-    if (!decided) return;
+    if (!decided) { if (curEl) curEl.classList.remove("dragging"); return; }
     const commit = nbrEl && Math.abs(lastDx) > w * 0.25;
     curEl.style.transition = ""; curEl.classList.add("sliding");
     if (nbrEl) { nbrEl.style.transition = ""; nbrEl.classList.add("sliding"); }
     const from = curEl, to = nbrEl;
     if (commit) {
-      from.style.transform = "translateX(" + (-dir * w) + "px)"; to.style.transform = "translateX(0)";
-      const fin = () => { from.classList.remove("active", "sliding"); from.style.transform = ""; from.style.transition = ""; to.classList.remove("sliding"); to.style.transform = ""; to.style.transition = ""; to.removeEventListener("transitionend", fin); lastMainTab = to.id; document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === to.id)); moveNavIndicator(to.id); };
+      from.style.transform = "translate3d(" + (-dir * w) + "px,0,0)"; to.style.transform = "translate3d(0,0,0)";
+      const fin = () => { from.classList.remove("active", "sliding", "dragging"); from.style.transform = ""; from.style.transition = ""; to.classList.remove("sliding", "dragging"); to.style.transform = ""; to.style.transition = ""; to.removeEventListener("transitionend", fin); lastMainTab = to.id; document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === to.id)); moveNavIndicator(to.id); };
       to.addEventListener("transitionend", fin); setTimeout(fin, 360);
     } else {
-      from.style.transform = "translateX(0)"; if (to) to.style.transform = "translateX(" + (dir * w) + "px)";
-      const fin = () => { from.classList.remove("sliding"); from.style.transform = ""; from.style.transition = ""; if (to) { to.classList.remove("active", "sliding"); to.style.transform = ""; to.style.transition = ""; } from.removeEventListener("transitionend", fin); moveNavIndicator(from.id); };
+      from.style.transform = "translate3d(0,0,0)"; if (to) to.style.transform = "translate3d(" + (dir * w) + "px,0,0)";
+      const fin = () => { from.classList.remove("sliding", "dragging"); from.style.transform = ""; from.style.transition = ""; if (to) { to.classList.remove("active", "sliding", "dragging"); to.style.transform = ""; to.style.transition = ""; } from.removeEventListener("transitionend", fin); moveNavIndicator(from.id); };
       from.addEventListener("transitionend", fin); setTimeout(fin, 360);
     }
   };

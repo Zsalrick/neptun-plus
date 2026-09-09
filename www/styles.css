@@ -298,6 +298,9 @@ button.row:active { background: var(--surface-2); }
 .nav-ind { position: absolute; top: 7px; bottom: 7px; left: 0; width: 0; border-radius: 11px; background: var(--surface-2);
   transform: translateX(0); transition: transform .3s cubic-bezier(.33,0,.2,1), width .3s cubic-bezier(.33,0,.2,1); z-index: 0; opacity: 0; }
 .tabscreen.sliding { transition: transform .3s cubic-bezier(.33,0,.2,1); will-change: transform; }
+/* During a finger-drag the panes ride their own GPU layer so moves only composite (no reflow/repaint). */
+.tabscreen.dragging { will-change: transform; backface-visibility: hidden; }
+.nav-ind { will-change: transform, width; }
 
 /* ---------- Onboarding ---------- */
 .ob-top { padding: 44px 22px 0; }
