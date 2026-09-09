@@ -111,15 +111,29 @@
               <div class="ob-content">
                 <div class="pin-dots" id="ob-pin-dots" style="justify-content:center"></div>
                 <div class="keypad" id="ob-keypad" style="margin:0 auto"></div>
-                <button class="check mt" id="ob-bio" type="button" hidden>
-                  <span class="box"><span data-icon="check"></span></span>
-                  <span><span class="c-t">Biometrikus feloldás</span><span class="c-b">Ujjlenyomat vagy arc a kód helyett, ha az eszköz támogatja.</span></span>
-                </button>
               </div>
             </div>
 
-            <!-- Step 4: 2FA -->
+            <!-- Step 4: biometrics -->
             <div class="ob-step" data-step="4">
+              <div class="ob-hero"><span data-icon="fingerprint"></span></div>
+              <h1 class="ob-title">Biometrikus feloldás</h1>
+              <p class="ob-sub">A kód helyett ujjlenyomattal vagy arcfelismeréssel is feloldhatod az appot.</p>
+              <div class="ob-content">
+                <button class="opt" id="ob-bio-yes" type="button">
+                  <span class="o-radio"></span>
+                  <span class="o-main"><span class="o-t">Igen, bekapcsolom</span><span class="o-b">Feloldás ujjlenyomattal vagy arccal. A kód tartalékként végig működik.</span></span>
+                </button>
+                <button class="opt" id="ob-bio-no" type="button">
+                  <span class="o-radio"></span>
+                  <span class="o-main"><span class="o-t">Most nem</span><span class="o-b">Az appot csak a 4 számjegyű kóddal oldod fel.</span></span>
+                </button>
+                <div class="hint" id="ob-bio-note" hidden>Az eszközöd most nem támogatja a biometrikus feloldást, vagy nincs beállítva rajta. Ezt később a Beállításokban bármikor bekapcsolhatod.</div>
+              </div>
+            </div>
+
+            <!-- Step 5: 2FA -->
+            <div class="ob-step" data-step="5">
               <div class="ob-hero"><span data-icon="shield"></span></div>
               <h1 class="ob-title">Kétlépcsős kód</h1>
               <p class="ob-sub">Van kétlépcsős azonosítás az egyetemed Neptunjához?</p>
@@ -324,6 +338,14 @@
                 <div class="section-label">Értesítés</div>
                 <div id="notify-cats"></div>
                 <button class="btn tonal" id="notify-test" style="margin-top:2px"><span data-icon="clock"></span> Teszt értesítés (5 mp)</button>
+
+                <div class="section-label">Alkalmazászár</div>
+                <div class="card"><div class="card-pad">
+                  <button class="check" id="set-bio" type="button">
+                    <span class="box"><span data-icon="check"></span></span>
+                    <span><span class="c-t">Biometrikus feloldás</span><span class="c-b" id="set-bio-sub">Ujjlenyomat vagy arc a kód helyett.</span></span>
+                  </button>
+                </div></div>
 
                 <div class="section-label">Biztonság</div>
                 <div class="card"><div class="card-pad">

@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.077";
+const APP_VERSION = "v0.078";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -234,7 +234,7 @@ function renderUniList(container, query, selectedName, onPick) {
 // =====================================================================
 //  ONBOARDING
 // =====================================================================
-const OB_LAST = 4;
+const OB_LAST = 5;
 let obStep = 0;
 let obSel = null; // university object, or "custom", or null
 let obPin = "", obFirst = null, obPinDone = false;
@@ -251,7 +251,8 @@ function obStepValid() {
   }
   if (obStep === 2) return validCode(state.username) && !!state.password;
   if (obStep === 3) return obPinDone;
-  if (obStep === 4) return hasTotp() || state.no2fa;
+  if (obStep === 4) return true; // biometrics is optional
+  if (obStep === 5) return hasTotp() || state.no2fa;
   return true;
 }
 function updateObFooter() {
@@ -265,12 +266,26 @@ function renderOb() {
   if (obStep === 0) $("ob-legal").classList.toggle("on", state.legalAccepted);
   if (obStep === 1) renderObUni();
   if (obStep === 3) { if (state.pinHash) obPinDone = true; if (!obPinDone) { obPin = ""; obFirst = null; } renderObPin(); }
-  if (obStep === 4) renderObTwoFA();
+  if (obStep === 4) renderObBio();
+  if (obStep === 5) renderObTwoFA();
   updateObProgress(); updateObFooter();
 }
+function renderObBio() {
+  const note = $("ob-bio-note");
+  const yes = $("ob-bio-yes");
+  if (!bioOK) {
+    // Device can't do biometrics right now: force off, disable the "yes" choice, explain why.
+    if (state.biometric) { state.biometric = false; saveState(); }
+    yes.disabled = true; yes.classList.add("disabled");
+    note.hidden = false;
+  } else {
+    yes.disabled = false; yes.classList.remove("disabled");
+    note.hidden = true;
+  }
+  yes.classList.toggle("selected", state.biometric);
+  $("ob-bio-no").classList.toggle("selected", !state.biometric);
+}
 function renderObPin() {
-  $("ob-bio").hidden = !bioOK;
-  $("ob-bio").classList.toggle("on", state.biometric);
   if (obPinDone) {
     renderDots($("ob-pin-dots"), 4);
     $("ob-pin-sub").textContent = "A kód beállítva. Léphetsz tovább.";
@@ -339,7 +354,8 @@ function initOnboarding() {
     updateObFooter();
   });
   $("ob-password").addEventListener("input", (e) => { state.password = e.target.value; saveState(); updateObFooter(); });
-  $("ob-bio").onclick = () => { state.biometric = !state.biometric; saveState(); $("ob-bio").classList.toggle("on", state.biometric); };
+  $("ob-bio-yes").onclick = () => { if (!bioOK) return; state.biometric = true; saveState(); renderObBio(); };
+  $("ob-bio-no").onclick = () => { state.biometric = false; saveState(); renderObBio(); };
   $("ob-show-pass").onclick = async () => { const el = $("ob-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuthFor("sensitive"))) return; el.type = "text"; };
   $("ob-2fa-no").onclick = () => { ob2faChoice = "no"; state.no2fa = true; saveState(); renderObTwoFA(); updateObFooter(); };
   $("ob-2fa-yes").onclick = () => { ob2faChoice = "yes"; state.no2fa = false; saveState(); renderObTwoFA(); updateObFooter(); };
@@ -1622,6 +1638,7 @@ function syncSettings() {
   updateUpdateStatus();
   updateBreakMinStatus();
   syncSecurityToggles();
+  renderBioSetting();
   syncNotifySettings();
   syncSemStatus();
   syncProgStatus();
@@ -1706,6 +1723,33 @@ SEC_TOGGLES.forEach(([id, key]) => {
     saveState(); syncSecurityToggles();
   };
 });
+function renderBioSetting() {
+  const btn = $("set-bio"), sub = $("set-bio-sub");
+  if (!btn) return;
+  btn.classList.toggle("on", !!state.biometric && bioOK);
+  if (!bioOK) {
+    btn.classList.add("disabled");
+    if (sub) sub.textContent = "Az eszközöd most nem támogatja, vagy nincs beállítva.";
+  } else {
+    btn.classList.remove("disabled");
+    if (sub) sub.textContent = state.biometric ? "Bekapcsolva — a kód tartalékként végig működik." : "Ujjlenyomat vagy arc a kód helyett.";
+  }
+}
+$("set-bio").onclick = async () => {
+  if (!bioOK) { toast("Az eszközöd most nem támogatja a biometrikus feloldást."); return; }
+  if (state.biometric) {
+    // Turning OFF is a protected change: require the code or biometrics first.
+    if (!(await requireAuth())) return;
+    state.biometric = false;
+  } else {
+    // Turning ON: confirm with biometrics; if that isn't possible, fall back to the code.
+    let ok = false;
+    try { await bioVerify(); ok = true; } catch { ok = await requireAuth(); }
+    if (!ok) return;
+    state.biometric = true;
+  }
+  saveState(); renderBioSetting();
+};
 function updateBreakMinStatus() { const el = $("breakmin-status"); if (el) el.textContent = (state.breakMin || 20) + " perc"; }
 $("btn-breakmin").onclick = () => {
   const items = [];
