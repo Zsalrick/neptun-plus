@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.069";
+const APP_VERSION = "v0.070";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -64,6 +64,7 @@ function defaultState() {
     hiddenOcc: [], // occKeys of class occurrences the user chose to hide (conflict resolution)
     dlc: {}, // downloaded add-ons keyed by id: { version, title, kind, items }
     semesters: null, // { fetchedAt, list:["2025/26/2", ...] } read from Neptun (Felvett tárgyak → Szűrő)
+    progress: null, // { fetchedAt, done, total, free } from Neptun (Tanulmányok → Előrehaladás)
     lastBackup: null, // yyyy-m-d of the last daily auto-backup
     breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
@@ -574,6 +575,17 @@ function renderHome() {
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
   renderNextClass();
   renderNextExam();
+  renderProgress();
+}
+function renderProgress() {
+  const el = $("hub-credit"); if (!el) return;
+  const p = state.progress;
+  if (!p || !p.total) { el.classList.add("hidden"); return; }
+  el.classList.remove("hidden");
+  const pct = Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
+  el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div>`
+    + `<div class="cred-bar"><div class="cred-fill" style="width:${pct}%"></div></div>`
+    + `<div class="cred-free">Ebből szabadon választható: <b>${p.free || 0}</b> kredit</div>`;
 }
 function nextIsland(el, e, headText, tab, now) {
   if (!el) return;
@@ -1087,6 +1099,66 @@ async function grabSemesters() {
   }
   await ask({ title: "Félév lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
 }
+function neptunReadProgress() { return runNeptunFlow(buildProgressScript, "__prog"); }
+// Read credit progress: login → Menü → Tanulmányok → Előrehaladás → parse X/Y + szabadon választható.
+function buildProgressScript(username, password, code) {
+  return `(function(){
+  if(window.__progRunning) return "running"; window.__progRunning=true; window.__prog=""; window.__ncLog="";
+  var LOG=[]; function log(m){ LOG.push(m); window.__ncLog=LOG.join("\\n"); }
+  function deliver(p){ try{ window.__prog=JSON.stringify({done:true,progress:p||null,log:LOG.join("\\n")}); }catch(e){} try{ window.location.href="https://neptunplus.done/?d="+encodeURIComponent(JSON.stringify({progress:p||null,log:LOG.slice(-25).join("\\n")})); }catch(e){} }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+  function vis(el){ return el && el.offsetParent!==null && !el.disabled; }
+  function T(){ return (document.body&&document.body.innerText)||""; }
+  function waitFor(fn,ms){ return new Promise(function(res){ var t0=Date.now(); (function p(){ var v; try{v=fn();}catch(e){v=null;} if(v) return res(v); if(Date.now()-t0>ms) return res(null); setTimeout(p,200); })(); }); }
+  function nodes(){ return Array.prototype.slice.call(document.querySelectorAll('a,button,span,div,li,[role=menuitem],[role=option],[role=button]')); }
+  function pick(txt){ txt=txt.toLowerCase(); var els=nodes().filter(function(el){ return vis(el) && (el.textContent||'').trim().toLowerCase()===txt; }); if(!els.length) els=nodes().filter(function(el){ var t=(el.textContent||'').trim().toLowerCase(); return vis(el) && t.indexOf(txt)>=0 && t.length<txt.length+24; }); els.sort(function(a,b){return (a.textContent||'').length-(b.textContent||'').length;}); return els[0]||null; }
+  function anyCode(){ return Array.prototype.slice.call(document.querySelectorAll('input')).some(function(el){ if(!vis(el)) return false; var ml=parseInt(el.getAttribute('maxlength')||'0',10); var h=((el.id||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); return /code|otp|kod|k[oó]d|hiteles|authent|2fa|mfa/.test(h) || (ml>0&&ml<=8); }); }
+  function loggedIn(){ return !document.querySelector('#userName') && !anyCode() && /Men[üu]/i.test(T()); }
+  function parseProg(){
+    var t=T(); var done=null,total=null,free=null;
+    var mc=t.match(/(\\d{1,3})\\s*\\/\\s*(\\d{2,4})\\s*kredit/i); if(mc){ done=parseInt(mc[1],10); total=parseInt(mc[2],10); }
+    var mf=t.match(/szabadon\\s*v[aá]laszthat[oó][^0-9]{0,30}(\\d+)/i); if(mf) free=parseInt(mf[1],10);
+    if(done!=null && total!=null) return {done:done,total:total,free:(free==null?0:free)};
+    return null;
+  }
+  (async function(){
+    try{
+      log("Várakozás a bejelentkezésre…");
+      var inOk=await waitFor(loggedIn, 60000); log(inOk?"Bejelentkezve":"Nem sikerült bejelentkezni");
+      if(!inOk){ deliver(null); return; }
+      log("Menü"); var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(120);}
+      log("Tanulmányok"); var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){ t.click(); await sleep(120);}
+      log("Előrehaladás"); var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){ e.click(); }
+      await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()) && /[oö]sszkredit|kredit/i.test(T()); }, 12000); await sleep(500);
+      var p=await waitFor(parseProg, 6000); if(!p) p=parseProg();
+      log(p?("Kredit: "+p.done+"/"+p.total+" (szabad: "+p.free+")"):"Nem találtam kredit adatot");
+      deliver(p);
+    }catch(err){ log("HIBA: "+String(err)); deliver(null); }
+  })();
+  return "started";
+})();`;
+}
+async function grabProgress() {
+  if (!isNative) { toast("A kredit beolvasása a telefonos alkalmazásban működik."); return; }
+  if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
+  if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
+  await totpTick();
+  courseLog = []; showBusy("Bejelentkezés…", true);
+  let prog = null, cancelled = false;
+  try {
+    const res = await neptunReadProgress();
+    if (res && res.log) courseLog = res.log.split("\n");
+    prog = (res && res.progress) || null;
+  } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
+  finally { hideBusy(); }
+  if (cancelled) { toast("Megszakítva"); return; }
+  if (prog && prog.total) {
+    state.progress = { fetchedAt: new Date().toISOString(), done: prog.done, total: prog.total, free: prog.free || 0 };
+    saveState(); syncProgStatus(); renderHome();
+    toast("Kredit beolvasva: " + prog.done + "/" + prog.total); return;
+  }
+  await ask({ title: "Kredit lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
+}
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
 function canAutoLogin() { return !!(state.username && state.password && (state.no2fa || hasTotp())); }
 // Startup: if there is no saved semester data yet and we can log in unattended, fetch it silently
@@ -1521,12 +1593,19 @@ function syncSettings() {
   syncSecurityToggles();
   syncNotifySettings();
   syncSemStatus();
+  syncProgStatus();
 }
 function syncSemStatus() {
   const el = $("sems-status"); if (!el) return;
   const s = state.semesters;
   el.textContent = (s && s.list && s.list.length) ? (s.list.length + " félév · " + fmtWhen(s.fetchedAt)) : "Nincs beolvasva";
 }
+function syncProgStatus() {
+  const el = $("prog-status"); if (!el) return;
+  const p = state.progress;
+  el.textContent = (p && p.total) ? (p.done + "/" + p.total + " kredit · " + fmtWhen(p.fetchedAt)) : "Nincs beolvasva";
+}
+$("btn-prog").onclick = grabProgress;
 $("btn-sems").onclick = grabSemesters;
 $("btn-sems-del").onclick = async () => {
   if (!state.semesters) { toast("Nincs elmentett félév adat."); return; }
