@@ -282,10 +282,11 @@ button.row:active { background: var(--surface-2); }
 .tt-loc { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); margin-top: 5px; }
 .tt-loc svg.ic { width: 14px; height: 14px; }
 .tt-badge { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); padding: 4px 8px; border-radius: 6px; align-self: center; }
-/* A break inside a day: a small inset dashed pill — clearly minor, never mistaken for a new day. */
-.tt-gap { margin: -1px 0 9px; padding-left: 2px; }
-.tt-gap-label { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-3);
-  background: transparent; border: 1px dashed var(--line-2); border-radius: 8px; padding: 4px 11px; letter-spacing: .01em; }
+/* A break inside a day: a full dashed-border card — like a class, but thinner and wider so it reads
+   as free time. Negative side margins make it a touch longer than the solid class cards. */
+.tt-gap { display: flex; align-items: center; justify-content: center; text-align: center;
+  margin: 1px -8px 9px -11px; padding: 9px 12px; border: 1px dashed var(--line-2); border-radius: 12px; background: transparent; }
+.tt-gap-label { font-size: 12.5px; font-weight: 500; color: var(--ink-3); letter-spacing: .01em; }
 
 /* ---------- Empty / soon ---------- */
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
