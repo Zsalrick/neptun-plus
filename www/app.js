@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.081";
+const APP_VERSION = "v0.082";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1289,7 +1289,9 @@ function buildCurriculumScript(username, password, code) {
   return `(function(){
   if(window.__currRunning) return "running"; window.__currRunning=true; window.__curr=""; window.__ncLog="";
   var LOG=[]; function log(m){ LOG.push(m); window.__ncLog=LOG.join("\\n"); }
-  function deliver(o){ o=o||{}; try{ window.__curr=JSON.stringify(Object.assign({done:true,log:LOG.join("\\n")},o)); }catch(e){} try{ var slim={program:o.program||"",required:o.required||[],free:o.free||[],log:LOG.slice(-25).join("\\n")}; window.location.href="https://neptunplus.done/?d="+encodeURIComponent(JSON.stringify(slim)); }catch(e){} }
+  // Deliver via the polling channel only (window.__curr) so the large raw HTML survives; the
+  // sentinel-URL channel can't carry it, and would otherwise win the race with a raw-less payload.
+  function deliver(o){ o=o||{}; try{ window.__curr=JSON.stringify(Object.assign({done:true,log:LOG.join("\\n")},o)); }catch(e){} }
   function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
   function vis(el){ return el && el.offsetParent!==null && !el.disabled; }
   function T(){ return (document.body&&document.body.innerText)||""; }
@@ -1300,31 +1302,35 @@ function buildCurriculumScript(username, password, code) {
   function loggedIn(){ return !document.querySelector('#userName') && !anyCode() && /Men[üu]/i.test(T()); }
   var CODE=/\\b[A-Z]{2,}[A-Z0-9]*\\d[A-Z0-9]{1,}\\b/;
   function findProgram(){
-    // A program heading looks like "Pénzügy és számvitel BA 2021" — has a degree token and/or a year.
+    // Preferred: the hierarchy card title (Angular: advancement-hierarchy-curriculum-card__header__data__title).
+    var h=document.querySelector('.advancement-hierarchy-curriculum-card__header__data__title'); if(h && (h.innerText||'').trim()) return (h.innerText||'').trim();
     var best=""; nodes().forEach(function(el){ if(!vis(el)||el.children.length>2) return; var t=(el.textContent||'').trim();
       if(t.length<6||t.length>70) return;
-      if(/\\b(BA|BSc|BProf|MA|MSc|osztatlan|szakirány|mintatanterv)\\b/i.test(t) && /\\d{4}/.test(t) && !/kredit|teljes/i.test(t)){ if(t.length>best.length) best=t; } });
-    if(best) return best;
-    nodes().forEach(function(el){ if(best||!vis(el)||el.children.length>2) return; var t=(el.textContent||'').trim(); if(t.length>=6&&t.length<70&&/\\b(BA|BSc|MA|MSc)\\b/.test(t)&&!/kredit/i.test(t)) best=t; });
+      if(/\\b(BA|BSc|BProf|MA|MSc|osztatlan|szakir[aá]ny)\\b/i.test(t) && /\\d{4}/.test(t) && !/kredit|teljes/i.test(t)){ if(t.length>best.length) best=t; } });
     return best;
   }
-  function expanders(){ return nodes().filter(function(el){ if(!vis(el)||el.tagName!=='BUTTON') return false; var t=(el.textContent||'').replace(/\\s/g,''); if(t.length>2) return false; return (el.offsetWidth||0)>140 && el.querySelector('svg'); }); }
+  // Group expanders: the blue chevron buttons that open a curriculum group (id like "curriculum-1-toggle-header-btn").
+  function groupToggles(){ return Array.prototype.slice.call(document.querySelectorAll('button[id*="toggle-header-btn"]')).filter(vis); }
+  function collapsedToggles(){ return groupToggles().filter(function(b){ return b.getAttribute('aria-expanded')==='false'; }); }
+  function spinning(){ return !!document.querySelector('.spinner, .loading-placeholder-wrapper'); }
+  // The subject cards render (lazy) inside the opened group content. A card carries a code + "kredit".
+  function groupTitleFor(el){ var g=el; for(var k=0;k<12&&g;k++){ g=g.parentElement; if(g&&g.classList&&g.classList.contains('advancement-hierarchy-curriculum-card')){ var tt=g.querySelector('.advancement-hierarchy-curriculum-card__header__data__title'); return tt?(tt.innerText||''):''; } } return ''; }
   function parseCards(){
     var out=[]; var seen={};
-    // Leaf elements holding a Neptun subject code identify a card; climb to the card container.
-    var leaves=Array.prototype.slice.call(document.querySelectorAll('div,span,p,li,td')).filter(function(el){ return el.children.length===0 && CODE.test((el.textContent||'').trim()); });
+    var leaves=Array.prototype.slice.call(document.querySelectorAll('div,span,p,li,td,a')).filter(function(el){ return el.children.length===0 && CODE.test((el.textContent||'').trim()); });
     leaves.forEach(function(le){
       var codeM=(le.textContent||'').match(CODE); if(!codeM) return; var codev=codeM[0];
-      var card=le; for(var k=0;k<8&&card.parentElement;k++){ card=card.parentElement; var rt=(card.innerText||''); if(/kredit/i.test(rt)&&rt.split('\\n').filter(Boolean).length>=2 && rt.length<400) break; }
-      var txt=(card.innerText||''); var key=codev; if(seen[key]) return; seen[key]=1;
+      var card=le; for(var k=0;k<9&&card.parentElement;k++){ card=card.parentElement; var rt=(card.innerText||''); if(/kredit/i.test(rt)&&rt.split('\\n').filter(Boolean).length>=2 && rt.length<500) break; }
+      var txt=(card.innerText||''); if(!/kredit/i.test(txt)) return; var key=codev; if(seen[key]) return; seen[key]=1;
       var lines=txt.split('\\n').map(function(s){return s.trim();}).filter(Boolean);
-      var name=lines[0]||codev; // first line is the title (may wrap, but innerText keeps it as one line per visual row)
-      // if the first line is a status badge, use the next
-      if(/^(t[uú]lteljes[ií]tett|teljes[ií]tett|nem teljes[ií]tett|folyamatban|akt[ií]v|hi[aá]nyz)/i.test(name) && lines[1]) name=lines[1];
+      // name = the longest line that is not the code, not the meta (bullet-separated) line, not a lone status/credit.
+      var name=''; lines.forEach(function(l){ if(l===codev) return; if(l.indexOf('•')>=0||l.indexOf('·')>=0) return; if(/^\\d+\\s*kredit/i.test(l)) return; if(/^(r[eé]szletek|t[uú]lteljes[ií]tett|teljes[ií]tett|nem teljes[ií]tett|folyamatban|akt[ií]v|hi[aá]nyz)/i.test(l)) return; if(l.length>name.length) name=l; });
+      if(!name) name=lines[0]||codev;
       var crM=txt.match(/(\\d+)\\s*kredit/i); var credits=crM?parseInt(crM[1],10):0;
-      var free=/szabadon\\s*v[aá]laszthat/i.test(txt);
-      var type=''; var tm=txt.match(/(folyamatos sz[aá]monk[eé]r[eé]s|vizsga|gyakorlati jegy|koll[oó]kvium|al[aá][ií]r[aá]s)/i); if(tm) type=tm[1];
-      var completed=/t[uú]lteljes[ií]tett|(^|[^n])teljes[ií]tett/i.test(txt) && !/nem teljes[ií]tett/i.test(txt);
+      var gt=groupTitleFor(le);
+      var free=/szabadon\\s*v[aá]laszthat/i.test(txt) || /szabadon\\s*v[aá]laszthat/i.test(gt);
+      var type=''; var tm=txt.match(/(folyamatos sz[aá]monk[eé]r[eé]s|vizsga|gyakorlati jegy|koll[oó]kvium|al[aá][ií]r[aá]s|beugr[oó])/i); if(tm) type=tm[1];
+      var completed=(/t[uú]lteljes[ií]tett/i.test(txt) || /teljes[ií]tve/i.test(txt) || (/teljes[ií]tett/i.test(txt) && !/nem teljes[ií]tett/i.test(txt)));
       out.push({code:codev,name:name,credits:credits,type:type,completed:completed,free:free});
     });
     return out;
@@ -1338,19 +1344,27 @@ function buildCurriculumScript(username, password, code) {
       log("Tanulmányok"); var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){ t.click(); await sleep(150);}
       log("Előrehaladás"); var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){ e.click(); }
       await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000); await sleep(700);
-      // Switch to the hierarchy view if a switcher is present.
-      if(!/Hierarchikus mintatanterv/i.test(T())){ log("Hierarchikus nézet keresése"); var h=pick("Hierarchikus"); if(h){ h.click(); await sleep(600);} }
-      await waitFor(function(){ return /Hierarchikus mintatanterv/i.test(T()); }, 8000);
+      // Switch to the "Hierarchikus mintatanterv" view tab.
+      var tab=Array.prototype.slice.call(document.querySelectorAll('button.tab-group__button,[role=tab],button')).filter(function(b){ return vis(b) && /Hierarchikus mintatanterv/i.test(b.textContent||''); })[0];
+      if(tab){ log("Hierarchikus nézet"); try{ tab.click(); }catch(_){} await sleep(800); }
+      await waitFor(function(){ return document.querySelector('.advancement-hierarchy-curriculum-card'); }, 10000);
       var program=findProgram(); log("Képzés: "+(program||"—"));
-      // Expand the collapsible groups (Kötelező tárgyak, Szabadon választható…).
-      var ex=expanders(); log("Kinyitható csoportok: "+ex.length); for(var i=0;i<ex.length;i++){ try{ ex[i].click(); await sleep(500);}catch(_){}}
-      await sleep(600); var ex2=expanders(); for(var j=0;j<ex2.length;j++){ try{ ex2[j].click(); await sleep(400);}catch(_){}}
-      await sleep(600);
-      var cards=await waitFor(function(){ var c=parseCards(); return c.length?c:null; }, 8000) || parseCards();
+      // Expand every group; content loads lazily (spinner), and new groups appear as we scroll.
+      log("Csoportok kinyitása…");
+      for(var pass=0; pass<10; pass++){
+        try{ window.scrollTo(0, document.body.scrollHeight); }catch(_){} await sleep(350);
+        var togs=collapsedToggles(); if(!togs.length) break;
+        for(var i=0;i<togs.length;i++){ try{ togs[i].scrollIntoView({block:'center'}); }catch(_){} try{ togs[i].click(); }catch(_){}
+          await waitFor(function(){ return !spinning(); }, 9000); await sleep(450); }
+      }
+      log("Nyitott csoportok: "+groupToggles().filter(function(b){return b.getAttribute('aria-expanded')==='true';}).length+"/"+groupToggles().length);
+      try{ window.scrollTo(0,0); }catch(_){}
+      await sleep(500);
+      var cards=await waitFor(function(){ var c=parseCards(); return c.length?c:null; }, 10000) || parseCards();
       var required=[],free=[]; cards.forEach(function(c){ (c.free?free:required).push({code:c.code,name:c.name,credits:c.credits,type:c.type,completed:c.completed}); });
-      log("Tárgyak: "+required.length+" kötelező/összes, "+free.length+" szabadon választható");
-      deliver({program:program, required:required, free:free, raw:(document.querySelector('main')||document.body).outerHTML.slice(0,60000)});
-    }catch(err){ log("HIBA: "+String(err)); deliver({raw:(document.querySelector('main')||document.body).outerHTML.slice(0,60000)}); }
+      log("Tárgyak: "+required.length+" összes/kötelező, "+free.length+" szabadon választható");
+      deliver({program:program, required:required, free:free, raw:(document.querySelector('main')||document.body).outerHTML.slice(0,120000)});
+    }catch(err){ log("HIBA: "+String(err)); deliver({raw:(document.querySelector('main')||document.body).outerHTML.slice(0,120000)}); }
   })();
   return "started";
 })();`;
