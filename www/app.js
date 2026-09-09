@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.057";
+const APP_VERSION = "v0.058";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1332,7 +1332,11 @@ $("acc-class").onclick = () => {
   const items = [{ value: "", label: "Összes osztály" }].concat(ACC_ORDER.filter((c) => accItems.some((x) => accDigits(x.n)[0] === c)).map((c) => ({ value: c, label: accClassName(c) })));
   openList({ title: "Számlaosztály", selected: accClass, items, onPick: (v) => { accClass = v; $("acc-class-lbl").textContent = v ? accClassName(v) : "Összes osztály"; renderAccounts($("acc-search").value); } });
 };
-function accRowHtml(it) { return `<div class="acc-row lvl${accLvl(it.n)}"><span class="acc-n">${esc(it.n)}</span><span class="acc-t">${esc(it.t)}</span></div>`; }
+function accRowHtml(it) {
+  const lvl = accLvl(it.n);
+  let rails = ""; for (let i = 1; i < lvl; i++) rails += `<span class="acc-rail"></span>`; // one vertical guide per nesting level
+  return `<div class="acc-row lvl${lvl}">${rails}<span class="acc-n">${esc(it.n)}</span><span class="acc-t">${esc(it.t)}</span></div>`;
+}
 function renderAccounts(q) {
   q = (q || "").trim().toLowerCase();
   const digits = q.replace(/\D/g, "");
