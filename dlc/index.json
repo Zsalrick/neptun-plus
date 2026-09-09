@@ -1,0 +1,13 @@
+{
+  "dlc": [
+    {
+      "id": "szamlatukor",
+      "title": "Számlatükör",
+      "subtitle": "Egységes számlakeret (2016) · 752 tétel",
+      "for": "Pénzügy és számvitel",
+      "kind": "accounts",
+      "version": "2016.01.01",
+      "data": "https://raw.githubusercontent.com/Zsalrick/neptun-plus/main/dlc/szamlatukor.json"
+    }
+  ]
+}

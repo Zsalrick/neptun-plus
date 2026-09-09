@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.054";
+const APP_VERSION = "v0.055";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -62,6 +62,7 @@ function defaultState() {
     manualExams: [], // [{ id, subject, title, start, end, location, note }]
     notes: [], // [{ id, kind:'subject'|'occurrence', subject, occKey, text }]
     hiddenOcc: [], // occKeys of class occurrences the user chose to hide (conflict resolution)
+    dlc: {}, // downloaded add-ons keyed by id: { version, title, kind, items }
     breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
     // that flow does not ask. Only meaningful when a PIN is set.
@@ -1259,6 +1260,75 @@ function renderDetail() {
   };
 }
 function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); rescheduleNotifications(); }
+
+// =====================================================================
+//  DLC / add-ons (szak-specific downloads from GitHub)
+// =====================================================================
+const DLC_INDEX_URL = "https://raw.githubusercontent.com/Zsalrick/neptun-plus/main/dlc/index.json";
+let dlcIndex = null;
+$("btn-dlc").onclick = openDlc;
+$("dlc-close").onclick = () => $("dlc-sheet").classList.add("hidden");
+$("acc-close").onclick = () => $("accounts-sheet").classList.add("hidden");
+async function openDlc() {
+  $("dlc-sheet").classList.remove("hidden");
+  renderDlcList(); // cached view first
+  try { const r = await fetch(DLC_INDEX_URL, { cache: "no-store" }); if (r.ok) { dlcIndex = await r.json(); renderDlcList(); } } catch (e) { /* offline: keep cached */ }
+}
+function dlcMeta(id) { return ((dlcIndex && dlcIndex.dlc) || []).find((d) => d.id === id); }
+function renderDlcList() {
+  const host = $("dlc-list"); if (!host) return;
+  const cat = (dlcIndex && dlcIndex.dlc) || [], downloaded = state.dlc || {}, seen = {}, rows = [];
+  cat.forEach((d) => { seen[d.id] = 1; rows.push({ m: d, have: downloaded[d.id], newer: downloaded[d.id] && downloaded[d.id].version !== d.version }); });
+  Object.keys(downloaded).forEach((id) => { if (!seen[id]) rows.push({ m: { id, title: downloaded[id].title, subtitle: "" }, have: downloaded[id] }); });
+  if (!rows.length) { host.innerHTML = `<div class="hint center" style="margin:14px 0">Nincs elérhető kiegészítő. Ellenőrizd az internetkapcsolatot.</div>`; return; }
+  host.innerHTML = rows.map((r) => {
+    const d = r.m;
+    const act = !r.have ? `<button class="btn primary narrow dlc-get" data-id="${esc(d.id)}">Letöltés</button>`
+      : r.newer ? `<button class="btn primary narrow dlc-get" data-id="${esc(d.id)}">Frissítés</button>`
+      : `<button class="btn tonal narrow dlc-open" data-id="${esc(d.id)}">Megnyitás</button>`;
+    const open = (r.have && r.newer) ? `<button class="btn outline narrow dlc-open" data-id="${esc(d.id)}">Megnyitás</button>` : "";
+    return `<div class="dlc-row"><div class="dlc-main"><div class="dlc-title">${esc(d.title || d.id)}</div><div class="dlc-sub">${esc(d.subtitle || d.for || "")}</div></div><div class="dlc-actions">${act}${open}</div></div>`;
+  }).join("");
+  host.querySelectorAll(".dlc-get").forEach((b) => b.onclick = () => downloadDlc(b.dataset.id));
+  host.querySelectorAll(".dlc-open").forEach((b) => b.onclick = () => openDlcItem(b.dataset.id));
+}
+async function downloadDlc(id) {
+  const meta = dlcMeta(id); if (!meta || !meta.data) return toast("Nincs letöltési forrás.");
+  showBusy("Letöltés…");
+  try {
+    const r = await fetch(meta.data, { cache: "no-store" }); if (!r.ok) throw new Error("HTTP " + r.status);
+    const data = await r.json();
+    state.dlc = state.dlc || {};
+    state.dlc[id] = { version: meta.version || data.version || "", title: meta.title || data.title || id, kind: meta.kind || data.kind || "accounts", items: data.items || [] };
+    saveState(); renderDlcList(); openDlcItem(id); toast("Letöltve: " + (meta.title || id));
+  } catch (e) { toast("Letöltés sikertelen: " + (e && e.message ? e.message : e)); }
+  finally { hideBusy(); }
+}
+function openDlcItem(id) {
+  const d = (state.dlc || {})[id]; if (!d) return;
+  if (d.kind === "accounts") openAccounts(d); else toast("Ismeretlen kiegészítő típus.");
+}
+// ----- accounts viewer: scroll + search by number or name -----
+let accItems = [];
+function openAccounts(d) {
+  accItems = d.items || [];
+  $("acc-title").textContent = d.title || "Számlatükör";
+  $("acc-search").value = "";
+  $("dlc-sheet").classList.add("hidden");
+  $("accounts-sheet").classList.remove("hidden");
+  renderAccounts("");
+}
+function renderAccounts(q) {
+  q = (q || "").trim().toLowerCase();
+  const digits = q.replace(/\D/g, "");
+  let list = accItems;
+  if (q) list = accItems.filter((it) => (digits && it.n.indexOf(digits) === 0) || it.t.toLowerCase().indexOf(q) >= 0);
+  const host = $("acc-list");
+  if (!list.length) { host.innerHTML = `<div class="hint center" style="margin:16px 0">Nincs találat.</div>`; return; }
+  host.innerHTML = list.slice(0, 400).map((it) => `<div class="acc-row"><span class="acc-n">${esc(it.n)}</span><span class="acc-t">${esc(it.t)}</span></div>`).join("")
+    + (list.length > 400 ? `<div class="hint center" style="margin:10px 0">+${list.length - 400} további — pontosíts a keresésen</div>` : "");
+}
+$("acc-search").addEventListener("input", (e) => renderAccounts(e.target.value));
 
 // ---------- local notifications (reminders) ----------
 function LN() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }

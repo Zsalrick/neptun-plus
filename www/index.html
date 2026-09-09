@@ -185,6 +185,11 @@
                 <button class="card next-card hidden" id="current-class" type="button"></button>
                 <button class="card next-card hidden" id="next-class" type="button"></button>
                 <button class="card next-card hidden" id="next-exam" type="button"></button>
+                <button class="card next-card" id="btn-dlc" type="button">
+                  <div class="nc-head"><span data-icon="book"></span> Kiegészítők</div>
+                  <div class="nc-title" style="margin-top:8px">Szak specifikus letöltések</div>
+                  <div class="nc-loc" id="dlc-card-sub"><span data-icon="down"></span> Számlatükör és továbbiak</div>
+                </button>
                 <div class="version-tag" id="version-tag"></div>
               </div>
             </section>
@@ -390,6 +395,24 @@
   </div>
 
   <!-- ICS subscription link setup sheet -->
+  <div class="backdrop hidden" id="dlc-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Kiegészítők</div>
+      <div class="hint" style="margin:0 0 14px">Szak specifikus letöltések. Új tartalom a GitHubról.</div>
+      <div id="dlc-list"></div>
+      <div class="sheet-actions"><button class="btn outline" id="dlc-close">Bezárás</button></div>
+    </div>
+  </div>
+
+  <div class="backdrop hidden" id="accounts-sheet">
+    <div class="sheet">
+      <div class="sheet-title" id="acc-title">Számlatükör</div>
+      <div class="field"><input class="input" id="acc-search" placeholder="Keresés szám vagy név alapján" autocomplete="off" inputmode="search" /></div>
+      <div class="acc-list" id="acc-list"></div>
+      <div class="sheet-actions"><button class="btn outline" id="acc-close">Bezárás</button></div>
+    </div>
+  </div>
+
   <div class="backdrop hidden" id="ics-sheet">
     <div class="sheet">
       <div class="sheet-title">Órarend feliratkozási link</div>

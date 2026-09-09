@@ -252,6 +252,19 @@ button.row:active { background: var(--surface-2); }
   background: transparent; border: 1px dashed var(--line-2); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
 .lead-add svg.ic { width: 14px; height: 14px; }
 
+/* DLC / add-ons */
+.dlc-row { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+.dlc-row:last-child { border-bottom: 0; }
+.dlc-main { flex: 1; min-width: 0; }
+.dlc-title { font-size: 15px; font-weight: 600; }
+.dlc-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.dlc-actions { display: flex; gap: 8px; flex-shrink: 0; }
+/* Accounts (számlatükör) viewer */
+.acc-list { max-height: 56vh; overflow-y: auto; margin: 6px -4px 2px; -webkit-overflow-scrolling: touch; }
+.acc-row { display: flex; gap: 12px; align-items: baseline; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.acc-n { font-family: ui-monospace, Consolas, monospace; font-size: 13px; font-weight: 700; color: var(--ink); min-width: 52px; }
+.acc-t { font-size: 13.5px; color: var(--ink-2); }
+
 /* ---------- Courses + credit watcher ---------- */
 .cred { padding: 16px; }
 .cred-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
