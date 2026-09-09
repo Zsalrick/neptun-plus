@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.070";
+const APP_VERSION = "v0.071";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -577,6 +577,12 @@ function renderHome() {
   renderNextExam();
   renderProgress();
 }
+function showHubSeg(seg) {
+  document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.seg === seg));
+  $("hub-login").hidden = seg !== "login";
+  $("hub-overview").hidden = seg !== "overview";
+}
+document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.onclick = () => showHubSeg(b.dataset.seg));
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
   const p = state.progress;

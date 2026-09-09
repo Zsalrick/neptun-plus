@@ -164,33 +164,46 @@
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
-                <div class="card hero">
-                  <div class="hero-top">
-                    <div style="min-width:0">
-                      <div class="hero-cap">Azonosító</div>
-                      <div class="hero-id" id="disp-username">Nincs adat</div>
-                      <div class="hero-uni" id="disp-server"></div>
-                    </div>
-                    <button class="chip" id="server-chip"><span data-icon="swap"></span> Váltás</button>
-                  </div>
-                  <div class="totp-tile" id="totp-tile">
-                    <div class="ring-wrap"><svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"></circle><circle class="fg" id="ring-fg" cx="22" cy="22" r="19"></circle></svg><span class="ring-sec" id="totp-seconds">30</span></div>
-                    <div class="totp-main"><div class="totp-lbl" id="totp-account">2FA kód</div><div class="totp-code" id="totp-code">000 000</div></div>
-                    <button class="iconbtn plain" id="btn-copy-code" title="Másolás"><span data-icon="copy"></span></button>
-                  </div>
-                  <span class="chip-muted hidden" id="chip-no2fa"><span data-icon="shield"></span> Kétlépcsős azonosítás kikapcsolva</span>
+                <div class="seg" id="hub-seg">
+                  <span class="seg-ind" id="hub-seg-ind"></span>
+                  <button class="seg-btn active" data-seg="login" type="button">Belépés</button>
+                  <button class="seg-btn" data-seg="overview" type="button">Áttekintés</button>
                 </div>
-                <button class="btn primary lg" id="btn-login"><span data-icon="key"></span> <span id="btn-login-text">Bejelentkezés</span></button>
-                <div class="hint center" id="login-hint"></div>
-                <div class="card cred hidden" id="hub-credit"></div>
-                <button class="card next-card hidden" id="current-class" type="button"></button>
-                <button class="card next-card hidden" id="next-class" type="button"></button>
-                <button class="card next-card hidden" id="next-exam" type="button"></button>
-                <button class="card next-card" id="btn-dlc" type="button">
-                  <div class="nc-head"><span data-icon="book"></span> Kiegészítők</div>
-                  <div class="nc-title" style="margin-top:8px">Szak specifikus letöltések</div>
-                  <div class="nc-loc" id="dlc-card-sub"><span data-icon="down"></span> Számlatükör és továbbiak</div>
-                </button>
+
+                <div id="hub-login">
+                  <div class="card hero">
+                    <div class="hero-top">
+                      <div style="min-width:0">
+                        <div class="hero-cap">Azonosító</div>
+                        <div class="hero-id" id="disp-username">Nincs adat</div>
+                        <div class="hero-uni" id="disp-server"></div>
+                      </div>
+                      <button class="chip" id="server-chip"><span data-icon="swap"></span> Váltás</button>
+                    </div>
+                    <div class="totp-tile" id="totp-tile">
+                      <div class="ring-wrap"><svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"></circle><circle class="fg" id="ring-fg" cx="22" cy="22" r="19"></circle></svg><span class="ring-sec" id="totp-seconds">30</span></div>
+                      <div class="totp-main"><div class="totp-lbl" id="totp-account">2FA kód</div><div class="totp-code" id="totp-code">000 000</div></div>
+                      <button class="iconbtn plain" id="btn-copy-code" title="Másolás"><span data-icon="copy"></span></button>
+                    </div>
+                    <span class="chip-muted hidden" id="chip-no2fa"><span data-icon="shield"></span> Kétlépcsős azonosítás kikapcsolva</span>
+                  </div>
+                  <button class="btn primary lg" id="btn-login"><span data-icon="key"></span> <span id="btn-login-text">Bejelentkezés</span></button>
+                  <div class="hint center" id="login-hint"></div>
+                </div>
+
+                <div id="hub-overview" hidden>
+                  <div class="card cred hidden" id="hub-credit"></div>
+                  <button class="card next-card hidden" id="current-class" type="button"></button>
+                  <button class="card next-card hidden" id="next-class" type="button"></button>
+                  <button class="card next-card hidden" id="next-exam" type="button"></button>
+                  <button class="card next-card" id="btn-dlc" type="button">
+                    <div class="nc-head"><span data-icon="book"></span> Kiegészítők</div>
+                    <div class="nc-title" style="margin-top:8px">Szak specifikus letöltések</div>
+                    <div class="nc-loc" id="dlc-card-sub"><span data-icon="down"></span> Számlatükör és továbbiak</div>
+                  </button>
+                  <div class="hint center" id="overview-empty" hidden style="margin-top:24px">Nincs még adat. Olvasd be a kreditet és az órarendet a beállításokban.</div>
+                </div>
+
                 <div class="version-tag" id="version-tag"></div>
               </div>
             </section>
