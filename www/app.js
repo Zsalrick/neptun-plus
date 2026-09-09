@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.042";
+const APP_VERSION = "v0.043";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -62,6 +62,9 @@ function defaultState() {
     manualExams: [], // [{ id, subject, title, start, end, location, note }]
     notes: [], // [{ id, kind:'subject'|'occurrence', subject, occKey, text }]
     breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
+    // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
+    // that flow does not ask. Only meaningful when a PIN is set.
+    security: { startup: true, resume: true, sensitive: true, actions: true },
   };
 }
 function loadState() {
@@ -313,7 +316,7 @@ function initOnboarding() {
   });
   $("ob-password").addEventListener("input", (e) => { state.password = e.target.value; saveState(); updateObFooter(); });
   $("ob-bio").onclick = () => { state.biometric = !state.biometric; saveState(); $("ob-bio").classList.toggle("on", state.biometric); };
-  $("ob-show-pass").onclick = async () => { const el = $("ob-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuth())) return; el.type = "text"; };
+  $("ob-show-pass").onclick = async () => { const el = $("ob-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuthFor("sensitive"))) return; el.type = "text"; };
   $("ob-2fa-no").onclick = () => { ob2faChoice = "no"; state.no2fa = true; saveState(); renderObTwoFA(); updateObFooter(); };
   $("ob-2fa-yes").onclick = () => { ob2faChoice = "yes"; state.no2fa = false; saveState(); renderObTwoFA(); updateObFooter(); };
   const obAfter2fa = () => { renderObStatus(); updateObFooter(); };
@@ -436,12 +439,8 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     const d = nbrEl ? pendingDx : pendingDx * 0.3; // rubber-band when there's no neighbour
     curEl.style.transform = "translate3d(" + d + "px,0,0)";
     if (nbrEl) nbrEl.style.transform = "translate3d(" + (dir * w + d) + "px,0,0)";
-    const ind = $("nav-ind"), cr = navRects[curEl.id];
-    if (ind && cr) {
-      const nr = nbrEl ? navRects[nbrEl.id] : null, tr = nr || cr, t = Math.min(1, Math.abs(d) / w);
-      ind.style.width = (cr.w + (tr.w - cr.w) * t) + "px";
-      ind.style.transform = "translate3d(" + (cr.left + (tr.left - cr.left) * t) + "px,0,0)";
-    }
+    // The bottom-bar indicator is NOT dragged frame-by-frame (that stutters); it glides on its own
+    // CSS transition toward the target tab, decided in touchmove — smooth and decoupled from the page.
   };
 
   host.addEventListener("touchstart", (e) => {
@@ -464,7 +463,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
       if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
         decided = 1;
         curEl.style.transition = "none"; curEl.classList.add("dragging");
-        const ind = $("nav-ind"); if (ind) ind.style.transition = "none";
+        // leave the nav indicator's CSS transition intact so it glides smoothly
       } else if (Math.abs(dy) > 8) { active = false; return; } else return;
     }
     e.preventDefault();
@@ -476,6 +475,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
       const ni = curIdx + dir;
       nbrEl = (ni >= 0 && ni < MAIN_TABS.length) ? document.getElementById(MAIN_TABS[ni]) : null;
       if (nbrEl) { prepTab(nbrEl.id); nbrEl.classList.add("active", "dragging"); nbrEl.style.transition = "none"; nbrEl.style.transform = "translate3d(" + (dir * w) + "px,0,0)"; }
+      moveNavIndicator((nbrEl || curEl).id); // glide the pill toward the destination tab (CSS transition)
     }
     pendingDx = dx;
     if (!raf) raf = requestAnimationFrame(applyFrame); // coalesce all moves into one paint per frame
@@ -1191,7 +1191,19 @@ function syncSettings() {
   renderTotpStatus();
   updateUpdateStatus();
   updateBreakMinStatus();
+  syncSecurityToggles();
 }
+const SEC_TOGGLES = [["sec-startup", "startup"], ["sec-resume", "resume"], ["sec-sensitive", "sensitive"], ["sec-actions", "actions"]];
+function syncSecurityToggles() { SEC_TOGGLES.forEach(([id, key]) => { const el = $(id); if (el) el.classList.toggle("on", secOn(key)); }); }
+SEC_TOGGLES.forEach(([id, key]) => {
+  $(id).onclick = async () => {
+    // Changing a security switch is itself a protected action.
+    if (!(await requireAuthFor("actions"))) return;
+    if (!state.security) state.security = { startup: true, resume: true, sensitive: true, actions: true };
+    state.security[key] = !secOn(key);
+    saveState(); syncSecurityToggles();
+  };
+});
 function updateBreakMinStatus() { const el = $("breakmin-status"); if (el) el.textContent = (state.breakMin || 20) + " perc"; }
 $("btn-breakmin").onclick = () => {
   const items = [];
@@ -1228,7 +1240,7 @@ $("in-username").addEventListener("input", (e) => {
   $("in-username-err").hidden = v.length === 0 || validCode(v);
 });
 $("in-password").addEventListener("input", (e) => { state.password = e.target.value; saveState(); });
-$("btn-show-pass").onclick = async () => { const el = $("in-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuth())) return; el.type = "text"; };
+$("btn-show-pass").onclick = async () => { const el = $("in-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuthFor("sensitive"))) return; el.type = "text"; };
 
 function renderServersSettings() {
   const list = $("server-list"); list.innerHTML = "";
@@ -1283,7 +1295,7 @@ $("confirm-cancel").onclick = () => $("confirm-dialog").classList.add("hidden");
 $("confirm-ok").onclick = async () => {
   const delPin = $("reset-delpin").classList.contains("on");
   $("confirm-dialog").classList.add("hidden");
-  const ok = await requireAuth();
+  const ok = await requireAuthFor("actions");
   if (!ok) return;
   const keep = (!delPin && state.pinHash) ? { pinHash: state.pinHash, biometric: state.biometric } : null;
   try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
@@ -1400,6 +1412,10 @@ function lockNow() {
   $("lock").classList.remove("hidden");
   renderLock(); maybeBio();
 }
+// Is this security gate switched on? (defaults to on when unset)
+function secOn(kind) { return !state.security || state.security[kind] !== false; }
+// Ask for auth only if a PIN exists AND this gate is enabled; otherwise pass through.
+function requireAuthFor(kind) { return (!state.pinHash || !secOn(kind)) ? Promise.resolve(true) : requireAuth(); }
 // Ask for PIN or biometric without treating the app as locked (used before deleting data).
 function requireAuth() {
   return new Promise((resolve) => {
@@ -1429,7 +1445,7 @@ async function lockCheck() {
 }
 async function maybeBio() { if (!(state.biometric && bioOK)) return; try { await bioVerify(); lockSuccess(); } catch { /* fall back to PIN */ } }
 $("lock-cancel").onclick = () => { if (lockVerifyCb) { const cb = lockVerifyCb; lockVerifyCb = null; $("lock-cancel").hidden = true; if (!isLocked) $("lock").classList.add("hidden"); cb(false); } };
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") lockNow(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && secOn("resume")) lockNow(); });
 
 // =====================================================================
 //  INIT
@@ -1458,7 +1474,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     } catch (e) { /* proceed into the app regardless */ }
   }
   setBootText("Betöltés");
-  if (state.setupComplete) { enterApp(); showTab("tab-home"); lockNow(); }
+  if (state.setupComplete) { enterApp(); showTab("tab-home"); if (secOn("startup")) lockNow(); }
   else {
     obStep = 0;
     obSel = state.university ? (UNIVERSITIES.find((u) => u.name === state.university) || null) : null;
