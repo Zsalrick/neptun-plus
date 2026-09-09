@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.063";
+const APP_VERSION = "v0.064";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -136,9 +136,9 @@ function buildKeypad(container, { onDigit, onBack, action }) {
 }
 
 // generic confirm dialog -> Promise<bool>
-function ask({ title, body, okText = "Igen" }) {
+function ask({ title, body, okText = "Igen", cancelText = "Mégse" }) {
   return new Promise((res) => {
-    $("ask-title").textContent = title; $("ask-body").innerHTML = body; $("ask-ok").textContent = okText;
+    $("ask-title").textContent = title; $("ask-body").innerHTML = body; $("ask-ok").textContent = okText; $("ask-cancel").textContent = cancelText;
     $("ask-dialog").classList.remove("hidden");
     const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").onclick = null; $("ask-cancel").onclick = null; res(v); };
     $("ask-ok").onclick = () => done(true); $("ask-cancel").onclick = () => done(false);
@@ -1090,19 +1090,16 @@ function hasSemesters() { return !!(state.semesters && state.semesters.list && s
 function canAutoLogin() { return !!(state.username && state.password && (state.no2fa || hasTotp())); }
 // Startup: if there is no saved semester data yet and we can log in unattended, fetch it silently
 // (no spinner, no interruption). Runs behind the lock; retries next launch if it fails.
-let semLoading = false; // shown in the home topbar subtitle while the background fetch runs
-async function grabSemestersSilent() {
-  if (!isNative || hasSemesters() || !canAutoLogin()) return;
-  await new Promise((r) => setTimeout(r, 1500)); // let boot/OTA settle first
-  if (hasSemesters() || flowActive) return; // someone else may have run/started meanwhile
-  semLoading = true; renderHome();
-  try {
-    await totpTick();
-    const res = await neptunReadSemesters();
-    const sems = (res && res.sems) || [];
-    if (sems.length) { state.semesters = { fetchedAt: new Date().toISOString(), list: sems }; saveState(); syncSemStatus(); renderTimetable(); renderExams(); renderCourses(); toast(sems.length + " félév beolvasva."); }
-  } catch (e) { /* silent; will retry next launch */ }
-  finally { semLoading = false; renderHome(); }
+let semLoading = false, semOffered = false;
+// On launch (once), if there is no saved semester data, offer to read it now. Re-offered every
+// launch until data exists. Waits until the app is unlocked and settled.
+async function maybeOfferSemesters() {
+  if (semOffered || !isNative || !state.setupComplete || hasSemesters() || !canAutoLogin()) return;
+  if (!$("lock").classList.contains("hidden")) return; // wait until unlocked
+  semOffered = true;
+  const ok = await ask({ title: "Félévek beolvasása", okText: "Beolvasás", cancelText: "Majd később",
+    body: "Nincs elmentve, mely féléveid vannak. Beolvassam most a Neptunból? Ez kell a naptár félév szerinti szűréséhez." });
+  if (ok) grabSemesters();
 }
 
 // Grab the timetable subscription (iCal) link: login → Menü → Naptár → Naptár kezelése → read link.
@@ -1834,7 +1831,7 @@ function requireAuth() {
 }
 function lockSuccess() {
   if (lockVerifyCb) { const cb = lockVerifyCb; lockVerifyCb = null; $("lock-cancel").hidden = true; if (!isLocked) $("lock").classList.add("hidden"); cb(true); }
-  else { isLocked = false; $("lock").classList.add("hidden"); }
+  else { isLocked = false; $("lock").classList.add("hidden"); setTimeout(maybeOfferSemesters, 500); } // offer after cold-start unlock
 }
 function renderLock() {
   const useBio = state.biometric && bioOK;
@@ -1892,7 +1889,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     const ln = LN();
     if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
     rescheduleNotifications(); // refresh reminders on every launch
-    if (state.setupComplete) grabSemestersSilent(); // auto-read semesters once if none saved yet
+    setTimeout(maybeOfferSemesters, 1600); // offer semester read if none saved (once unlocked/settled)
   }
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
