@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.058";
+const APP_VERSION = "v0.059";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1383,7 +1383,7 @@ async function rescheduleNotifications() {
     if (pend && pend.notifications && pend.notifications.length) await ln.cancel({ notifications: pend.notifications.map((n) => ({ id: n.id })) });
   } catch (e) { /* ignore */ }
   const cfg = state.notify || {}, now = Date.now(), horizon = now + 40 * 864e5, out = [];
-  const add = (events, catCfg, title) => {
+  const add = (events, catCfg, title, kind) => {
     if (!catCfg || !catCfg.enabled || !catCfg.leads || !catCfg.leads.length) return;
     events.forEach((e) => catCfg.leads.forEach((lead) => {
       const at = e.S.getTime() - lead * 60000;
@@ -1391,17 +1391,31 @@ async function rescheduleNotifications() {
         id: notifId(e, lead), title,
         body: fmtLead(lead) + " múlva: " + (e.summary || "") + (e.location ? " · " + e.location : ""),
         schedule: { at: new Date(at), allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
+        // carried back on tap so the app can show a detailed alert
+        extra: { kind, head: title, lead, summary: e.summary || "", location: e.location || "", s: e.S.toISOString(), e: e.E ? e.E.toISOString() : "" },
       });
     }));
   };
-  add(visibleClassEvents(), cfg.classes, "Közelgő óra");
+  add(visibleClassEvents(), cfg.classes, "Közelgő óra", "class");
   const exams = examEvents();
-  add(exams.filter((e) => e.manual), cfg.zh, "Közelgő ZH");
-  add(exams.filter((e) => !e.manual), cfg.vizsga, "Közelgő vizsga");
+  add(exams.filter((e) => e.manual), cfg.zh, "Közelgő ZH", "zh");
+  add(exams.filter((e) => !e.manual), cfg.vizsga, "Közelgő vizsga", "vizsga");
   if (!out.length) return;
   out.sort((a, b) => a.schedule.at - b.schedule.at);
   try { await ln.schedule({ notifications: out.slice(0, 64) }); } catch (e) { /* ignore */ }
 }
+// Highlighted in-app alert shown when a reminder push is tapped.
+function showNotifAlert(x) {
+  if (!x) return;
+  const S = x.s ? new Date(x.s) : null, E = x.e ? new Date(x.e) : null;
+  $("notif-head").textContent = x.head || "Emlékeztető";
+  $("notif-subj").textContent = x.summary || "Esemény";
+  $("notif-meta").innerHTML = S ? `${icon("clock")} ${esc(dayHeading(S))} · ${hm(S)}${E && E > S ? "–" + hm(E) : ""}` : "";
+  const loc = $("notif-loc"); if (x.location) { loc.hidden = false; loc.innerHTML = `${icon("pin")} ${esc(x.location)}`; } else loc.hidden = true;
+  const lead = $("notif-lead"); if (x.lead) { lead.hidden = false; lead.innerHTML = `${icon("clock")} Emlékeztető ${esc(fmtLead(x.lead))} korábban`; } else lead.hidden = true;
+  $("notif-sheet").classList.remove("hidden");
+}
+$("notif-ok").onclick = () => $("notif-sheet").classList.add("hidden");
 $("detail-close").onclick = () => $("detail-sheet").classList.add("hidden");
 
 // =====================================================================
@@ -1758,7 +1772,11 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     renderOb();
   }
   totpTick();
-  if (isNative) rescheduleNotifications(); // refresh reminders on every launch
+  if (isNative) {
+    const ln = LN();
+    if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
+    rescheduleNotifications(); // refresh reminders on every launch
+  }
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
 })();
