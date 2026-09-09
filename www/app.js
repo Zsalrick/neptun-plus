@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.035";
+const APP_VERSION = "v0.036";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -37,6 +37,7 @@ const P = {
   down: '<path d="m6 9 6 6 6-6"/>',
   note: '<path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M9 9h6M9 13h4"/>',
   book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 0-2 2z"/><path d="M5 4v16M18 20a2 2 0 0 1 2 2"/>',
+  coffee: '<path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 9h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M8 2.5c.6.7.6 1.3 0 2M12 2.5c.6.7.6 1.3 0 2"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ""}</svg>`; }
 function renderIcons(root = document) {
@@ -396,6 +397,10 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
   window.addEventListener("resize", cacheNavRects);
   let active = false, startX = 0, startY = 0, decided = 0, curEl = null, nbrEl = null, dir = 0, w = 0, curIdx = 0, lastDx = 0;
   let raf = 0, pendingDx = 0;
+  // A settle animation runs for 300ms after release. If a new gesture starts during it, snap that
+  // animation to its end first — otherwise two panes hold `.active` and the next drag grabs the wrong one.
+  let pendingFin = null, pendingTimer = 0;
+  const runPending = () => { const f = pendingFin; pendingFin = null; if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = 0; } if (f) f(); };
 
   const applyFrame = () => {
     raf = 0;
@@ -414,6 +419,8 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
   host.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 1 || swErr(e.target)) { active = false; return; }
     if (document.querySelector(".backdrop:not(.hidden)") || !$("lock").classList.contains("hidden")) { active = false; return; }
+    runPending(); // finish any in-flight slide so the DOM has exactly one active pane
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
     const cur = document.querySelector(".tabscreen.active"); curIdx = MAIN_TABS.indexOf(cur ? cur.id : "");
     if (curIdx < 0) { active = false; return; }
     startX = e.touches[0].clientX; startY = e.touches[0].clientY; w = host.offsetWidth || 360;
@@ -454,14 +461,26 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     curEl.style.transition = ""; curEl.classList.add("sliding");
     if (nbrEl) { nbrEl.style.transition = ""; nbrEl.classList.add("sliding"); }
     const from = curEl, to = nbrEl;
+    let done = false;
+    const clear = (el) => { if (el) { el.classList.remove("sliding", "dragging"); el.style.transform = ""; el.style.transition = ""; } };
     if (commit) {
       from.style.transform = "translate3d(" + (-dir * w) + "px,0,0)"; to.style.transform = "translate3d(0,0,0)";
-      const fin = () => { from.classList.remove("active", "sliding", "dragging"); from.style.transform = ""; from.style.transition = ""; to.classList.remove("sliding", "dragging"); to.style.transform = ""; to.style.transition = ""; to.removeEventListener("transitionend", fin); lastMainTab = to.id; document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === to.id)); moveNavIndicator(to.id); };
-      to.addEventListener("transitionend", fin); setTimeout(fin, 360);
+      const fin = () => {
+        if (done) return; done = true; if (pendingFin === fin) pendingFin = null;
+        to.removeEventListener("transitionend", fin);
+        from.classList.remove("active"); clear(from); clear(to);
+        lastMainTab = to.id; document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === to.id)); moveNavIndicator(to.id);
+      };
+      pendingFin = fin; to.addEventListener("transitionend", fin); pendingTimer = setTimeout(fin, 340);
     } else {
       from.style.transform = "translate3d(0,0,0)"; if (to) to.style.transform = "translate3d(" + (dir * w) + "px,0,0)";
-      const fin = () => { from.classList.remove("sliding", "dragging"); from.style.transform = ""; from.style.transition = ""; if (to) { to.classList.remove("active", "sliding", "dragging"); to.style.transform = ""; to.style.transition = ""; } from.removeEventListener("transitionend", fin); moveNavIndicator(from.id); };
-      from.addEventListener("transitionend", fin); setTimeout(fin, 360);
+      const fin = () => {
+        if (done) return; done = true; if (pendingFin === fin) pendingFin = null;
+        from.removeEventListener("transitionend", fin);
+        clear(from); if (to) { to.classList.remove("active"); clear(to); }
+        moveNavIndicator(from.id);
+      };
+      pendingFin = fin; from.addEventListener("transitionend", fin); pendingTimer = setTimeout(fin, 340);
     }
   };
   host.addEventListener("touchend", settle, { passive: true });
@@ -547,6 +566,13 @@ function dayHeading(d) {
   const name = TT_DAYS[d.getDay()]; return name.charAt(0).toUpperCase() + name.slice(1) + ", " + TT_MON[d.getMonth()] + " " + d.getDate() + ".";
 }
 function fmtWhen(iso) { const d = new Date(iso); const now = new Date(); return (sameDay(d, now) ? "ma " : TT_MON[d.getMonth()] + " " + d.getDate() + ". ") + hm(d); }
+// Human duration for the timetable break blocks: "2 óra", "1 ó 30 p", "45 perc".
+function fmtDur(ms) {
+  const m = Math.round(ms / 60000), h = Math.floor(m / 60), r = m % 60;
+  if (h && r) return h + " ó " + r + " p";
+  if (h) return h + " óra";
+  return m + " perc";
+}
 
 // An exam-like event is detected from its summary / category / description.
 function isExam(e) {
@@ -731,10 +757,20 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
   if (!list.length) {
     html += `<div class="hint center" style="margin-top:20px">${filter === "upcoming" ? (examMode ? "Nincs közelgő számonkérés." : "Nincs közelgő óra.") : "Nincs esemény ebben az időszakban."}</div>`;
   } else {
-    let lastDay = "";
+    let lastDay = "", prevEnd = null;
     list.forEach((e, i) => {
       const dh = dayHeading(e.S);
-      if (dh !== lastDay) { html += `<div class="tt-day">${esc(dh)}</div>`; lastDay = dh; }
+      if (dh !== lastDay) { html += `<div class="tt-day">${esc(dh)}</div>`; lastDay = dh; prevEnd = null; }
+      // Show a "break" block between two classes on the same day when there is a real gap.
+      if (!examMode && prevEnd) {
+        const gap = e.S.getTime() - prevEnd.getTime();
+        if (gap >= 20 * 60000) {
+          html += `<div class="tt-break"><span class="tt-break-line"></span>
+            <span class="tt-break-chip">${icon("coffee")} Szünet · ${fmtDur(gap)} <b>${hm(prevEnd)}–${hm(e.S)}</b></span>
+            <span class="tt-break-line"></span></div>`;
+        }
+      }
+      if (!examMode) prevEnd = (!prevEnd || e.E > prevEnd) ? e.E : prevEnd;
       const next = filter === "upcoming" && !examMode && i === 0;
       const noteCount = e.manual ? (e.note ? 1 : 0) : notesForEvent(e).length;
       html += `<div class="tt-event${next ? " next" : ""}" data-idx="${i}">
