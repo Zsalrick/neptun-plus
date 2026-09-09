@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.065";
+const APP_VERSION = "v0.066";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1692,36 +1692,68 @@ $("privacy-close").onclick = () => $("privacy-sheet").classList.add("hidden");
 $("terms-close").onclick = () => $("terms-sheet").classList.add("hidden");
 
 // ----- data export / import (backup & restore) -----
+function FSP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem; }
+const BACKUP_DIR = "neptunplus";
+function currentStateJson() { try { return localStorage.getItem(STORE_KEY) || JSON.stringify(state); } catch (e) { return JSON.stringify(state); } }
+function backupTs() { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()); }
+function applyImported(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) { toast("Érvénytelen mentés."); return false; }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { toast("Nem sikerült menteni."); return false; }
+  location.reload(); return true;
+}
 $("btn-export").onclick = async () => {
   if (!(await requireAuthFor("sensitive"))) return; // export contains the password + 2FA secret
-  const json = (() => { try { return localStorage.getItem(STORE_KEY) || JSON.stringify(state); } catch (e) { return JSON.stringify(state); } })();
+  const json = currentStateJson(), fs = FSP();
+  if (fs) { // native: write a file automatically into Documents/neptunplus
+    const name = "neptun-plus-mentes-" + backupTs() + ".json";
+    try { await fs.writeFile({ path: BACKUP_DIR + "/" + name, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+      await ask({ title: "Mentés elkészült", okText: "OK", cancelText: "Bezárás", body: "Elmentve ide:<br><span class='mono'>Dokumentumok/" + esc(BACKUP_DIR) + "/" + esc(name) + "</span><br><br>Érzékeny adatot tartalmaz (jelszó, 2FA)." });
+    } catch (e) { toast("Mentés hiba: " + (e && e.message ? e.message : e)); }
+    return;
+  }
+  // fallback (preview / no plugin): textarea + clipboard
   $("backup-title").textContent = "Adatok exportálása";
-  $("backup-hint").innerHTML = "Ez a teljes mentésed. <b>Érzékeny adatot tartalmaz</b> (jelszó, 2FA) — tartsd biztonságban. Másold ki és mentsd el.";
+  $("backup-hint").innerHTML = "Ez a teljes mentésed. <b>Érzékeny adatot tartalmaz</b> (jelszó, 2FA). Másold ki és mentsd el.";
   $("backup-text").value = json; $("backup-text").readOnly = true;
   $("backup-copy").hidden = false; $("backup-import-ok").hidden = true;
   $("backup-sheet").classList.remove("hidden");
   try { await navigator.clipboard.writeText(json); toast("Vágólapra másolva."); } catch (e) { /* manual copy */ }
-  setTimeout(() => { try { $("backup-text").focus(); $("backup-text").select(); } catch (e) {} }, 60);
 };
-$("btn-import").onclick = () => {
+$("btn-import").onclick = async () => {
+  const fs = FSP();
+  if (fs) { // native: list backups in Documents/neptunplus and pick one
+    let files = [];
+    try { const r = await fs.readdir({ path: BACKUP_DIR, directory: "DOCUMENTS" }); files = (r.files || []).map((f) => f && f.name ? f.name : f).filter((n) => typeof n === "string" && /\.json$/i.test(n)); }
+    catch (e) { files = []; }
+    if (!files.length) { toast("Nincs mentés a Dokumentumok/neptunplus mappában."); return; }
+    files.sort().reverse(); // timestamped names → newest first
+    openList({ title: "Mentés visszatöltése", items: files.map((n) => ({ value: n, label: n })), onPick: (name) => importFromFile(name) });
+    return;
+  }
+  // fallback: paste into textarea
   $("backup-title").textContent = "Adatok importálása";
   $("backup-hint").innerHTML = "Illeszd be a korábban exportált mentést, majd Importálás. <b>Ez minden jelenlegi adatot felülír.</b>";
   $("backup-text").value = ""; $("backup-text").readOnly = false;
   $("backup-copy").hidden = true; $("backup-import-ok").hidden = false;
   $("backup-sheet").classList.remove("hidden");
-  setTimeout(() => { try { $("backup-text").focus(); } catch (e) {} }, 60);
 };
+async function importFromFile(name) {
+  const fs = FSP(); if (!fs) return;
+  let json; try { const rf = await fs.readFile({ path: BACKUP_DIR + "/" + name, directory: "DOCUMENTS", encoding: "utf8" }); json = rf.data; } catch (e) { return toast("Nem sikerült beolvasni."); }
+  let data; try { data = JSON.parse(json); } catch (e) { return toast("Sérült mentés (nem JSON)."); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return toast("Érvénytelen mentés.");
+  if (!(await requireAuthFor("actions"))) return;
+  if (!(await ask({ title: "Adatok importálása", okText: "Felülírás", cancelText: "Mégse", body: "Visszatöltöd ezt a mentést? Minden jelenlegi adat felülíródik, és az app újraindul.<br><span class='mono'>" + esc(name) + "</span>" }))) return;
+  applyImported(data);
+}
 $("backup-close").onclick = () => $("backup-sheet").classList.add("hidden");
 $("backup-copy").onclick = async () => { try { await navigator.clipboard.writeText($("backup-text").value); toast("Vágólapra másolva."); } catch (e) { $("backup-text").select(); toast("Jelöld ki és másold."); } };
 $("backup-import-ok").onclick = async () => {
   const raw = $("backup-text").value.trim();
   if (!raw) return toast("Illeszd be a mentést.");
   let data; try { data = JSON.parse(raw); } catch (e) { return toast("Érvénytelen mentés (nem JSON)."); }
-  if (!data || typeof data !== "object" || Array.isArray(data)) return toast("Érvénytelen mentés.");
-  if (!(await requireAuthFor("actions"))) return;
-  if (!(await ask({ title: "Adatok importálása", okText: "Felülírás", cancelText: "Mégse", body: "Biztosan visszatöltöd ezt a mentést? Minden jelenlegi adat felülíródik, és az app újraindul." }))) return;
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { return toast("Nem sikerült menteni."); }
-  location.reload();
+  if (data && typeof data === "object" && !Array.isArray(data)) { if (!(await requireAuthFor("actions"))) return; if (!(await ask({ title: "Adatok importálása", okText: "Felülírás", cancelText: "Mégse", body: "Minden jelenlegi adat felülíródik, és az app újraindul." }))) return; applyImported(data); }
+  else toast("Érvénytelen mentés.");
 };
 $("btn-reset").onclick = () => { $("reset-delpin").classList.remove("on"); $("confirm-dialog").classList.remove("hidden"); };
 $("reset-delpin").onclick = () => $("reset-delpin").classList.toggle("on");
