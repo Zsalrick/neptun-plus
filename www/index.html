@@ -420,6 +420,14 @@
 
   <!-- ICS subscription link setup sheet -->
   <input type="file" id="import-file" accept=".npb,.json,application/json" hidden />
+  <div class="backdrop hidden" id="pw-dialog">
+    <div class="sheet">
+      <div class="sheet-title" id="pw-title">Jelszó</div>
+      <div class="sheet-body" id="pw-body"></div>
+      <div class="field" style="margin-top:12px"><input class="input" id="pw-input" type="password" autocomplete="off" placeholder="Neptun jelszó" /></div>
+      <div class="sheet-actions"><button class="btn outline" id="pw-cancel">Mégse</button><button class="btn primary" id="pw-ok">OK</button></div>
+    </div>
+  </div>
   <div class="backdrop hidden" id="backup-sheet">
     <div class="sheet">
       <div class="sheet-title" id="backup-title">Adatok exportálása</div>

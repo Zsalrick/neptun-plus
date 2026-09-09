@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.067";
+const APP_VERSION = "v0.068";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1700,26 +1700,53 @@ function backupTs() { const d = new Date(), p = (n) => String(n).padStart(2, "0"
 // AES-GCM key kept in its own localStorage entry (survives "Minden adat törlése", which only clears STORE_KEY).
 const b64 = (buf) => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+// v0.067 device-key (kept only to still decrypt old .npb files).
 async function backupKey() {
   let raw = null; try { raw = localStorage.getItem(BK_KEY_LS); } catch (e) {}
-  let bytes; if (raw) bytes = unb64(raw); else { bytes = crypto.getRandomValues(new Uint8Array(32)); try { localStorage.setItem(BK_KEY_LS, b64(bytes)); } catch (e) {} }
-  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+  if (!raw) throw new Error("nincs kulcs");
+  return crypto.subtle.importKey("raw", unb64(raw), "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+// Passphrase (the Neptun password) → AES-GCM key via PBKDF2.
+async function deriveKey(password, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password || ""), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 150000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 async function encryptBackup(json) {
-  const key = await backupKey(), iv = crypto.getRandomValues(new Uint8Array(12));
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(state.password || "", salt);
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(json));
-  return JSON.stringify({ app: "neptun-plus", enc: "aes-gcm", v: 1, iv: b64(iv), ct: b64(ct) });
+  return JSON.stringify({ app: "neptun-plus", enc: "pbkdf2-aes-gcm", v: 2, salt: b64(salt), iv: b64(iv), ct: b64(ct) });
 }
 async function decryptBackup(text) {
   let env; try { env = JSON.parse(text); } catch (e) { throw new Error("Sérült fájl"); }
-  if (env && env.ct && env.iv) { // encrypted envelope
-    const key = await backupKey();
-    let pt; try { pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(env.iv) }, key, unb64(env.ct)); }
-    catch (e) { throw new Error("Nem sikerült visszafejteni (más eszköz/telepítés?)"); }
-    return JSON.parse(new TextDecoder().decode(pt));
+  if (env && env.enc === "pbkdf2-aes-gcm" && env.ct) { // password-encrypted (Neptun password)
+    const attempt = async (pw) => { try { const k = await deriveKey(pw, unb64(env.salt)); const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(env.iv) }, k, unb64(env.ct)); return JSON.parse(new TextDecoder().decode(pt)); } catch (e) { return null; } };
+    if (state.password) { const d = await attempt(state.password); if (d) return d; }
+    for (let i = 0; i < 3; i++) {
+      const pw = await askPassword({ title: "Mentés jelszava", body: "Add meg a Neptun jelszavad a mentés visszafejtéséhez." });
+      if (pw === null) throw new Error("Megszakítva");
+      const d = await attempt(pw); if (d) return d;
+      toast("Hibás jelszó.");
+    }
+    throw new Error("Nem sikerült visszafejteni");
+  }
+  if (env && env.enc === "aes-gcm" && env.ct) { // old device-key backup (back-compat)
+    try { const key = await backupKey(); const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(env.iv) }, key, unb64(env.ct)); return JSON.parse(new TextDecoder().decode(pt)); }
+    catch (e) { throw new Error("Nem sikerült visszafejteni (régi mentés, más eszköz?)"); }
   }
   if (env && typeof env === "object" && !Array.isArray(env)) return env; // legacy plaintext backup
   throw new Error("Érvénytelen mentés");
+}
+function askPassword({ title, body, okText = "OK" }) {
+  return new Promise((res) => {
+    $("pw-title").textContent = title; $("pw-body").textContent = body || ""; $("pw-ok").textContent = okText; $("pw-input").value = "";
+    $("pw-dialog").classList.remove("hidden");
+    setTimeout(() => { try { $("pw-input").focus(); } catch (e) {} }, 60);
+    const done = (v) => { $("pw-dialog").classList.add("hidden"); $("pw-ok").onclick = null; $("pw-cancel").onclick = null; $("pw-input").onkeydown = null; res(v); };
+    $("pw-ok").onclick = () => done($("pw-input").value);
+    $("pw-cancel").onclick = () => done(null);
+    $("pw-input").onkeydown = (e) => { if (e.key === "Enter") done($("pw-input").value); };
+  });
 }
 function applyImported(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) { toast("Érvénytelen mentés."); return false; }
@@ -1732,12 +1759,13 @@ async function confirmAndApply(data, name) {
   applyImported(data);
 }
 $("btn-export").onclick = async () => {
+  if (!state.password) { toast("Előbb állítsd be a Neptun jelszót (azzal titkosítunk)."); return; }
   if (!(await requireAuthFor("sensitive"))) return; // backup contains the password + 2FA secret
   const enc = await encryptBackup(currentStateJson()), fs = FSP();
   if (fs) {
     const name = "neptun-plus-mentes-" + backupTs() + ".npb";
     try { await fs.writeFile({ path: BACKUP_DIR + "/" + name, data: enc, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
-      await ask({ title: "Mentés elkészült", okText: "OK", cancelText: "Bezárás", body: "Titkosított mentés ide:<br><span class='mono'>Dokumentumok/" + esc(BACKUP_DIR) + "/" + esc(name) + "</span>" });
+      await ask({ title: "Mentés elkészült", okText: "OK", cancelText: "Bezárás", body: "Titkosított mentés ide:<br><span class='mono'>Dokumentumok/" + esc(BACKUP_DIR) + "/" + esc(name) + "</span><br><br>A <b>Neptun jelszavaddal</b> fejthető vissza." });
     } catch (e) { toast("Mentés hiba: " + (e && e.message ? e.message : e)); }
     return;
   }
@@ -1777,7 +1805,7 @@ $("backup-import-ok").onclick = async () => {
 };
 // Once a day, on first open, write an encrypted auto-backup; keep max 5 (delete the oldest).
 async function dailyBackup() {
-  const fs = FSP(); if (!isNative || !fs) return;
+  const fs = FSP(); if (!isNative || !fs || !state.password) return;
   const d = new Date(), key = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
   if (state.lastBackup === key) return;
   try {
