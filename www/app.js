@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.049";
+const APP_VERSION = "v0.050";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -653,7 +653,9 @@ function dedupEvents(list) {
 function classEvents() { return dedupEvents(allEvents().filter((e) => !e.exam)); }
 // Hiding is a RULE, not a single date: subject + weekday + start time + semester. So hiding one
 // "XY hétfő 8:00" occurrence hides every XY Monday-08:00 class in that same semester.
-function semKeyFor(d) { const s = allSemesters().find((x) => d >= x.start && d < x.end); return s ? s.key : ""; }
+// O(1) — derive the semester key straight from the date (do NOT scan allSemesters per event; that
+// made hideKey O(n²) over the whole feed and froze the UI on the hide/unhide button).
+function semKeyFor(d) { return semObj(d).key; }
 function hideKey(e) { return (e.summary || "") + "|" + e.S.getDay() + "|" + hm(e.S) + "|" + semKeyFor(e.S); }
 function isHiddenOcc(e) { return (state.hiddenOcc || []).indexOf(hideKey(e)) >= 0; }
 function visibleClassEvents() { return classEvents().filter((e) => !isHiddenOcc(e)); }
