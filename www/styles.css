@@ -463,6 +463,13 @@ button.row:active { background: var(--surface-2); }
   text-transform: uppercase; letter-spacing: .08em; margin: 16px 0; }
 .divider-or::before, .divider-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
+.help-link { display: inline-flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: none; padding: 4px 2px; color: var(--ink-2);
+  font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+.help-link [data-icon] { opacity: .7; }
+.help-link:active { opacity: .6; }
+
 /* university picker */
 .uni-search { position: relative; margin-bottom: 12px; }
 .uni-list { border: 1px solid var(--line); border-radius: 11px; overflow: hidden; max-height: 340px; overflow-y: auto; }

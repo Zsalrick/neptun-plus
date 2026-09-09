@@ -124,6 +124,7 @@
               <h1 class="ob-title">Kétlépcsős kód</h1>
               <p class="ob-sub">Van kétlépcsős azonosítás az egyetemed Neptunjához?</p>
               <div class="ob-content">
+                <button class="help-link" id="ob-2fa-help" type="button"><span data-icon="qr"></span> Hogyan szerezd meg a 2FA kódot?</button>
                 <button class="opt" id="ob-2fa-no" type="button">
                   <span class="o-radio"></span>
                   <span class="o-main"><span class="o-t">Nincs</span><span class="o-b">A belépéshez csak az azonosító és a jelszó kell.</span></span>
@@ -269,6 +270,7 @@
                 <div class="section-label">Kétlépcsős hitelesítés</div>
                 <div class="card"><div class="card-pad">
                   <div id="totp-status"></div>
+                  <button class="help-link mt" id="set-2fa-help" type="button"><span data-icon="qr"></span> Hogyan szerezd meg a 2FA kódot?</button>
                   <label class="btn tonal mt" id="set-qr-btn"><span data-icon="qr"></span> Kép feltöltése
                     <input type="file" id="in-qr" accept="image/*" hidden /></label>
                   <div id="qr-result" class="qr-accts"></div>
@@ -679,6 +681,39 @@
         <p>Az alkalmazás használatával a felhasználó elfogadja ezeket a feltételeket.</p>
       </div>
       <div class="sheet-actions"><button class="btn outline" id="terms-close">Bezárás</button></div>
+    </div>
+  </div>
+
+  <!-- 2FA help sheet -->
+  <div class="backdrop hidden" id="totp-help-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Hogyan szerezd meg a 2FA kódot?</div>
+      <div class="doc">
+        <p>A kétlépcsős azonosítás (2FA) egy titkos kulcson alapul, amit egy QR‑kód rejt. Ezt a kulcsot kell egyszer megadnod itt az appnak, és onnantól magától belép helyetted. Két úton juthatsz hozzá – válaszd azt, amelyik neked kényelmesebb.</p>
+
+        <h3>1. módszer – Új 2FA kérése a Neptunban</h3>
+        <p>Akkor jó, ha még nincs beállítva a 2FA‑d, vagy ha újat szeretnél, mert a QR‑kód elveszett.</p>
+        <ul>
+          <li>Jelentkezz be a Neptunba a böngészőben.</li>
+          <li>Jobbra fent nyisd meg a <b>Profil</b> menüt, majd a <b>Profilbeállítások</b> pontot.</li>
+          <li>A megjelenő <b>legördülő</b> menüből válaszd a <b>Jelszóbeállítások</b> lehetőséget.</li>
+          <li>Itt <b>kapcsold ki</b> a kétlépcsős azonosítást, majd <b>kapcsold vissza</b> (ha eddig nem volt bekapcsolva, egyszerűen kapcsold be).</li>
+          <li>A Neptun ekkor mutat egy új <b>QR‑kódot</b>. Készíts róla <b>képernyőképet</b> (screenshot).</li>
+          <li>Ezt a képet töltsd fel itt a „Kép feltöltése” gombbal, és az app kiolvassa belőle a kulcsot.</li>
+        </ul>
+
+        <h3>2. módszer – A meglévő hitelesítő appodból</h3>
+        <p>Akkor jó, ha már van beállított 2FA‑d egy hitelesítő alkalmazásban (pl. Google Authenticator, Microsoft Authenticator, Authy).</p>
+        <ul>
+          <li>Nyisd meg a hitelesítő appodat, és keresd meg a Neptun/egyetemi fiókodat.</li>
+          <li>Használd a <b>kulcs exportálása</b> (export) funkcióját – ez általában szintén egy <b>QR‑kódot</b> ad.</li>
+          <li>Készíts róla <b>képernyőképet</b>, és töltsd fel itt a „Kép feltöltése” gombbal.</li>
+        </ul>
+
+        <div class="meta"><b>Nincs kéznél a QR‑kód?</b> Ha ismered magát a titkos kulcsot (egy hosszabb betű‑szám sorozat, pl. <span class="mono">JBSWY3DPEHPK3PXP</span> – gyakran „secret key” vagy „kulcs” néven szerepel), akkor a QR‑kód helyett kézzel is beírhatod a lenti mezőbe.</div>
+        <div class="meta" style="margin-top:8px">A kulcsot csak a saját eszközöd tárolja – sehová nem küldjük el.</div>
+      </div>
+      <div class="sheet-actions"><button class="btn outline" id="totp-help-close">Értem</button></div>
     </div>
   </div>
 

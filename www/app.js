@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.076";
+const APP_VERSION = "v0.077";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1802,6 +1802,10 @@ $("open-privacy2").onclick = () => $("privacy-sheet").classList.remove("hidden")
 $("open-terms2").onclick = () => $("terms-sheet").classList.remove("hidden");
 $("privacy-close").onclick = () => $("privacy-sheet").classList.add("hidden");
 $("terms-close").onclick = () => $("terms-sheet").classList.add("hidden");
+const openTotpHelp = () => $("totp-help-sheet").classList.remove("hidden");
+$("ob-2fa-help").onclick = openTotpHelp;
+$("set-2fa-help").onclick = openTotpHelp;
+$("totp-help-close").onclick = () => $("totp-help-sheet").classList.add("hidden");
 
 // ----- data export / import (encrypted backup & restore) -----
 function FSP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem; }
