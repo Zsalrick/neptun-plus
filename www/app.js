@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.060";
+const APP_VERSION = "v0.061";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -63,6 +63,7 @@ function defaultState() {
     notes: [], // [{ id, kind:'subject'|'occurrence', subject, occKey, text }]
     hiddenOcc: [], // occKeys of class occurrences the user chose to hide (conflict resolution)
     dlc: {}, // downloaded add-ons keyed by id: { version, title, kind, items }
+    semesters: null, // { fetchedAt, list:["2025/26/2", ...] } read from Neptun (Felvett tárgyak → Szűrő)
     breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
     // that flow does not ask. Only meaningful when a PIN is set.
@@ -666,6 +667,7 @@ function allSemesters() {
   const co = state.courses || {};
   (co.list || []).forEach((c) => { if (c.semester && !map[c.semester]) map[c.semester] = semKeyToObj(c.semester); });
   (co.semesters || []).forEach((k) => { if (k && !map[k]) map[k] = semKeyToObj(k); });
+  ((state.semesters && state.semesters.list) || []).forEach((k) => { if (k && !map[k]) map[k] = semKeyToObj(k); });
   return Object.values(map).sort((a, b) => a.start - b.start);
 }
 function allEvents() {
@@ -1001,7 +1003,7 @@ function runNeptunFlow(buildScript, gvar) {
       let data = {};
       try { const q = (u.split("?d=")[1] || u.split("#d=")[1] || ""); data = JSON.parse(decodeURIComponent(q)); } catch (e) {}
       if (data && data.log) courseLog = String(data.log).split("\n");
-      finish(null, { done: true, url: data.url || "", log: data.log || "", raw: "" });
+      finish(null, Object.assign({ done: true, url: "", log: "", raw: "" }, data));
     };
     ref.addEventListener("loadstart", onNav);
     ref.addEventListener("loaderror", (ev) => { onNav(ev); dbg("Betöltési hiba: " + ((ev && ev.message) || "")); });
@@ -1016,6 +1018,64 @@ function runNeptunFlow(buildScript, gvar) {
 }
 function neptunReadCourses() { return runNeptunFlow(buildFullReadScript, "__nc"); }
 function neptunReadIcsLink() { return runNeptunFlow(buildIcsGrabScript, "__ics"); }
+function neptunReadSemesters() { return runNeptunFlow(buildSemesterScript, "__sems"); }
+// Read just the semester list: login → Menü → Tárgyak → Felvett tárgyak → Szűrő → Félév dropdown.
+function buildSemesterScript(username, password, code) {
+  return `(function(){
+  if(window.__semRunning) return "running"; window.__semRunning=true; window.__sems=""; window.__ncLog="";
+  var LOG=[]; function log(m){ LOG.push(m); window.__ncLog=LOG.join("\\n"); }
+  function deliver(sems){ try{ window.__sems=JSON.stringify({done:true,sems:sems||[],log:LOG.join("\\n")}); }catch(e){} try{ window.location.href="https://neptunplus.done/?d="+encodeURIComponent(JSON.stringify({sems:sems||[],log:LOG.slice(-25).join("\\n")})); }catch(e){} }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+  function vis(el){ return el && el.offsetParent!==null && !el.disabled; }
+  function T(){ return (document.body&&document.body.innerText)||""; }
+  function waitFor(fn,ms){ return new Promise(function(res){ var t0=Date.now(); (function p(){ var v; try{v=fn();}catch(e){v=null;} if(v) return res(v); if(Date.now()-t0>ms) return res(null); setTimeout(p,200); })(); }); }
+  function nodes(){ return Array.prototype.slice.call(document.querySelectorAll('a,button,span,div,li,[role=menuitem],[role=option],[role=button]')); }
+  function pick(txt){ txt=txt.toLowerCase(); var els=nodes().filter(function(el){ return vis(el) && (el.textContent||'').trim().toLowerCase()===txt; }); if(!els.length) els=nodes().filter(function(el){ var t=(el.textContent||'').trim().toLowerCase(); return vis(el) && t.indexOf(txt)>=0 && t.length<txt.length+24; }); els.sort(function(a,b){return (a.textContent||'').length-(b.textContent||'').length;}); return els[0]||null; }
+  function anyCode(){ return Array.prototype.slice.call(document.querySelectorAll('input')).some(function(el){ if(!vis(el)) return false; var ml=parseInt(el.getAttribute('maxlength')||'0',10); var h=((el.id||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); return /code|otp|kod|k[oó]d|hiteles|authent|2fa|mfa/.test(h) || (ml>0&&ml<=8); }); }
+  function loggedIn(){ return !document.querySelector('#userName') && !anyCode() && /Men[üu]/i.test(T()); }
+  var RE=/\\d{4}\\/\\d{2}\\/\\d/;
+  function semTriggers(){ return nodes().filter(function(el){ return vis(el) && RE.test(el.textContent||'') && (el.textContent||'').length<48; }).sort(function(a,b){return (a.textContent||'').length-(b.textContent||'').length;}); }
+  function collect(){ var labels=[]; nodes().forEach(function(el){ if(!vis(el)||el.children.length>1) return; var t=el.textContent||''; if(t.length>48) return; var m=t.match(RE); if(m&&labels.indexOf(m[0])<0) labels.push(m[0]); }); return labels; }
+  (async function(){
+    try{
+      log("Várakozás a bejelentkezésre…");
+      var inOk=await waitFor(loggedIn, 60000); log(inOk?"Bejelentkezve":"Nem sikerült bejelentkezni");
+      if(!inOk){ deliver([]); return; }
+      log("Menü"); var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(120);}
+      log("Tárgyak"); var t=await waitFor(function(){return pick("Tárgyak");},8000); if(t){ t.click(); await sleep(120);}
+      log("Felvett tárgyak"); var f=await waitFor(function(){return pick("Felvett tárgyak");},8000); if(f){ f.click(); }
+      await waitFor(function(){ return /Felvett t[aá]rgyak/i.test(T()); }, 12000); await sleep(400);
+      log("Szűrő"); var sz=await waitFor(function(){return pick("Szűrő");},8000); if(sz){ sz.click(); await sleep(500);}
+      // open the Félév dropdown (its trigger shows a YYYY/YY/S value)
+      var tr=await waitFor(function(){ var a=semTriggers(); return a.length?a[0]:null; }, 8000); if(tr){ tr.click(); await sleep(500);}
+      var sems=await waitFor(function(){ var l=collect(); return l.length>=2?l:null; }, 6000); if(!sems) sems=collect();
+      log("Félévek: "+(sems.join(", ")||"—"));
+      deliver(sems);
+    }catch(e){ log("HIBA: "+String(e)); deliver([]); }
+  })();
+  return "started";
+})();`;
+}
+async function grabSemesters() {
+  if (!isNative) { toast("A félévek beolvasása a telefonos alkalmazásban működik."); return; }
+  if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
+  await totpTick();
+  courseLog = []; showBusy("Bejelentkezés…", true);
+  let sems = [], cancelled = false;
+  try {
+    const res = await neptunReadSemesters();
+    if (res && res.log) courseLog = res.log.split("\n");
+    sems = (res && res.sems) || [];
+  } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
+  finally { hideBusy(); }
+  if (cancelled) { toast("Megszakítva"); return; }
+  if (sems.length) {
+    state.semesters = { fetchedAt: new Date().toISOString(), list: sems };
+    saveState(); syncSemStatus(); renderTimetable(); renderExams(); renderCourses();
+    toast(sems.length + " félév beolvasva."); return;
+  }
+  await ask({ title: "Félév lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
+}
 
 // Grab the timetable subscription (iCal) link: login → Menü → Naptár → Naptár kezelése → read link.
 async function grabIcsLink() {
@@ -1433,7 +1493,20 @@ function syncSettings() {
   updateBreakMinStatus();
   syncSecurityToggles();
   syncNotifySettings();
+  syncSemStatus();
 }
+function syncSemStatus() {
+  const el = $("sems-status"); if (!el) return;
+  const s = state.semesters;
+  el.textContent = (s && s.list && s.list.length) ? (s.list.length + " félév · " + fmtWhen(s.fetchedAt)) : "Nincs beolvasva";
+}
+$("btn-sems").onclick = grabSemesters;
+$("btn-sems-del").onclick = async () => {
+  if (!state.semesters) { toast("Nincs elmentett félév adat."); return; }
+  if (!(await ask({ title: "Félév adatok törlése", okText: "Törlés", body: "Törlöd a beolvasott félév listát? Bármikor újra beolvasható." }))) return;
+  state.semesters = null; saveState(); syncSemStatus(); renderTimetable(); renderExams(); renderCourses();
+  toast("Félév adatok törölve.");
+};
 // Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
 const NOTIFY_CATS = [["classes", "Órák"], ["zh", "ZH"], ["vizsga", "Vizsgák"]];
 const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
