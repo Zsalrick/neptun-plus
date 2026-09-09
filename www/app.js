@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.080";
+const APP_VERSION = "v0.081";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -59,6 +59,7 @@ function defaultState() {
     biometric: false,
     icsUrl: "",
     courses: null, // { fetchedAt: ISO, list: [{ code, name, credits, completed, semester, teacher, type }] }
+    curriculum: null, // { fetchedAt, program, required:[{code,name,credits,completed,type}], free:[...] } from Előrehaladás → Hierarchikus mintatanterv
     ics: null, // { fetchedAt: ISO, events: [{ s, e, allDay, summary, location, categories, description }] }
     manualExams: [], // [{ id, subject, title, start, end, location, note }]
     notes: [], // [{ id, kind:'subject'|'occurrence', subject, occKey, text }]
@@ -1006,17 +1007,41 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
 function renderTimetable() { renderAgenda($("tt-scroll"), $("tt-sub"), $("tt-refresh"), false, ttFilter, (k) => { ttFilter = k; renderTimetable(); }); }
 function renderExams() { renderAgenda($("ex-scroll"), $("ex-sub"), $("ex-refresh"), true, exFilter, (k) => { exFilter = k; renderExams(); }); }
 
-// ----- courses (Felvett tárgyak) + credit watcher -----
+// ----- courses: 3 segments — Aktuális (felvett) / Összes (mintatanterv) / Szabadon választható -----
 let coFilter = null;
+let coSeg = "aktualis"; // aktualis | osszes | szabad
+const CO_SEGS = ["aktualis", "osszes", "szabad"];
+const CO_SEG_LABEL = { aktualis: "Aktuális", osszes: "Összes", szabad: "Szabadon vál." };
+function courseRow(c) {
+  return `<div class="course-row">
+    <span class="cr-check ${c.completed ? "on" : ""}">${c.completed ? icon("check") : ""}</span>
+    <div class="cr-main"><div class="cr-name">${esc(c.name || c.code || "Tárgy")}</div><div class="cr-sub">${esc(c.code || "")}${c.teacher ? " · " + esc(c.teacher) : ""}${c.type ? " · " + esc(c.type) : ""}</div></div>
+    <span class="cr-cr">${esc(String(c.credits || 0))} kr</span></div>`;
+}
+function creditCard(done, total, doneN, totalN) {
+  return `<div class="card cred"><div class="cred-row"><div><div class="cred-big">${done} / ${total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${doneN}/${totalN} tárgy</div></div><div class="cred-bar"><div class="cred-fill" style="width:${total ? Math.round(done / total * 100) : 0}%"></div></div></div>`;
+}
+function coEmpty(scroll, title, text, btnText, onRead) {
+  scroll.insertAdjacentHTML("beforeend", `<div class="empty"><div class="empty-ic">${icon("book")}</div>
+    <h2>${esc(title)}</h2><p>${esc(text)}</p>
+    <button class="btn primary co-read" style="width:auto">${esc(btnText)}</button></div>`);
+  const b = scroll.querySelector(".co-read"); if (b) b.onclick = onRead;
+}
 function renderCourses() {
   const scroll = $("co-scroll"); if (!scroll) return;
+  // segmented control (same look as the hub)
+  let html = `<div class="seg seg-3" id="co-seg">` + CO_SEGS.map((s) => `<button class="seg-btn ${s === coSeg ? "active" : ""}" data-coseg="${s}" type="button">${CO_SEG_LABEL[s]}</button>`).join("") + `</div>`;
+  scroll.innerHTML = html;
+  scroll.querySelectorAll("#co-seg .seg-btn").forEach((b) => b.onclick = () => { coSeg = b.dataset.coseg; renderCourses(); });
+
+  if (coSeg === "aktualis") renderCoAktualis(scroll);
+  else renderCoCurriculum(scroll, coSeg === "szabad");
+}
+function renderCoAktualis(scroll) {
   const list = (state.courses && state.courses.list) || [];
   if (!list.length) {
-    $("co-sub").textContent = state.courses ? "Nincs adat" : "Beolvasás szükséges";
-    scroll.innerHTML = `<div class="empty"><div class="empty-ic">${icon("book")}</div>
-      <h2>Tárgyak</h2><p>Olvasd be a felvett tárgyaidat a Neptunból: kredit, teljesítés és tanár. A jobb felső frissítés gombbal.</p>
-      <button class="btn primary co-read" style="width:auto">Tárgyak beolvasása</button></div>`;
-    const b = scroll.querySelector(".co-read"); if (b) b.onclick = scrapeCourses;
+    $("co-sub").textContent = "Aktuális · nincs adat";
+    coEmpty(scroll, "Felvett tárgyak", "Olvasd be a felvett tárgyaidat a Neptunból: kredit, teljesítés, félév.", "Tárgyak beolvasása", scrapeCourses);
     return;
   }
   const sems = allSemesters();
@@ -1024,21 +1049,37 @@ function renderCourses() {
   const items = coFilter === "all" ? list : list.filter((c) => c.semester === coFilter);
   const totalCr = items.reduce((s, c) => s + (+c.credits || 0), 0);
   const doneCr = items.filter((c) => c.completed).reduce((s, c) => s + (+c.credits || 0), 0);
-  $("co-sub").textContent = items.length + " tárgy";
-  let html = `<div class="controls"><button class="period-btn" type="button"><span>${coFilter === "all" ? "Összes" : esc(coFilter)}</span>${icon("down")}</button></div>`;
+  $("co-sub").textContent = "Aktuális · " + items.length + " tárgy";
+  let html = `<div class="controls"><button class="period-btn" type="button"><span>${coFilter === "all" ? "Összes félév" : esc(coFilter)}</span>${icon("down")}</button></div>`;
   html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${state.courses && state.courses.fetchedAt ? fmtWhen(state.courses.fetchedAt) : "még soha"}</div>`;
-  html += `<div class="card cred"><div class="cred-row"><div><div class="cred-big">${doneCr} / ${totalCr}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${items.filter((c) => c.completed).length}/${items.length} tárgy</div></div><div class="cred-bar"><div class="cred-fill" style="width:${totalCr ? Math.round(doneCr / totalCr * 100) : 0}%"></div></div></div>`;
-  items.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu")).forEach((c) => {
-    html += `<div class="course-row">
-      <span class="cr-check ${c.completed ? "on" : ""}">${c.completed ? icon("check") : ""}</span>
-      <div class="cr-main"><div class="cr-name">${esc(c.name || c.code || "Tárgy")}</div><div class="cr-sub">${esc(c.code || "")}${c.teacher ? " · " + esc(c.teacher) : ""}</div></div>
-      <span class="cr-cr">${esc(String(c.credits || 0))} kr</span></div>`;
-  });
-  scroll.innerHTML = html;
+  html += creditCard(doneCr, totalCr, items.filter((c) => c.completed).length, items.length);
+  items.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu")).forEach((c) => { html += courseRow(c); });
+  scroll.insertAdjacentHTML("beforeend", html);
   const pb = scroll.querySelector(".period-btn");
-  if (pb) pb.onclick = () => openList({ title: "Időszak", selected: coFilter, items: [{ value: "all", label: "Összes" }].concat(sems.map((s) => ({ value: s.key, label: s.key }))), onPick: (v) => { coFilter = v; renderCourses(); } });
+  if (pb) pb.onclick = () => openList({ title: "Időszak", selected: coFilter, items: [{ value: "all", label: "Összes félév" }].concat(sems.map((s) => ({ value: s.key, label: s.key }))), onPick: (v) => { coFilter = v; renderCourses(); } });
 }
-$("co-refresh").onclick = scrapeCourses;
+function renderCoCurriculum(scroll, freeOnly) {
+  const cur = state.curriculum;
+  const list = cur ? (freeOnly ? (cur.free || []) : (cur.required || [])) : [];
+  if (!hasCurriculum()) {
+    $("co-sub").textContent = (freeOnly ? "Szabadon választható" : "Összes") + " · nincs adat";
+    coEmpty(scroll, freeOnly ? "Szabadon választható" : "Összes tárgy",
+      "Olvasd be a képzésed mintatantervét a Neptunból (Tanulmányok → Előrehaladás → Hierarchikus mintatanterv).",
+      "Mintatanterv beolvasása", scrapeCurriculum);
+    return;
+  }
+  const totalCr = list.reduce((s, c) => s + (+c.credits || 0), 0);
+  const doneCr = list.filter((c) => c.completed).reduce((s, c) => s + (+c.credits || 0), 0);
+  $("co-sub").textContent = (freeOnly ? "Szabadon választható" : "Összes") + " · " + list.length + " tárgy";
+  let html = "";
+  if (cur.program) html += `<div class="co-program">${icon("building")} ${esc(cur.program)}</div>`;
+  html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${cur.fetchedAt ? fmtWhen(cur.fetchedAt) : "még soha"}</div>`;
+  if (!list.length) { html += `<div class="hint center" style="margin-top:20px">Ebben a csoportban nincs beolvasott tárgy.</div>`; scroll.insertAdjacentHTML("beforeend", html); return; }
+  html += creditCard(doneCr, totalCr, list.filter((c) => c.completed).length, list.length);
+  list.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu")).forEach((c) => { html += courseRow(c); });
+  scroll.insertAdjacentHTML("beforeend", html);
+}
+$("co-refresh").onclick = () => { if (coSeg === "aktualis") scrapeCourses(); else scrapeCurriculum(); };
 let courseLog = [];
 function dbg(m) { courseLog.push(m); $("busy-text").textContent = m; }
 async function scrapeCourses() {
@@ -1240,6 +1281,105 @@ async function grabProgress() {
   }
   await ask({ title: "Kredit lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
 }
+// Read the curriculum (Hierarchikus mintatanterv): login → Menü → Tanulmányok → Előrehaladás →
+// switch to the hierarchy view → read program name, expand the groups, parse the subject cards.
+// Returns { program, required:[...], free:[...] } — "Szabadon választható" cards go to `free`.
+function neptunReadCurriculum() { return runNeptunFlow(buildCurriculumScript, "__curr"); }
+function buildCurriculumScript(username, password, code) {
+  return `(function(){
+  if(window.__currRunning) return "running"; window.__currRunning=true; window.__curr=""; window.__ncLog="";
+  var LOG=[]; function log(m){ LOG.push(m); window.__ncLog=LOG.join("\\n"); }
+  function deliver(o){ o=o||{}; try{ window.__curr=JSON.stringify(Object.assign({done:true,log:LOG.join("\\n")},o)); }catch(e){} try{ var slim={program:o.program||"",required:o.required||[],free:o.free||[],log:LOG.slice(-25).join("\\n")}; window.location.href="https://neptunplus.done/?d="+encodeURIComponent(JSON.stringify(slim)); }catch(e){} }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+  function vis(el){ return el && el.offsetParent!==null && !el.disabled; }
+  function T(){ return (document.body&&document.body.innerText)||""; }
+  function waitFor(fn,ms){ return new Promise(function(res){ var t0=Date.now(); (function p(){ var v; try{v=fn();}catch(e){v=null;} if(v) return res(v); if(Date.now()-t0>ms) return res(null); setTimeout(p,220); })(); }); }
+  function nodes(){ return Array.prototype.slice.call(document.querySelectorAll('a,button,span,div,li,[role=menuitem],[role=option],[role=button],[role=tab]')); }
+  function pick(txt){ txt=txt.toLowerCase(); var els=nodes().filter(function(el){ return vis(el) && (el.textContent||'').trim().toLowerCase()===txt; }); if(!els.length) els=nodes().filter(function(el){ var t=(el.textContent||'').trim().toLowerCase(); return vis(el) && t.indexOf(txt)>=0 && t.length<txt.length+24; }); els.sort(function(a,b){return (a.textContent||'').length-(b.textContent||'').length;}); return els[0]||null; }
+  function anyCode(){ return Array.prototype.slice.call(document.querySelectorAll('input')).some(function(el){ if(!vis(el)) return false; var ml=parseInt(el.getAttribute('maxlength')||'0',10); var h=((el.id||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); return /code|otp|kod|k[oó]d|hiteles|authent|2fa|mfa/.test(h) || (ml>0&&ml<=8); }); }
+  function loggedIn(){ return !document.querySelector('#userName') && !anyCode() && /Men[üu]/i.test(T()); }
+  var CODE=/\\b[A-Z]{2,}[A-Z0-9]*\\d[A-Z0-9]{1,}\\b/;
+  function findProgram(){
+    // A program heading looks like "Pénzügy és számvitel BA 2021" — has a degree token and/or a year.
+    var best=""; nodes().forEach(function(el){ if(!vis(el)||el.children.length>2) return; var t=(el.textContent||'').trim();
+      if(t.length<6||t.length>70) return;
+      if(/\\b(BA|BSc|BProf|MA|MSc|osztatlan|szakirány|mintatanterv)\\b/i.test(t) && /\\d{4}/.test(t) && !/kredit|teljes/i.test(t)){ if(t.length>best.length) best=t; } });
+    if(best) return best;
+    nodes().forEach(function(el){ if(best||!vis(el)||el.children.length>2) return; var t=(el.textContent||'').trim(); if(t.length>=6&&t.length<70&&/\\b(BA|BSc|MA|MSc)\\b/.test(t)&&!/kredit/i.test(t)) best=t; });
+    return best;
+  }
+  function expanders(){ return nodes().filter(function(el){ if(!vis(el)||el.tagName!=='BUTTON') return false; var t=(el.textContent||'').replace(/\\s/g,''); if(t.length>2) return false; return (el.offsetWidth||0)>140 && el.querySelector('svg'); }); }
+  function parseCards(){
+    var out=[]; var seen={};
+    // Leaf elements holding a Neptun subject code identify a card; climb to the card container.
+    var leaves=Array.prototype.slice.call(document.querySelectorAll('div,span,p,li,td')).filter(function(el){ return el.children.length===0 && CODE.test((el.textContent||'').trim()); });
+    leaves.forEach(function(le){
+      var codeM=(le.textContent||'').match(CODE); if(!codeM) return; var codev=codeM[0];
+      var card=le; for(var k=0;k<8&&card.parentElement;k++){ card=card.parentElement; var rt=(card.innerText||''); if(/kredit/i.test(rt)&&rt.split('\\n').filter(Boolean).length>=2 && rt.length<400) break; }
+      var txt=(card.innerText||''); var key=codev; if(seen[key]) return; seen[key]=1;
+      var lines=txt.split('\\n').map(function(s){return s.trim();}).filter(Boolean);
+      var name=lines[0]||codev; // first line is the title (may wrap, but innerText keeps it as one line per visual row)
+      // if the first line is a status badge, use the next
+      if(/^(t[uú]lteljes[ií]tett|teljes[ií]tett|nem teljes[ií]tett|folyamatban|akt[ií]v|hi[aá]nyz)/i.test(name) && lines[1]) name=lines[1];
+      var crM=txt.match(/(\\d+)\\s*kredit/i); var credits=crM?parseInt(crM[1],10):0;
+      var free=/szabadon\\s*v[aá]laszthat/i.test(txt);
+      var type=''; var tm=txt.match(/(folyamatos sz[aá]monk[eé]r[eé]s|vizsga|gyakorlati jegy|koll[oó]kvium|al[aá][ií]r[aá]s)/i); if(tm) type=tm[1];
+      var completed=/t[uú]lteljes[ií]tett|(^|[^n])teljes[ií]tett/i.test(txt) && !/nem teljes[ií]tett/i.test(txt);
+      out.push({code:codev,name:name,credits:credits,type:type,completed:completed,free:free});
+    });
+    return out;
+  }
+  (async function(){
+    try{
+      log("Várakozás a bejelentkezésre…");
+      var inOk=await waitFor(loggedIn, 60000); log(inOk?"Bejelentkezve":"Nem sikerült bejelentkezni");
+      if(!inOk){ deliver({}); return; }
+      log("Menü"); var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(150);}
+      log("Tanulmányok"); var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){ t.click(); await sleep(150);}
+      log("Előrehaladás"); var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){ e.click(); }
+      await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000); await sleep(700);
+      // Switch to the hierarchy view if a switcher is present.
+      if(!/Hierarchikus mintatanterv/i.test(T())){ log("Hierarchikus nézet keresése"); var h=pick("Hierarchikus"); if(h){ h.click(); await sleep(600);} }
+      await waitFor(function(){ return /Hierarchikus mintatanterv/i.test(T()); }, 8000);
+      var program=findProgram(); log("Képzés: "+(program||"—"));
+      // Expand the collapsible groups (Kötelező tárgyak, Szabadon választható…).
+      var ex=expanders(); log("Kinyitható csoportok: "+ex.length); for(var i=0;i<ex.length;i++){ try{ ex[i].click(); await sleep(500);}catch(_){}}
+      await sleep(600); var ex2=expanders(); for(var j=0;j<ex2.length;j++){ try{ ex2[j].click(); await sleep(400);}catch(_){}}
+      await sleep(600);
+      var cards=await waitFor(function(){ var c=parseCards(); return c.length?c:null; }, 8000) || parseCards();
+      var required=[],free=[]; cards.forEach(function(c){ (c.free?free:required).push({code:c.code,name:c.name,credits:c.credits,type:c.type,completed:c.completed}); });
+      log("Tárgyak: "+required.length+" kötelező/összes, "+free.length+" szabadon választható");
+      deliver({program:program, required:required, free:free, raw:(document.querySelector('main')||document.body).outerHTML.slice(0,60000)});
+    }catch(err){ log("HIBA: "+String(err)); deliver({raw:(document.querySelector('main')||document.body).outerHTML.slice(0,60000)}); }
+  })();
+  return "started";
+})();`;
+}
+function hasCurriculum() { return !!(state.curriculum && ((state.curriculum.required && state.curriculum.required.length) || (state.curriculum.free && state.curriculum.free.length))); }
+async function scrapeCurriculum() {
+  if (!isNative) { toast("A mintatanterv beolvasása a telefonos alkalmazásban működik."); return; }
+  if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
+  if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
+  await totpTick();
+  courseLog = []; showBusy("Bejelentkezés…", true);
+  let ok = false, rawOut = "", cancelled = false;
+  try {
+    const res = await neptunReadCurriculum();
+    rawOut = (res && res.raw) || "";
+    if (res && res.log) courseLog = res.log.split("\n");
+    const req = (res && res.required) || [], fr = (res && res.free) || [];
+    if (req.length || fr.length) {
+      state.curriculum = { fetchedAt: new Date().toISOString(), program: (res && res.program) || "", required: req, free: fr };
+      saveState(); renderCourses(); ok = true; dbg("Siker: " + (req.length + fr.length) + " tárgy");
+    } else { dbg("Betöltött, de 0 tárgyat ismertem fel a mintatantervben."); }
+  } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
+  finally { hideBusy(); }
+  if (cancelled) { toast("Megszakítva"); return; }
+  if (ok) { toast((state.curriculum.required.length + state.curriculum.free.length) + " tárgy beolvasva."); return; }
+  try { if (rawOut) await navigator.clipboard.writeText(rawOut); } catch (e) { /* ignore */ }
+  await ask({ title: "Mintatanterv napló", okText: "OK",
+    body: courseLog.map((l) => esc(l)).join("<br>") + (rawOut ? "<br><br><b>A nyers oldalt a vágólapra másoltam</b> — illeszd be a beszélgetésbe." : "") });
+}
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
 function canAutoLogin() { return !!(state.username && state.password && (state.no2fa || hasTotp())); }
 let semLoading = false;
@@ -1256,8 +1396,10 @@ const DATA_TASKS = [
     has: hasSemesters, run: syncSemesters },
   { id: "credit",  label: "Kredit",           sub: "Kredit‑előrehaladás (teljesített / összes)",
     has: () => !!(state.progress && state.progress.total), run: syncCredit },
-  { id: "courses", label: "Tárgyak",          sub: "Felvett tárgyaid listája — pl. ha újat vettél fel",
+  { id: "courses", label: "Tárgyak (aktuális)", sub: "Felvett tárgyaid félévenként",
     has: () => !!(state.courses && state.courses.list && state.courses.list.length), run: syncCourses },
+  { id: "curriculum", label: "Mintatanterv (összes)", sub: "Képzésed összes tárgya és a szabadon választhatók",
+    has: hasCurriculum, run: syncCurriculum },
 ];
 function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
 function missingTaskIds() { return DATA_TASKS.filter((t) => !t.has()).map((t) => t.id); }
@@ -1294,6 +1436,14 @@ async function syncCourses() {
   state.courses = { fetchedAt: new Date().toISOString(), list, semesters: res.semesters || [] };
   saveState(); renderCourses();
   return { ok: true, detail: list.length + " tárgy" };
+}
+async function syncCurriculum() {
+  const res = await neptunReadCurriculum();
+  const req = (res && res.required) || [], fr = (res && res.free) || [];
+  if (!req.length && !fr.length) return { ok: false, detail: "nem ismertem fel tárgyat" };
+  state.curriculum = { fetchedAt: new Date().toISOString(), program: (res && res.program) || "", required: req, free: fr };
+  saveState(); renderCourses();
+  return { ok: true, detail: (req.length + fr.length) + " tárgy" + ((res && res.program) ? " · " + res.program : "") };
 }
 
 // --- orchestrator: run the selected tasks in sequence with an overall progress bar ---
