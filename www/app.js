@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.071";
+const APP_VERSION = "v0.072";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -458,7 +458,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
   const cacheNavRects = () => { navRects = {}; document.querySelectorAll(".nav-btn").forEach((b) => { navRects[b.dataset.tab] = { left: b.offsetLeft, w: b.offsetWidth }; }); };
   window.addEventListener("resize", cacheNavRects);
   let active = false, startX = 0, startY = 0, decided = 0, curEl = null, nbrEl = null, dir = 0, w = 0, curIdx = 0, lastDx = 0;
-  let raf = 0, pendingDx = 0;
+  let raf = 0, pendingDx = 0, pendingSeg = 0; // pendingSeg: in-hub segment change instead of a tab change
   // A settle animation runs for 300ms after release. If a new gesture starts during it, snap that
   // animation to its end first — otherwise two panes hold `.active` and the next drag grabs the wrong one.
   let pendingFin = null, pendingTimer = 0;
@@ -483,7 +483,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     const cur = document.querySelector(".tabscreen.active"); curIdx = MAIN_TABS.indexOf(cur ? cur.id : "");
     if (curIdx < 0) { active = false; return; }
     startX = e.touches[0].clientX; startY = e.touches[0].clientY; w = host.offsetWidth || 360;
-    curEl = cur; nbrEl = null; dir = 0; decided = 0; lastDx = 0; pendingDx = 0; active = true;
+    curEl = cur; nbrEl = null; dir = 0; decided = 0; lastDx = 0; pendingDx = 0; pendingSeg = 0; active = true;
     cacheNavRects();
   }, { passive: true });
 
@@ -505,6 +505,12 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
       dir = ndir;
       const ni = curIdx + dir;
       nbrEl = (ni >= 0 && ni < MAIN_TABS.length) ? document.getElementById(MAIN_TABS[ni]) : null;
+      // On the hub, a swipe first moves between the inner segments; only cross to the next tab at the edge.
+      pendingSeg = 0;
+      if (curEl.id === "tab-home") {
+        if (dir === 1 && hubSeg < 1) { pendingSeg = 1; nbrEl = null; }
+        else if (dir === -1 && hubSeg > 0) { pendingSeg = -1; nbrEl = null; }
+      }
       if (nbrEl) { prepTab(nbrEl.id); nbrEl.classList.add("active", "dragging"); nbrEl.style.transition = "none"; nbrEl.style.transform = "translate3d(" + (dir * w) + "px,0,0)"; }
       moveNavIndicator((nbrEl || curEl).id); // glide the pill toward the destination tab (CSS transition)
     }
@@ -517,6 +523,8 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     const ind = $("nav-ind"); if (ind) ind.style.transition = "";
     if (!decided) { if (curEl) curEl.classList.remove("dragging"); return; }
+    // In-hub segment swipe: switch Belépés ↔ Áttekintés (pane rubber-bands back below).
+    if (pendingSeg !== 0 && Math.abs(lastDx) > w * 0.22) showHubSeg(pendingSeg > 0 ? "overview" : "login");
     const commit = nbrEl && Math.abs(lastDx) > w * 0.25;
     curEl.style.transition = ""; curEl.classList.add("sliding");
     if (nbrEl) { nbrEl.style.transition = ""; nbrEl.classList.add("sliding"); }
@@ -577,7 +585,9 @@ function renderHome() {
   renderNextExam();
   renderProgress();
 }
+let hubSeg = 0; // 0 = Belépés, 1 = Áttekintés (used by the pager for in-hub swipe)
 function showHubSeg(seg) {
+  hubSeg = seg === "overview" ? 1 : 0;
   document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.seg === seg));
   $("hub-login").hidden = seg !== "login";
   $("hub-overview").hidden = seg !== "overview";
