@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.074";
+const APP_VERSION = "v0.075";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -65,7 +65,8 @@ function defaultState() {
     dlc: {}, // downloaded add-ons keyed by id: { version, title, kind, items }
     semesters: null, // { fetchedAt, list:["2025/26/2", ...] } read from Neptun (Felvett tárgyak → Szűrő)
     progress: null, // { fetchedAt, done, total, free } from Neptun (Tanulmányok → Előrehaladás)
-    lastBackup: null, // yyyy-m-d of the last daily auto-backup
+    lastBackup: null, // day-number (Math.floor(Date.now()/86400000)) of the last auto-backup
+    backupEvery: 1, // auto-backup frequency in days (0 = off)
     breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
     // that flow does not ask. Only meaningful when a PIN is set.
@@ -1624,6 +1625,7 @@ function syncSettings() {
   syncNotifySettings();
   syncSemStatus();
   syncProgStatus();
+  syncBackupFreq();
 }
 function syncSemStatus() {
   const el = $("sems-status"); if (!el) return;
@@ -1807,7 +1809,8 @@ const BACKUP_DIR = "neptunplus", BK_KEY_LS = "neptun-plus-bkkey";
 function currentStateJson() { try { return localStorage.getItem(STORE_KEY) || JSON.stringify(state); } catch (e) { return JSON.stringify(state); } }
 function backupTs() { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()); }
 // AES-GCM key kept in its own localStorage entry (survives "Minden adat törlése", which only clears STORE_KEY).
-const b64 = (buf) => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+// Chunked to avoid "Maximum call stack size exceeded" on large buffers (fromCharCode.apply limit).
+function b64(buf) { const bytes = new Uint8Array(buf); let bin = ""; const CH = 0x8000; for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH)); return btoa(bin); }
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 // v0.067 device-key (kept only to still decrypt old .npb files).
 async function backupKey() {
@@ -1917,15 +1920,24 @@ $("backup-import-ok").onclick = async () => {
 // Once a day, on first open, write an encrypted auto-backup; keep max 5 (delete the oldest).
 async function dailyBackup() {
   const fs = FSP(); if (!isNative || !fs || !state.password) return;
-  const d = new Date(), key = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
-  if (state.lastBackup === key) return;
+  const every = (state.backupEvery == null ? 1 : state.backupEvery);
+  if (!every) return; // 0 = auto-backup off
+  const today = Math.floor(Date.now() / 86400000);
+  if (typeof state.lastBackup === "number" && today - state.lastBackup < every) return;
   try {
     const enc = await encryptBackup(currentStateJson());
     await fs.writeFile({ path: BACKUP_DIR + "/auto-" + backupTs() + ".npb", data: enc, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
     try { const r = await fs.readdir({ path: BACKUP_DIR, directory: "DOCUMENTS" }); let autos = (r.files || []).map((f) => f && f.name ? f.name : f).filter((n) => typeof n === "string" && /^auto-.*\.npb$/i.test(n)).sort(); while (autos.length > 5) { const oldest = autos.shift(); await fs.deleteFile({ path: BACKUP_DIR + "/" + oldest, directory: "DOCUMENTS" }); } } catch (e) {}
-    state.lastBackup = key; saveState();
+    state.lastBackup = today; saveState();
   } catch (e) { /* silent */ }
 }
+const BACKUP_FREQ = [{ value: "0", label: "Kikapcsolva" }, { value: "1", label: "Naponta" }, { value: "2", label: "2 naponta" }, { value: "3", label: "3 naponta" }, { value: "7", label: "Hetente" }];
+function backupFreqLabel() { const e = (state.backupEvery == null ? 1 : state.backupEvery); const f = BACKUP_FREQ.find((x) => +x.value === e); return f ? f.label : (e + " naponta"); }
+function syncBackupFreq() { const el = $("backup-freq-status"); if (el) el.textContent = backupFreqLabel(); }
+$("btn-backup-freq").onclick = () => {
+  openList({ title: "Automatikus mentés gyakorisága", selected: String(state.backupEvery == null ? 1 : state.backupEvery), items: BACKUP_FREQ,
+    onPick: (v) => { state.backupEvery = parseInt(v, 10) || 0; saveState(); syncBackupFreq(); } });
+};
 $("btn-reset").onclick = () => { $("reset-delpin").classList.remove("on"); $("confirm-dialog").classList.remove("hidden"); };
 $("reset-delpin").onclick = () => $("reset-delpin").classList.toggle("on");
 $("confirm-cancel").onclick = () => $("confirm-dialog").classList.add("hidden");
