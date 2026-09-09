@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.046";
+const APP_VERSION = "v0.047";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -61,6 +61,7 @@ function defaultState() {
     ics: null, // { fetchedAt: ISO, events: [{ s, e, allDay, summary, location, categories, description }] }
     manualExams: [], // [{ id, subject, title, start, end, location, note }]
     notes: [], // [{ id, kind:'subject'|'occurrence', subject, occKey, text }]
+    hiddenOcc: [], // occKeys of class occurrences the user chose to hide (conflict resolution)
     breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
     // that flow does not ask. Only meaningful when a PIN is set.
@@ -643,14 +644,22 @@ function allSemesters() {
 function allEvents() {
   return ((state.ics && state.ics.events) || []).map((e) => ({ ...e, S: new Date(e.s), E: new Date(e.e), exam: isExam(e) }));
 }
-function classEvents() { return allEvents().filter((e) => !e.exam); }
+// De-duplicate exact duplicate occurrences (same start+end+summary) — "on paper two, really one".
+function dedupEvents(list) {
+  const seen = {}, out = [];
+  list.forEach((e) => { const k = (e.s || "") + "|" + (e.e || "") + "|" + (e.summary || ""); if (!seen[k]) { seen[k] = 1; out.push(e); } });
+  return out;
+}
+function classEvents() { return dedupEvents(allEvents().filter((e) => !e.exam)); }
+function isHiddenOcc(e) { return (state.hiddenOcc || []).indexOf(occKey(e)) >= 0; }
+function visibleClassEvents() { return classEvents().filter((e) => !isHiddenOcc(e)); }
 function manualExamEvents() {
   return (state.manualExams || []).map((m) => ({ S: new Date(m.start), E: new Date(m.end || m.start), s: m.start, e: m.end || m.start,
     summary: m.title || m.subject || "Számonkérés", location: m.location || "", subject: m.subject || "", note: m.note || "", exam: true, manual: true, id: m.id }));
 }
 function examEvents() { return allEvents().filter((e) => e.exam).concat(manualExamEvents()); }
-function currentClass() { const now = Date.now(); return classEvents().filter((e) => e.S.getTime() <= now && e.E.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
-function nextClass() { const now = Date.now(); return classEvents().filter((e) => e.S.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
+function currentClass() { const now = Date.now(); return visibleClassEvents().filter((e) => e.S.getTime() <= now && e.E.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
+function nextClass() { const now = Date.now(); return visibleClassEvents().filter((e) => e.S.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
 function nextAssessment() { const now = Date.now(); return examEvents().filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S)[0] || null; }
 function subjects() {
   const set = new Set();
@@ -789,10 +798,23 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
   else { const s = sems.find((x) => x.key === filter); list = s ? items.filter((e) => e.S >= s.start && e.S < s.end).sort((a, b) => a.S - b.S) : []; }
   subEl.textContent = list.length + (examMode ? " számonkérés" : " óra");
   // Highlight the ongoing class ("Jelenleg") and the soonest upcoming one ("Következő") — only in the
-  // Közelgő view for the timetable (not for exams / past semesters).
+  // Közelgő view for the timetable (not for exams / past semesters). Computed over VISIBLE (non-hidden)
+  // classes so hiding a conflict promotes the remaining one.
   const showFlags = filter === "upcoming" && !examMode;
-  const nowIdx = showFlags ? list.findIndex((e) => e.S.getTime() <= now && e.E.getTime() > now) : -1;
-  const nextIdx = showFlags ? list.findIndex((e) => e.S.getTime() > now) : -1;
+  const hiddenSet = new Set(!examMode ? (state.hiddenOcc || []) : []);
+  let nowKey = "", nextKey = "", conflictSet = new Set();
+  if (!examMode) {
+    const vis = list.filter((e) => !hiddenSet.has(occKey(e)));
+    if (showFlags) {
+      const on = vis.find((e) => e.S.getTime() <= now && e.E.getTime() > now);
+      const nx = vis.find((e) => e.S.getTime() > now);
+      nowKey = on ? occKey(on) : ""; nextKey = nx ? occKey(nx) : "";
+    }
+    // Two visible classes whose time ranges overlap are a real conflict.
+    for (let a = 0; a < vis.length; a++) for (let b = a + 1; b < vis.length; b++) {
+      if (vis[a].S < vis[b].E && vis[b].S < vis[a].E) { conflictSet.add(occKey(vis[a])); conflictSet.add(occKey(vis[b])); }
+    }
+  }
 
   let html = `<div class="controls">${periodBtn(filter)}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
   if (hasFeed) html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${state.ics && state.ics.fetchedAt ? fmtWhen(state.ics.fetchedAt) : "még soha"}</div>`;
@@ -820,9 +842,12 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
         if (gap >= (state.breakMin || 20) * 60000) html += `<div class="tt-gap"><span class="tt-gap-label">Szünet · ${fmtDur(gap)} · ${hm(prevEnd)}–${hm(e.S)}</span></div>`;
       }
       if (!examMode) prevEnd = (!prevEnd || e.E > prevEnd) ? e.E : prevEnd;
+      const k = occKey(e);
       let flagCls = "", flagText = "";
-      if (i === nowIdx) { flagCls = " now"; flagText = "Jelenleg"; }
-      else if (i === nextIdx) { flagCls = " next"; flagText = "Következő"; }
+      if (!examMode && hiddenSet.has(k)) { flagCls = " muted"; flagText = "Rejtve"; }
+      else if (!examMode && conflictSet.has(k)) { flagCls = " conflict"; flagText = "Ütközés"; }
+      else if (k === nowKey && nowKey) { flagCls = " now"; flagText = "Jelenleg"; }
+      else if (k === nextKey && nextKey) { flagCls = " next"; flagText = "Következő"; }
       const noteCount = e.manual ? (e.note ? 1 : 0) : notesForEvent(e).length;
       html += `<div class="tt-event${flagCls}" data-idx="${i}">
         <div class="tt-time"><span>${hm(e.S)}</span>${examMode ? "" : `<span class="tt-time-e">${hm(e.E)}</span>`}</div>
@@ -1167,6 +1192,11 @@ function renderDetail() {
   if (!e.manual) {
     html += `<div class="field" style="margin-top:14px"><input class="input" id="dn-input" placeholder="Új megjegyzés, például hozz papírt" autocomplete="off" /></div>
       <div class="detail-add"><button class="btn outline" id="dn-occ">Csak erre az alkalomra</button><button class="btn outline" id="dn-sub">Minden ilyen órára</button></div>`;
+    // Only classes (not exams) can be hidden — for resolving overlaps ("on paper I have two").
+    if (!detailExamMode) {
+      const hidden = (state.hiddenOcc || []).indexOf(occKey(e)) >= 0;
+      html += `<div class="detail-add" style="margin-top:10px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Újra megjelenítem" : "Ezt nem járom (elrejtés)"}</button></div>`;
+    }
   } else {
     html += `<div class="detail-add" style="margin-top:14px"><button class="btn outline" id="dn-edit">Szerkesztés</button><button class="btn danger" id="dn-del">Törlés</button></div>`;
   }
@@ -1184,6 +1214,12 @@ function renderDetail() {
   };
   if ($("dn-occ")) $("dn-occ").onclick = () => add("occurrence");
   if ($("dn-sub")) $("dn-sub").onclick = () => add("subject");
+  if ($("dn-hide")) $("dn-hide").onclick = () => {
+    const k = occKey(e); state.hiddenOcc = state.hiddenOcc || [];
+    const was = state.hiddenOcc.indexOf(k) >= 0;
+    state.hiddenOcc = was ? state.hiddenOcc.filter((x) => x !== k) : state.hiddenOcc.concat(k);
+    saveState(); renderDetail(); refreshAgendas(); toast(was ? "Újra látható." : "Elrejtve.");
+  };
   if ($("dn-edit")) $("dn-edit").onclick = () => { $("detail-sheet").classList.add("hidden"); openExamEdit(e); };
   if ($("dn-del")) $("dn-del").onclick = () => {
     state.manualExams = (state.manualExams || []).filter((m) => m.id !== e.id); saveState();

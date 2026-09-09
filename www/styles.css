@@ -287,6 +287,12 @@ button.row:active { background: var(--surface-2); }
 .tt-flag { position: absolute; top: 12px; right: 13px; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .tt-event.next .tt-flag { color: var(--ink-2); }
 .tt-event.now .tt-flag { color: var(--accent); animation: flag-blink 1.6s ease-in-out infinite; }
+/* Real time conflict between two classes */
+.tt-event.conflict { border-color: var(--danger); }
+.tt-event.conflict .tt-flag { color: var(--danger); }
+/* An occurrence the user hid ("Ezt nem járom") — dimmed, dashed, still tappable to restore */
+.tt-event.muted { opacity: .5; border-style: dashed; }
+.tt-event.muted .tt-flag { color: var(--ink-3); }
 @keyframes flag-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .tt-event.now .tt-flag { animation: none; } }
 .tt-time { display: flex; flex-direction: column; min-width: 46px; }
