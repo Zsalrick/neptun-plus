@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.052";
+const APP_VERSION = "v0.053";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -66,13 +66,30 @@ function defaultState() {
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
     // that flow does not ask. Only meaningful when a PIN is set.
     security: { startup: true, resume: true, sensitive: true, actions: true },
-    notify: { enabled: false, lead: 30 }, // class reminder: on/off + minutes before start
+    // Reminders per category; each has on/off and up to 3 lead times (minutes before start).
+    notify: {
+      classes: { enabled: false, leads: [30] },
+      zh: { enabled: false, leads: [1440, 120] },
+      vizsga: { enabled: false, leads: [1440] },
+    },
   };
 }
 function loadState() {
-  try { const raw = localStorage.getItem(STORE_KEY); if (raw) return Object.assign(defaultState(), JSON.parse(raw)); }
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) return migrate(Object.assign(defaultState(), JSON.parse(raw))); }
   catch { /* ignore */ }
   return defaultState();
+}
+// Bring older saved shapes up to date (Object.assign is shallow, so nested objects need fixing).
+function migrate(s) {
+  const d = defaultState();
+  if (!s.notify || typeof s.notify !== "object") s.notify = d.notify;
+  // Old shape: notify:{enabled,lead}. New: per-category classes/zh/vizsga.
+  if (!s.notify.classes) {
+    const on = !!s.notify.enabled, lead = s.notify.lead || 30;
+    s.notify = { classes: { enabled: on, leads: [lead] }, zh: d.notify.zh, vizsga: d.notify.vizsga };
+  }
+  ["classes", "zh", "vizsga"].forEach((c) => { if (!s.notify[c]) s.notify[c] = d.notify[c]; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
+  return s;
 }
 function saveState() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* ignore */ } }
 let state = loadState();
@@ -772,7 +789,7 @@ async function fetchTimetable() {
     const events = parseICS(text);
     state.ics = { fetchedAt: new Date().toISOString(),
       events: events.map((e) => ({ s: e.start.toISOString(), e: e.end.toISOString(), allDay: !!e.allDay, summary: e.summary || "", location: e.location || "", categories: e.categories || "", description: e.description || "" })) };
-    saveState(); renderTimetable(); renderExams(); renderHome(); rescheduleClassNotifications(); toast(events.length + " esemény frissítve.");
+    saveState(); renderTimetable(); renderExams(); renderHome(); rescheduleNotifications(); toast(events.length + " esemény frissítve.");
   } catch (err) {
     toast("Nem sikerült letölteni. " + (err && err.message ? err.message : ""));
     renderTimetable(); renderExams();
@@ -1233,37 +1250,49 @@ function renderDetail() {
     $("detail-sheet").classList.add("hidden"); renderExams(); renderHome(); toast("Törölve.");
   };
 }
-function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); rescheduleClassNotifications(); }
+function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); rescheduleNotifications(); }
 
-// ---------- local notifications (class reminders) ----------
+// ---------- local notifications (reminders) ----------
 function LN() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
-// Stable 31-bit integer id from an event's occurrence key (LocalNotifications needs numeric ids).
-function notifId(e) { const s = occKey(e); let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h) % 2000000000 || 1; }
+// Human lead label: "30 perc", "1 óra", "1 ó 30 p", "1 nap", "2 nap", "1 hét".
+function fmtLead(min) {
+  if (min % 10080 === 0) return (min / 10080) + " hét";
+  if (min % 1440 === 0) return (min / 1440) + " nap";
+  return fmtDur(min * 60000);
+}
+// Stable 31-bit integer id from occurrence key + lead (each reminder needs its own numeric id).
+function notifId(e, lead) { const s = occKey(e) + "|" + lead; let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h) % 2000000000 || 1; }
 async function ensureNotifPermission() {
   const ln = LN(); if (!ln) return false;
   try { let p = await ln.checkPermissions(); if (p.display !== "granted") p = await ln.requestPermissions(); return p.display === "granted"; }
   catch (e) { return false; }
 }
-// Cancel every reminder we previously scheduled, then (if enabled) schedule the upcoming classes.
-async function rescheduleClassNotifications() {
+// Cancel everything we scheduled, then re-schedule classes + ZH + exams per their enabled reminders.
+async function rescheduleNotifications() {
   const ln = LN(); if (!ln || !isNative) return;
   try {
     const pend = await ln.getPending();
     if (pend && pend.notifications && pend.notifications.length) await ln.cancel({ notifications: pend.notifications.map((n) => ({ id: n.id })) });
   } catch (e) { /* ignore */ }
-  const cfg = state.notify || {}; if (!cfg.enabled) return;
-  const lead = (cfg.lead || 30) * 60000, now = Date.now(), horizon = now + 14 * 864e5;
-  const list = visibleClassEvents()
-    .filter((e) => { const at = e.S.getTime() - lead; return at > now + 15000 && e.S.getTime() < horizon; })
-    .sort((a, b) => a.S - b.S).slice(0, 48);
-  if (!list.length) return;
-  const notifications = list.map((e) => ({
-    id: notifId(e),
-    title: "Közelgő óra",
-    body: (cfg.lead || 30) + " percen belül kezdődik: " + (e.summary || "óra") + (e.location ? " · " + e.location : ""),
-    schedule: { at: new Date(e.S.getTime() - lead), allowWhileIdle: true },
-  }));
-  try { await ln.schedule({ notifications }); } catch (e) { /* ignore */ }
+  const cfg = state.notify || {}, now = Date.now(), horizon = now + 40 * 864e5, out = [];
+  const add = (events, catCfg, title) => {
+    if (!catCfg || !catCfg.enabled || !catCfg.leads || !catCfg.leads.length) return;
+    events.forEach((e) => catCfg.leads.forEach((lead) => {
+      const at = e.S.getTime() - lead * 60000;
+      if (at > now + 15000 && e.S.getTime() < horizon) out.push({
+        id: notifId(e, lead), title,
+        body: fmtLead(lead) + " múlva: " + (e.summary || "") + (e.location ? " · " + e.location : ""),
+        schedule: { at: new Date(at), allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
+      });
+    }));
+  };
+  add(visibleClassEvents(), cfg.classes, "Közelgő óra");
+  const exams = examEvents();
+  add(exams.filter((e) => e.manual), cfg.zh, "Közelgő ZH");
+  add(exams.filter((e) => !e.manual), cfg.vizsga, "Közelgő vizsga");
+  if (!out.length) return;
+  out.sort((a, b) => a.schedule.at - b.schedule.at);
+  try { await ln.schedule({ notifications: out.slice(0, 64) }); } catch (e) { /* ignore */ }
 }
 $("detail-close").onclick = () => $("detail-sheet").classList.add("hidden");
 
@@ -1283,25 +1312,42 @@ function syncSettings() {
   syncSecurityToggles();
   syncNotifySettings();
 }
+// Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
+const NOTIFY_CATS = [["classes", "Órák"], ["zh", "ZH"], ["vizsga", "Vizsgák"]];
+const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
+const EXAM_LEADS = [10, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080];
 function syncNotifySettings() {
-  const cfg = state.notify || {};
-  const t = $("notify-toggle"); if (t) t.classList.toggle("on", !!cfg.enabled);
-  const s = $("notify-lead-status"); if (s) s.textContent = (cfg.lead || 30) + " perc";
+  const host = $("notify-cats"); if (!host) return;
+  host.innerHTML = NOTIFY_CATS.map(([key, label]) => {
+    const c = (state.notify && state.notify[key]) || { enabled: false, leads: [] };
+    const chips = (c.leads || []).map((m) => `<button class="lead-chip" data-cat="${key}" data-lead="${m}">${esc(fmtLead(m))} <span class="lx">${icon("x")}</span></button>`).join("");
+    const canAdd = (c.leads || []).length < 3;
+    return `<div class="card notify-cat"><div class="card-pad">
+      <button class="check" data-nt="${key}"><span class="box"><span data-icon="check"></span></span>
+        <span><span class="c-t">${esc(label)}</span><span class="c-b">Emlékeztető ${esc(label.toLowerCase())} előtt.</span></span></button>
+      <div class="lead-row">${chips || `<span class="hint" style="margin:0">Nincs emlékeztető.</span>`}
+        ${canAdd ? `<button class="lead-add" data-addcat="${key}">${icon("plus")} Emlékeztető</button>` : ""}</div>
+    </div></div>`;
+  }).join("");
+  renderIcons(host);
+  host.querySelectorAll("[data-nt]").forEach((b) => b.onclick = () => toggleNotifyCat(b.dataset.nt));
+  host.querySelectorAll(".lead-chip").forEach((b) => b.onclick = () => { removeLead(b.dataset.cat, +b.dataset.lead); });
+  host.querySelectorAll("[data-addcat]").forEach((b) => b.onclick = () => addLead(b.dataset.addcat));
+  NOTIFY_CATS.forEach(([key]) => { const el = host.querySelector(`[data-nt="${key}"]`); if (el) el.classList.toggle("on", !!(state.notify[key] && state.notify[key].enabled)); });
 }
-$("notify-toggle").onclick = async () => {
-  state.notify = state.notify || { enabled: false, lead: 30 };
-  if (!state.notify.enabled) {
-    if (isNative && !(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell a telefon beállításaiban."); return; }
-    state.notify.enabled = true; toast("Értesítés bekapcsolva.");
-  } else { state.notify.enabled = false; toast("Értesítés kikapcsolva."); }
-  saveState(); syncNotifySettings(); rescheduleClassNotifications();
-};
-$("btn-notify-lead").onclick = () => {
-  const items = [];
-  for (let m = 5; m <= 60; m += 5) items.push({ value: String(m), label: m + " perc" });
-  openList({ title: "Mennyivel az óra előtt", selected: String((state.notify && state.notify.lead) || 30), items,
-    onPick: (v) => { state.notify = state.notify || { enabled: false, lead: 30 }; state.notify.lead = parseInt(v, 10) || 30; saveState(); syncNotifySettings(); rescheduleClassNotifications(); } });
-};
+async function toggleNotifyCat(key) {
+  const c = state.notify[key];
+  if (!c.enabled) { if (isNative && !(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell a telefon beállításaiban."); return; } c.enabled = true; }
+  else c.enabled = false;
+  saveState(); syncNotifySettings(); rescheduleNotifications();
+}
+function removeLead(key, m) { const c = state.notify[key]; c.leads = (c.leads || []).filter((x) => x !== m); saveState(); syncNotifySettings(); rescheduleNotifications(); }
+function addLead(key) {
+  const c = state.notify[key];
+  const opts = (key === "classes" ? CLASS_LEADS : EXAM_LEADS).filter((m) => (c.leads || []).indexOf(m) < 0);
+  openList({ title: "Emlékeztető ennyivel előtte", items: opts.map((m) => ({ value: String(m), label: fmtLead(m) })),
+    onPick: (v) => { const m = parseInt(v, 10); if (!m) return; c.leads = (c.leads || []).concat(m).sort((a, b) => a - b).slice(0, 3); saveState(); syncNotifySettings(); rescheduleNotifications(); } });
+}
 const SEC_TOGGLES = [["sec-startup", "startup"], ["sec-resume", "resume"], ["sec-sensitive", "sensitive"], ["sec-actions", "actions"]];
 function syncSecurityToggles() { SEC_TOGGLES.forEach(([id, key]) => { const el = $(id); if (el) el.classList.toggle("on", secOn(key)); }); }
 SEC_TOGGLES.forEach(([id, key]) => {
@@ -1604,7 +1650,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     renderOb();
   }
   totpTick();
-  if (isNative) rescheduleClassNotifications(); // refresh reminders on every launch
+  if (isNative) rescheduleNotifications(); // refresh reminders on every launch
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
 })();

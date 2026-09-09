@@ -4,7 +4,8 @@
   "webDir": "www",
   "plugins": {
     "CapacitorHttp": { "enabled": true },
-    "CapacitorUpdater": { "autoUpdate": false, "directUpdate": false }
+    "CapacitorUpdater": { "autoUpdate": false, "directUpdate": false },
+    "LocalNotifications": { "smallIcon": "ic_stat_neptun", "iconColor": "#ECEDEE" }
   },
   "cordova": {
     "preferences": {
