@@ -45,8 +45,15 @@ writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 console.log("Wrote dist/latest.json:", JSON.stringify(manifest));
 
 // --- gh release ---
-const hasGh = spawnSync("gh", ["--version"], { shell: true }).status === 0;
-if (!hasGh) {
+// Resolve the gh executable (PATH first, then the default Windows install location).
+function resolveGh() {
+  if (spawnSync("gh", ["--version"], { stdio: "ignore" }).status === 0) return "gh";
+  const win = "C:\\Program Files\\GitHub CLI\\gh.exe";
+  if (existsSync(win) && spawnSync(win, ["--version"], { stdio: "ignore" }).status === 0) return win;
+  return null;
+}
+const GH = resolveGh();
+if (!GH) {
   console.log("\n'gh' not found. Create the release manually and upload BOTH files as assets:");
   console.log("  tag:   " + tag);
   console.log("  files: " + zipPath + "\n         " + manifestPath);
@@ -55,9 +62,10 @@ if (!hasGh) {
 console.log("Creating GitHub release " + tag + " on " + ghUser + "/" + ghRepo + " ...");
 const repo = `${ghUser}/${ghRepo}`;
 // Delete an existing release with the same tag so re-runs are idempotent, then create fresh.
-spawnSync("gh", ["release", "delete", tag, "-R", repo, "--yes", "--cleanup-tag"], { shell: true, stdio: "ignore" });
-const r = spawnSync("gh", ["release", "create", tag, zipPath, manifestPath,
+// shell:false so version tags like "v0.033" are passed verbatim (no shell globbing/quoting).
+spawnSync(GH, ["release", "delete", tag, "-R", repo, "--yes", "--cleanup-tag"], { stdio: "ignore" });
+const r = spawnSync(GH, ["release", "create", tag, zipPath, manifestPath,
   "-R", repo, "-t", "Neptun+ " + tag, "-n", notesArg || ("OTA bundle " + tag)],
-  { shell: true, stdio: "inherit" });
+  { stdio: "inherit" });
 if (r.status !== 0) die("gh release create failed.");
 console.log("\n✓ Published " + tag + ". Manifest: https://github.com/" + repo + "/releases/latest/download/latest.json");
