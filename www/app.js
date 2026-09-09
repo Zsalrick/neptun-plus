@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.039";
+const APP_VERSION = "v0.040";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -341,6 +341,19 @@ function renderForTab(id) {
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-settings") syncSettings();
 }
+// Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
+// the slide animation, so the transition never has to wait on the DOM build (no jank).
+const HEAVY_TABS = { "tab-timetable": "agenda", "tab-exams": "agenda", "tab-courses": "courses" };
+function scrollElFor(id) { return id === "tab-timetable" ? $("tt-scroll") : id === "tab-exams" ? $("ex-scroll") : id === "tab-courses" ? $("co-scroll") : null; }
+function skeletonHTML(kind) {
+  const rows = (n, cls) => Array.from({ length: n }, () => `<div class="${cls}"></div>`).join("");
+  if (kind === "courses") return `<div class="sk-wrap"><div class="sk-controls"></div>${rows(6, "sk-row")}</div>`;
+  return `<div class="sk-wrap"><div class="sk-controls"></div><div class="sk-day"></div>${rows(3, "sk-event")}<div class="sk-day" style="margin-top:20px"></div>${rows(2, "sk-event")}</div>`;
+}
+// Prepare a tab for display: skeleton for heavy tabs (cheap), full render for light ones.
+function prepTab(id) { const k = HEAVY_TABS[id]; if (k) { const el = scrollElFor(id); if (el) el.innerHTML = skeletonHTML(k); } else renderForTab(id); }
+// After the transition settles, swap the skeleton for the real content (next frame).
+function afterShow(id) { if (HEAVY_TABS[id]) requestAnimationFrame(() => renderForTab(id)); }
 function moveNavIndicator(id) {
   const ind = $("nav-ind"); if (!ind) return;
   const btn = document.querySelector(`.nav-btn[data-tab="${id}"]`);
@@ -356,20 +369,22 @@ function setActive(id) {
 }
 function showTab(id, dir) {
   const cur = document.querySelector(".tabscreen.active");
-  renderForTab(id);
   if (dir && cur && cur.id !== id) {
     const incoming = document.getElementById(id);
+    prepTab(id); // skeleton for heavy tabs (real render deferred to afterShow), full render for light ones
     document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === id));
     if (MAIN_TABS.includes(id)) { lastMainTab = id; moveNavIndicator(id); }
     incoming.classList.add("active", "sliding"); incoming.style.transform = `translateX(${dir * 100}%)`;
     cur.classList.add("sliding");
     void incoming.offsetWidth;
     incoming.style.transform = "translateX(0)"; cur.style.transform = `translateX(${-dir * 100}%)`;
-    const done = () => { cur.classList.remove("active", "sliding"); cur.style.transform = ""; incoming.classList.remove("sliding"); incoming.style.transform = ""; incoming.removeEventListener("transitionend", done); };
+    let ended = false;
+    const done = () => { if (ended) return; ended = true; cur.classList.remove("active", "sliding"); cur.style.transform = ""; incoming.classList.remove("sliding"); incoming.style.transform = ""; incoming.removeEventListener("transitionend", done); afterShow(id); };
     incoming.addEventListener("transitionend", done);
     setTimeout(done, 360); // safety if transitionend misses
     return;
   }
+  renderForTab(id);
   setActive(id);
 }
 function navTo(id) {
@@ -445,7 +460,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
       dir = ndir;
       const ni = curIdx + dir;
       nbrEl = (ni >= 0 && ni < MAIN_TABS.length) ? document.getElementById(MAIN_TABS[ni]) : null;
-      if (nbrEl) { renderForTab(nbrEl.id); nbrEl.classList.add("active", "dragging"); nbrEl.style.transition = "none"; nbrEl.style.transform = "translate3d(" + (dir * w) + "px,0,0)"; }
+      if (nbrEl) { prepTab(nbrEl.id); nbrEl.classList.add("active", "dragging"); nbrEl.style.transition = "none"; nbrEl.style.transform = "translate3d(" + (dir * w) + "px,0,0)"; }
     }
     pendingDx = dx;
     if (!raf) raf = requestAnimationFrame(applyFrame); // coalesce all moves into one paint per frame
@@ -469,6 +484,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
         to.removeEventListener("transitionend", fin);
         from.classList.remove("active"); clear(from); clear(to);
         lastMainTab = to.id; document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === to.id)); moveNavIndicator(to.id);
+        afterShow(to.id); // swap the skeleton for the real content now that the slide is done
       };
       pendingFin = fin; to.addEventListener("transitionend", fin); pendingTimer = setTimeout(fin, 340);
     } else {

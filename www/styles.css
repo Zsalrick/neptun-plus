@@ -288,6 +288,20 @@ button.row:active { background: var(--surface-2); }
   margin: 1px -8px 9px -11px; padding: 9px 12px; border: 1px dashed var(--line-2); border-radius: 12px; background: transparent; }
 .tt-gap-label { font-size: 12.5px; font-weight: 500; color: var(--ink-3); letter-spacing: .01em; }
 
+/* Skeleton placeholders: shown instantly on tab switch while the real list builds after the slide. */
+.sk-wrap { animation: sk-fade .18s ease both; }
+.sk-controls, .sk-day, .sk-event, .sk-row {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 40%, var(--surface) 60%);
+  background-size: 300% 100%; animation: sk-shimmer 1.25s ease-in-out infinite; border-radius: 12px;
+}
+.sk-controls { height: 40px; width: 58%; border-radius: 10px; margin-bottom: 14px; }
+.sk-day { height: 18px; width: 130px; border-radius: 6px; margin: 4px 0 12px; }
+.sk-event { height: 76px; margin-bottom: 9px; }
+.sk-row { height: 62px; margin-bottom: 10px; }
+@keyframes sk-shimmer { 0% { background-position: 150% 0; } 100% { background-position: -150% 0; } }
+@keyframes sk-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sk-controls, .sk-day, .sk-event, .sk-row { animation: none; } }
+
 /* ---------- Empty / soon ---------- */
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; padding: 40px 32px; gap: 14px; }
