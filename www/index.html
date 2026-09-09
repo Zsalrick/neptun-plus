@@ -600,26 +600,40 @@
           Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844<br>
           Email: info@kissadamev.hu
         </div>
+        <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 9.</div>
         <h3>1. A tájékoztató tárgya</h3>
         <p>Ez a tájékoztató a Neptun+ alkalmazás adatkezelését ismerteti, a GDPR szabályaival összhangban. A weboldal adatkezeléséről külön tájékoztató szól a kissadamev.hu címen.</p>
         <h3>2. Milyen adatokat kezel az alkalmazás</h3>
+        <p>Az alkalmazás a működéshez a következőket tárolja az eszközödön:</p>
         <ul>
           <li>Neptun azonosító és jelszó</li>
-          <li>Kétlépcsős azonosítás kulcsa, ha megadod</li>
+          <li>Kétlépcsős azonosítás (2FA) kulcsa, ha megadod</li>
           <li>A kiválasztott egyetem és Neptun szerver</li>
+          <li>Alkalmazászár: PIN kódod titkosított lenyomata és a biometria kapcsolója</li>
+          <li>Órarend: a feliratkozási link és a letöltött órarend, vizsgák, saját ZH‑k, jegyzetek, elrejtett órák</li>
+          <li>Tanulmányi adatok: beolvasott félévek és kredit‑előrehaladás</li>
+          <li>Beállítások: értesítések, biztonsági kapcsolók, letöltött kiegészítők (pl. számlatükör)</li>
         </ul>
         <h3>3. Hol tárolódnak</h3>
         <p>Ezek az adatok kizárólag a te eszközödön tárolódnak, az alkalmazás helyi tárolójában. A Szolgáltató ezekhez nem fér hozzá, és nem is látja őket.</p>
-        <h3>4. Adattovábbítás</h3>
-        <p>Az alkalmazás nem küldi el ezeket az adatokat a Szolgáltatónak és semmilyen külső szervernek. Az egyetlen hálózati kapcsolat közvetlenül a te eszközöd és az általad választott egyetem Neptun szervere között jön létre, kizárólag a bejelentkezés céljából. Ezt a szervert az adott egyetem üzemelteti, nem a Szolgáltató.</p>
-        <h3>5. Nyomon követés</h3>
+        <h3>4. Hálózati kapcsolatok</h3>
+        <p>Az alkalmazás a személyes adataidat nem küldi el a Szolgáltatónak. Két külső kapcsolat jöhet létre:</p>
+        <ul>
+          <li><b>Egyetemi Neptun szerver:</b> a te eszközöd és az általad választott egyetem Neptun szervere között, a bejelentkezéshez és az órarend‑link, félévek, kredit lekéréséhez. Ezt a szervert az adott egyetem üzemelteti.</li>
+          <li><b>GitHub (frissítés és kiegészítők):</b> az alkalmazás frissítéseit és a letölthető kiegészítőket a GitHubról tölti le (github.com, raw.githubusercontent.com). Ehhez a GitHub – mint külső szolgáltató – a szokásos módon láthatja az eszköz IP‑címét, de személyes adatot (azonosító, jelszó) nem küldünk.</li>
+        </ul>
+        <h3>5. Értesítések</h3>
+        <p>Az óra/ZH/vizsga emlékeztetők helyi értesítések: az eszközöd hozza létre és jeleníti meg őket. Ehhez nem hagy el adat az eszközt.</p>
+        <h3>6. Biztonsági mentés</h3>
+        <p>Ha mentést készítesz, az az eszköz Dokumentumok/neptunplus mappájába kerül, és a Neptun jelszavaddal titkosítjuk (AES‑GCM). A mentés érzékeny adatokat tartalmaz (jelszó, 2FA kulcs). A kiexportált mentésfájl kezeléséért, megosztásáért és a jelszó megőrzéséért a felhasználó felel.</p>
+        <h3>7. Nyomon követés</h3>
         <p>Az alkalmazás nem használ analitikát, reklámot, sütit vagy egyéb nyomkövetést a Szolgáltató részéről.</p>
-        <h3>6. Az adatok törlése</h3>
-        <p>Az adatok bármikor törölhetők a Beállítások menü Minden adat törlése pontjával, vagy az alkalmazás eltávolításával.</p>
-        <h3>7. Jogaid és kapcsolat</h3>
+        <h3>8. Az adatok törlése</h3>
+        <p>Az adatok bármikor törölhetők a Beállítások menü Minden adat törlése pontjával, vagy az alkalmazás eltávolításával. A Dokumentumok/neptunplus mappában lévő mentésfájlokat külön törölheted.</p>
+        <h3>9. Jogaid és kapcsolat</h3>
         <p>Mivel a Szolgáltató nem fér hozzá az adataidhoz és nem tárolja azokat, érdemi adatkezelést nem végez. Kérdés esetén az info@kissadamev.hu címen fordulhatsz hozzá.</p>
-        <h3>8. Külső rendszerek</h3>
-        <p>A Neptun rendszert és az egyetemek szervereit önálló szervezetek üzemeltetik. Az azokon végzett adatkezelésre ez a tájékoztató nem terjed ki.</p>
+        <h3>10. Külső rendszerek</h3>
+        <p>A Neptun rendszert és az egyetemek szervereit, valamint a GitHubot önálló szervezetek üzemeltetik. Az azokon végzett adatkezelésre ez a tájékoztató nem terjed ki.</p>
       </div>
       <div class="sheet-actions"><button class="btn outline" id="privacy-close">Bezárás</button></div>
     </div>
@@ -635,21 +649,28 @@
           Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844<br>
           Email: info@kissadamev.hu
         </div>
+        <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 9.</div>
         <h3>1. Az alkalmazás</h3>
-        <p>A Neptun+ egy segédalkalmazás, amely a felhasználó eszközén tárolt adatokkal megkönnyíti a belépést a felhasználó egyetemének Neptun rendszerébe.</p>
+        <p>A Neptun+ egy segédalkalmazás, amely a felhasználó eszközén tárolt adatokkal megkönnyíti a Neptun használatát: belépés, órarend, vizsgák és ZH‑k, emlékeztetők, félév‑ és kredit‑áttekintés, valamint letölthető kiegészítők (pl. számlatükör).</p>
         <h3>2. Díj</h3>
         <p>Az alkalmazás használata ingyenes.</p>
         <h3>3. Használat</h3>
         <p>Az alkalmazást a felhasználó kizárólag a saját Neptun fiókjához, jogszerűen használhatja. A belépési adatok védelme a felhasználó felelőssége.</p>
         <h3>4. Függetlenség</h3>
         <p>Az alkalmazás nem hivatalos. Nincs kapcsolatban sem az egyetemekkel, sem a Neptun rendszer fejlesztőjével vagy üzemeltetőjével.</p>
-        <h3>5. Felelősség korlátozása</h3>
-        <p>Az alkalmazás abban az állapotában érhető el, ahogy van, mindenféle jótállás nélkül. A Szolgáltató nem felel az esetleges hibákból, a Neptun oldal változásaiból, az elmaradt belépésből vagy adatvesztésből eredő károkért. A használat a felhasználó saját felelősségére történik.</p>
-        <h3>6. Módosítás</h3>
+        <h3>5. Frissítések és kiegészítők</h3>
+        <p>Az alkalmazás frissítéseit és a kiegészítőket a GitHubról tölti le. A kiegészítők tartalma (pl. a számlatükör) tájékoztató jellegű, nem hivatalos, és elavulhat.</p>
+        <h3>6. Az adatok pontossága</h3>
+        <p>A Neptunból beolvasott adatok (órarend, félévek, kreditek) legjobb szándék szerint készülnek, de a Neptun változásai miatt hibásak vagy hiányosak lehetnek. A hivatalos, mérvadó adatot mindig a Neptun rendszerben ellenőrizd.</p>
+        <h3>7. Biztonsági mentés</h3>
+        <p>A mentés a Neptun jelszavaddal titkosított, és az eszközödön tárolódik. A mentésfájl és a jelszó megőrzése a felhasználó felelőssége; ezek nélkül a mentés nem állítható vissza.</p>
+        <h3>8. Felelősség korlátozása</h3>
+        <p>Az alkalmazás abban az állapotában érhető el, ahogy van, mindenféle jótállás nélkül. A Szolgáltató nem felel az esetleges hibákból, a Neptun oldal változásaiból, az elmaradt belépésből, hibás értesítésből vagy adatvesztésből eredő károkért. A használat a felhasználó saját felelősségére történik.</p>
+        <h3>9. Módosítás</h3>
         <p>A Szolgáltató a feltételeket módosíthatja. A módosítás az alkalmazás frissítésével lép hatályba.</p>
-        <h3>7. Irányadó jog</h3>
+        <h3>10. Irányadó jog</h3>
         <p>A feltételekre a magyar jog az irányadó.</p>
-        <h3>8. Elfogadás</h3>
+        <h3>11. Elfogadás</h3>
         <p>Az alkalmazás használatával a felhasználó elfogadja ezeket a feltételeket.</p>
       </div>
       <div class="sheet-actions"><button class="btn outline" id="terms-close">Bezárás</button></div>
