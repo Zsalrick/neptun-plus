@@ -264,15 +264,16 @@ button.row:active { background: var(--surface-2); }
 .acc-row { display: flex; gap: 12px; align-items: baseline; padding: 7px 4px; border-bottom: 1px solid var(--line); }
 .acc-n { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; font-weight: 600; color: var(--ink-3); min-width: 48px; text-align: right; }
 .acc-t { font-size: 13px; color: var(--ink-2); }
-/* Hierarchy: deeper levels indent; anything with a breakdown (parent) is emphasised. */
+/* Hierarchy by level: classes (1) + groups (2) are emphasised headers; accounts (3-4) are plain. */
 .acc-row.lvl2 { padding-left: 12px; }
-.acc-row.lvl3 { padding-left: 24px; }
-.acc-row.lvl4 { padding-left: 36px; }
-.acc-row.parent .acc-n { color: var(--ink); }
-.acc-row.parent .acc-t { color: var(--ink); font-weight: 700; }
-.acc-row.lvl1.parent { border-top: 1px solid var(--line-2); margin-top: 6px; }
-.acc-row.lvl1.parent .acc-t { font-size: 14.5px; letter-spacing: .01em; }
-.acc-row.lvl2.parent .acc-t { font-size: 13.5px; }
+.acc-row.lvl3 { padding-left: 26px; }
+.acc-row.lvl4 { padding-left: 40px; }
+.acc-row.lvl1, .acc-row.lvl2 { color: var(--ink); }
+.acc-row.lvl1 .acc-n, .acc-row.lvl2 .acc-n { color: var(--ink); }
+.acc-row.lvl1 .acc-t, .acc-row.lvl2 .acc-t { color: var(--ink); font-weight: 700; }
+.acc-row.lvl1 { border-top: 1px solid var(--line-2); margin-top: 8px; }
+.acc-row.lvl1 .acc-t { font-size: 14.5px; letter-spacing: .01em; }
+.acc-row.lvl4 .acc-t { color: var(--ink-3); }
 
 /* ---------- Courses + credit watcher ---------- */
 .cred { padding: 16px; }

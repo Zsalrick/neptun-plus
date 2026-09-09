@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.056";
+const APP_VERSION = "v0.057";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1308,8 +1308,9 @@ function openDlcItem(id) {
   const d = (state.dlc || {})[id]; if (!d) return;
   if (d.kind === "accounts") openAccounts(d); else toast("Ismeretlen kiegészítő típus.");
 }
-// ----- accounts viewer: számlaosztály filter + search + hierarchy -----
-let accItems = [], accParent = new Set(), accClass = "";
+// ----- accounts viewer: számlaosztály filter + search + hierarchy (lazy-rendered) -----
+let accItems = [], accClass = "", accFiltered = [], accShown = 0;
+const ACC_PAGE = 150; // rows rendered per chunk; more load as you scroll
 const ACC_ORDER = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 const accDigits = (n) => n.split("-")[0];               // leading number of a range like "12-16"
 const accLvl = (n) => Math.min(4, accDigits(n).length); // 1=osztály … 4=alszámla
@@ -1320,9 +1321,6 @@ function accClassName(c) {
 }
 function openAccounts(d) {
   accItems = d.items || [];
-  // Mark every number that is an ancestor of another item → it has a breakdown (parent).
-  const numSet = new Set(accItems.map((i) => i.n)); accParent = new Set();
-  accItems.forEach((it) => { const dd = accDigits(it.n); for (let L = 1; L < dd.length; L++) { const p = dd.slice(0, L); if (numSet.has(p)) accParent.add(p); } });
   accClass = ""; $("acc-class-lbl").textContent = "Összes osztály";
   $("acc-title").textContent = d.title || "Számlatükör";
   $("acc-search").value = "";
@@ -1334,20 +1332,28 @@ $("acc-class").onclick = () => {
   const items = [{ value: "", label: "Összes osztály" }].concat(ACC_ORDER.filter((c) => accItems.some((x) => accDigits(x.n)[0] === c)).map((c) => ({ value: c, label: accClassName(c) })));
   openList({ title: "Számlaosztály", selected: accClass, items, onPick: (v) => { accClass = v; $("acc-class-lbl").textContent = v ? accClassName(v) : "Összes osztály"; renderAccounts($("acc-search").value); } });
 };
+function accRowHtml(it) { return `<div class="acc-row lvl${accLvl(it.n)}"><span class="acc-n">${esc(it.n)}</span><span class="acc-t">${esc(it.t)}</span></div>`; }
 function renderAccounts(q) {
   q = (q || "").trim().toLowerCase();
   const digits = q.replace(/\D/g, "");
-  let list = accItems;
-  if (accClass) list = list.filter((it) => accDigits(it.n)[0] === accClass);
-  if (q) list = list.filter((it) => (digits && it.n.indexOf(digits) === 0) || it.t.toLowerCase().indexOf(q) >= 0);
-  const host = $("acc-list");
-  if (!list.length) { host.innerHTML = `<div class="hint center" style="margin:16px 0">Nincs találat.</div>`; return; }
-  host.innerHTML = list.slice(0, 500).map((it) => {
-    const lvl = accLvl(it.n), parent = accParent.has(it.n);
-    return `<div class="acc-row lvl${lvl}${parent ? " parent" : ""}"><span class="acc-n">${esc(it.n)}</span><span class="acc-t">${esc(it.t)}</span></div>`;
-  }).join("")
-    + (list.length > 500 ? `<div class="hint center" style="margin:10px 0">+${list.length - 500} további — pontosíts a keresésen</div>` : "");
+  accFiltered = accItems;
+  if (accClass) accFiltered = accFiltered.filter((it) => accDigits(it.n)[0] === accClass);
+  if (q) accFiltered = accFiltered.filter((it) => (digits && it.n.indexOf(digits) === 0) || it.t.toLowerCase().indexOf(q) >= 0);
+  const host = $("acc-list"); host.scrollTop = 0; accShown = 0;
+  if (!accFiltered.length) { host.innerHTML = `<div class="hint center" style="margin:16px 0">Nincs találat.</div>`; return; }
+  host.innerHTML = ""; appendAccounts();
 }
+function appendAccounts() {
+  const host = $("acc-list"); if (!host) return;
+  const next = accFiltered.slice(accShown, accShown + ACC_PAGE);
+  if (!next.length) return;
+  host.insertAdjacentHTML("beforeend", next.map(accRowHtml).join(""));
+  accShown += next.length;
+}
+$("acc-list").addEventListener("scroll", (e) => {
+  const el = e.target;
+  if (accShown < accFiltered.length && el.scrollTop + el.clientHeight >= el.scrollHeight - 400) appendAccounts();
+});
 $("acc-search").addEventListener("input", (e) => renderAccounts(e.target.value));
 
 // ---------- local notifications (reminders) ----------
