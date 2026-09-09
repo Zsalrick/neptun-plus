@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.066";
+const APP_VERSION = "v0.067";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -64,6 +64,7 @@ function defaultState() {
     hiddenOcc: [], // occKeys of class occurrences the user chose to hide (conflict resolution)
     dlc: {}, // downloaded add-ons keyed by id: { version, title, kind, items }
     semesters: null, // { fetchedAt, list:["2025/26/2", ...] } read from Neptun (Felvett tárgyak → Szűrő)
+    lastBackup: null, // yyyy-m-d of the last daily auto-backup
     breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
     // that flow does not ask. Only meaningful when a PIN is set.
@@ -1691,70 +1692,101 @@ $("open-terms2").onclick = () => $("terms-sheet").classList.remove("hidden");
 $("privacy-close").onclick = () => $("privacy-sheet").classList.add("hidden");
 $("terms-close").onclick = () => $("terms-sheet").classList.add("hidden");
 
-// ----- data export / import (backup & restore) -----
+// ----- data export / import (encrypted backup & restore) -----
 function FSP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem; }
-const BACKUP_DIR = "neptunplus";
+const BACKUP_DIR = "neptunplus", BK_KEY_LS = "neptun-plus-bkkey";
 function currentStateJson() { try { return localStorage.getItem(STORE_KEY) || JSON.stringify(state); } catch (e) { return JSON.stringify(state); } }
 function backupTs() { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()); }
+// AES-GCM key kept in its own localStorage entry (survives "Minden adat törlése", which only clears STORE_KEY).
+const b64 = (buf) => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function backupKey() {
+  let raw = null; try { raw = localStorage.getItem(BK_KEY_LS); } catch (e) {}
+  let bytes; if (raw) bytes = unb64(raw); else { bytes = crypto.getRandomValues(new Uint8Array(32)); try { localStorage.setItem(BK_KEY_LS, b64(bytes)); } catch (e) {} }
+  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function encryptBackup(json) {
+  const key = await backupKey(), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(json));
+  return JSON.stringify({ app: "neptun-plus", enc: "aes-gcm", v: 1, iv: b64(iv), ct: b64(ct) });
+}
+async function decryptBackup(text) {
+  let env; try { env = JSON.parse(text); } catch (e) { throw new Error("Sérült fájl"); }
+  if (env && env.ct && env.iv) { // encrypted envelope
+    const key = await backupKey();
+    let pt; try { pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(env.iv) }, key, unb64(env.ct)); }
+    catch (e) { throw new Error("Nem sikerült visszafejteni (más eszköz/telepítés?)"); }
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  if (env && typeof env === "object" && !Array.isArray(env)) return env; // legacy plaintext backup
+  throw new Error("Érvénytelen mentés");
+}
 function applyImported(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) { toast("Érvénytelen mentés."); return false; }
   try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { toast("Nem sikerült menteni."); return false; }
   location.reload(); return true;
 }
+async function confirmAndApply(data, name) {
+  if (!(await requireAuthFor("actions"))) return;
+  if (!(await ask({ title: "Adatok importálása", okText: "Felülírás", cancelText: "Mégse", body: "Visszatöltöd ezt a mentést? Minden jelenlegi adat felülíródik, és az app újraindul." + (name ? "<br><span class='mono'>" + esc(name) + "</span>" : "") }))) return;
+  applyImported(data);
+}
 $("btn-export").onclick = async () => {
-  if (!(await requireAuthFor("sensitive"))) return; // export contains the password + 2FA secret
-  const json = currentStateJson(), fs = FSP();
-  if (fs) { // native: write a file automatically into Documents/neptunplus
-    const name = "neptun-plus-mentes-" + backupTs() + ".json";
-    try { await fs.writeFile({ path: BACKUP_DIR + "/" + name, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
-      await ask({ title: "Mentés elkészült", okText: "OK", cancelText: "Bezárás", body: "Elmentve ide:<br><span class='mono'>Dokumentumok/" + esc(BACKUP_DIR) + "/" + esc(name) + "</span><br><br>Érzékeny adatot tartalmaz (jelszó, 2FA)." });
+  if (!(await requireAuthFor("sensitive"))) return; // backup contains the password + 2FA secret
+  const enc = await encryptBackup(currentStateJson()), fs = FSP();
+  if (fs) {
+    const name = "neptun-plus-mentes-" + backupTs() + ".npb";
+    try { await fs.writeFile({ path: BACKUP_DIR + "/" + name, data: enc, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+      await ask({ title: "Mentés elkészült", okText: "OK", cancelText: "Bezárás", body: "Titkosított mentés ide:<br><span class='mono'>Dokumentumok/" + esc(BACKUP_DIR) + "/" + esc(name) + "</span>" });
     } catch (e) { toast("Mentés hiba: " + (e && e.message ? e.message : e)); }
     return;
   }
-  // fallback (preview / no plugin): textarea + clipboard
+  // fallback (preview / no plugin): show encrypted text + clipboard
   $("backup-title").textContent = "Adatok exportálása";
-  $("backup-hint").innerHTML = "Ez a teljes mentésed. <b>Érzékeny adatot tartalmaz</b> (jelszó, 2FA). Másold ki és mentsd el.";
-  $("backup-text").value = json; $("backup-text").readOnly = true;
+  $("backup-hint").innerHTML = "Titkosított mentés. Másold ki és mentsd el.";
+  $("backup-text").value = enc; $("backup-text").readOnly = true;
   $("backup-copy").hidden = false; $("backup-import-ok").hidden = true;
   $("backup-sheet").classList.remove("hidden");
-  try { await navigator.clipboard.writeText(json); toast("Vágólapra másolva."); } catch (e) { /* manual copy */ }
+  try { await navigator.clipboard.writeText(enc); toast("Vágólapra másolva."); } catch (e) {}
 };
 $("btn-import").onclick = async () => {
-  const fs = FSP();
-  if (fs) { // native: list backups in Documents/neptunplus and pick one
-    let files = [];
-    try { const r = await fs.readdir({ path: BACKUP_DIR, directory: "DOCUMENTS" }); files = (r.files || []).map((f) => f && f.name ? f.name : f).filter((n) => typeof n === "string" && /\.json$/i.test(n)); }
-    catch (e) { files = []; }
-    if (!files.length) { toast("Nincs mentés a Dokumentumok/neptunplus mappában."); return; }
-    files.sort().reverse(); // timestamped names → newest first
-    openList({ title: "Mentés visszatöltése", items: files.map((n) => ({ value: n, label: n })), onPick: (name) => importFromFile(name) });
-    return;
-  }
-  // fallback: paste into textarea
-  $("backup-title").textContent = "Adatok importálása";
-  $("backup-hint").innerHTML = "Illeszd be a korábban exportált mentést, majd Importálás. <b>Ez minden jelenlegi adatot felülír.</b>";
-  $("backup-text").value = ""; $("backup-text").readOnly = false;
-  $("backup-copy").hidden = true; $("backup-import-ok").hidden = false;
-  $("backup-sheet").classList.remove("hidden");
+  const fs = FSP(); let files = [];
+  if (fs) { try { const r = await fs.readdir({ path: BACKUP_DIR, directory: "DOCUMENTS" }); files = (r.files || []).map((f) => f && f.name ? f.name : f).filter((n) => typeof n === "string" && /\.(npb|json)$/i.test(n)); } catch (e) {} files.sort().reverse(); }
+  const items = files.map((n) => ({ value: "f:" + n, label: n })).concat([{ value: "browse", label: "Tallózás… (fájl kiválasztása)" }]);
+  openList({ title: "Mentés visszatöltése", items, onPick: (v) => { if (v === "browse") $("import-file").click(); else importFromFile(v.slice(2)); } });
 };
 async function importFromFile(name) {
   const fs = FSP(); if (!fs) return;
-  let json; try { const rf = await fs.readFile({ path: BACKUP_DIR + "/" + name, directory: "DOCUMENTS", encoding: "utf8" }); json = rf.data; } catch (e) { return toast("Nem sikerült beolvasni."); }
-  let data; try { data = JSON.parse(json); } catch (e) { return toast("Sérült mentés (nem JSON)."); }
-  if (!data || typeof data !== "object" || Array.isArray(data)) return toast("Érvénytelen mentés.");
-  if (!(await requireAuthFor("actions"))) return;
-  if (!(await ask({ title: "Adatok importálása", okText: "Felülírás", cancelText: "Mégse", body: "Visszatöltöd ezt a mentést? Minden jelenlegi adat felülíródik, és az app újraindul.<br><span class='mono'>" + esc(name) + "</span>" }))) return;
-  applyImported(data);
+  let text; try { const rf = await fs.readFile({ path: BACKUP_DIR + "/" + name, directory: "DOCUMENTS", encoding: "utf8" }); text = rf.data; } catch (e) { return toast("Nem sikerült beolvasni."); }
+  let data; try { data = await decryptBackup(text); } catch (e) { return toast(e.message || "Hibás mentés."); }
+  confirmAndApply(data, name);
 }
+$("import-file").addEventListener("change", (e) => {
+  const file = e.target.files && e.target.files[0]; e.target.value = ""; if (!file) return;
+  const r = new FileReader();
+  r.onload = async () => { let data; try { data = await decryptBackup(String(r.result)); } catch (err) { return toast(err.message || "Hibás mentés."); } confirmAndApply(data, file.name); };
+  r.onerror = () => toast("Nem sikerült beolvasni a fájlt.");
+  r.readAsText(file);
+});
 $("backup-close").onclick = () => $("backup-sheet").classList.add("hidden");
 $("backup-copy").onclick = async () => { try { await navigator.clipboard.writeText($("backup-text").value); toast("Vágólapra másolva."); } catch (e) { $("backup-text").select(); toast("Jelöld ki és másold."); } };
 $("backup-import-ok").onclick = async () => {
-  const raw = $("backup-text").value.trim();
-  if (!raw) return toast("Illeszd be a mentést.");
-  let data; try { data = JSON.parse(raw); } catch (e) { return toast("Érvénytelen mentés (nem JSON)."); }
-  if (data && typeof data === "object" && !Array.isArray(data)) { if (!(await requireAuthFor("actions"))) return; if (!(await ask({ title: "Adatok importálása", okText: "Felülírás", cancelText: "Mégse", body: "Minden jelenlegi adat felülíródik, és az app újraindul." }))) return; applyImported(data); }
-  else toast("Érvénytelen mentés.");
+  const raw = $("backup-text").value.trim(); if (!raw) return toast("Illeszd be a mentést.");
+  let data; try { data = await decryptBackup(raw); } catch (e) { return toast(e.message || "Hibás mentés."); }
+  confirmAndApply(data);
 };
+// Once a day, on first open, write an encrypted auto-backup; keep max 5 (delete the oldest).
+async function dailyBackup() {
+  const fs = FSP(); if (!isNative || !fs) return;
+  const d = new Date(), key = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  if (state.lastBackup === key) return;
+  try {
+    const enc = await encryptBackup(currentStateJson());
+    await fs.writeFile({ path: BACKUP_DIR + "/auto-" + backupTs() + ".npb", data: enc, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+    try { const r = await fs.readdir({ path: BACKUP_DIR, directory: "DOCUMENTS" }); let autos = (r.files || []).map((f) => f && f.name ? f.name : f).filter((n) => typeof n === "string" && /^auto-.*\.npb$/i.test(n)).sort(); while (autos.length > 5) { const oldest = autos.shift(); await fs.deleteFile({ path: BACKUP_DIR + "/" + oldest, directory: "DOCUMENTS" }); } } catch (e) {}
+    state.lastBackup = key; saveState();
+  } catch (e) { /* silent */ }
+}
 $("btn-reset").onclick = () => { $("reset-delpin").classList.remove("on"); $("confirm-dialog").classList.remove("hidden"); };
 $("reset-delpin").onclick = () => $("reset-delpin").classList.toggle("on");
 $("confirm-cancel").onclick = () => $("confirm-dialog").classList.add("hidden");
@@ -1954,6 +1986,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
     rescheduleNotifications(); // refresh reminders on every launch
     setTimeout(maybeOfferSemesters, 1600); // offer semester read if none saved (once unlocked/settled)
+    if (state.setupComplete) setTimeout(dailyBackup, 2500); // one encrypted auto-backup per day
   }
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
