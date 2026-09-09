@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.061";
+const APP_VERSION = "v0.062";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -670,6 +670,10 @@ function allSemesters() {
   ((state.semesters && state.semesters.list) || []).forEach((k) => { if (k && !map[k]) map[k] = semKeyToObj(k); });
   return Object.values(map).sort((a, b) => a.start - b.start);
 }
+// Period options for the agenda come only from the fetched semester list (not derived from events).
+function agendaSemesters() {
+  return (((state.semesters && state.semesters.list) || []).map((k) => semKeyToObj(k))).sort((a, b) => a.start - b.start);
+}
 function allEvents() {
   return ((state.ics && state.ics.events) || []).map((e) => ({ ...e, S: new Date(e.s), E: new Date(e.e), exam: isExam(e) }));
 }
@@ -826,7 +830,8 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
     return;
   }
   const items = examMode ? examEvents() : classEvents();
-  const sems = allSemesters();
+  const sems = agendaSemesters(); // period options come from the fetched semester list (empty → only "Közelgő")
+  if (filter !== "upcoming" && !sems.some((x) => x.key === filter)) filter = "upcoming"; // stale/removed semester
   const now = Date.now();
   let list;
   if (filter === "upcoming") list = items.filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S);
@@ -1075,6 +1080,19 @@ async function grabSemesters() {
     toast(sems.length + " félév beolvasva."); return;
   }
   await ask({ title: "Félév lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
+}
+function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
+function canAutoLogin() { return !!(state.username && state.password && (state.no2fa || hasTotp())); }
+// Startup: if there is no saved semester data yet and we can log in unattended, fetch it silently
+// (no spinner, no interruption). Runs behind the lock; retries next launch if it fails.
+async function grabSemestersSilent() {
+  if (!isNative || hasSemesters() || !canAutoLogin()) return;
+  try {
+    await totpTick();
+    const res = await neptunReadSemesters();
+    const sems = (res && res.sems) || [];
+    if (sems.length) { state.semesters = { fetchedAt: new Date().toISOString(), list: sems }; saveState(); syncSemStatus(); renderTimetable(); renderExams(); renderCourses(); toast(sems.length + " félév beolvasva."); }
+  } catch (e) { /* silent; will retry next launch */ }
 }
 
 // Grab the timetable subscription (iCal) link: login → Menü → Naptár → Naptár kezelése → read link.
@@ -1863,6 +1881,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     const ln = LN();
     if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
     rescheduleNotifications(); // refresh reminders on every launch
+    if (state.setupComplete) grabSemestersSilent(); // auto-read semesters once if none saved yet
   }
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
