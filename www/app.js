@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.051";
+const APP_VERSION = "v0.052";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -66,6 +66,7 @@ function defaultState() {
     // When to ask for the PIN / biometric (all on by default = most secure). If a switch is off,
     // that flow does not ask. Only meaningful when a PIN is set.
     security: { startup: true, resume: true, sensitive: true, actions: true },
+    notify: { enabled: false, lead: 30 }, // class reminder: on/off + minutes before start
   };
 }
 function loadState() {
@@ -771,7 +772,7 @@ async function fetchTimetable() {
     const events = parseICS(text);
     state.ics = { fetchedAt: new Date().toISOString(),
       events: events.map((e) => ({ s: e.start.toISOString(), e: e.end.toISOString(), allDay: !!e.allDay, summary: e.summary || "", location: e.location || "", categories: e.categories || "", description: e.description || "" })) };
-    saveState(); renderTimetable(); renderExams(); renderHome(); toast(events.length + " esemény frissítve.");
+    saveState(); renderTimetable(); renderExams(); renderHome(); rescheduleClassNotifications(); toast(events.length + " esemény frissítve.");
   } catch (err) {
     toast("Nem sikerült letölteni. " + (err && err.message ? err.message : ""));
     renderTimetable(); renderExams();
@@ -1232,7 +1233,38 @@ function renderDetail() {
     $("detail-sheet").classList.add("hidden"); renderExams(); renderHome(); toast("Törölve.");
   };
 }
-function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); }
+function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); rescheduleClassNotifications(); }
+
+// ---------- local notifications (class reminders) ----------
+function LN() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
+// Stable 31-bit integer id from an event's occurrence key (LocalNotifications needs numeric ids).
+function notifId(e) { const s = occKey(e); let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h) % 2000000000 || 1; }
+async function ensureNotifPermission() {
+  const ln = LN(); if (!ln) return false;
+  try { let p = await ln.checkPermissions(); if (p.display !== "granted") p = await ln.requestPermissions(); return p.display === "granted"; }
+  catch (e) { return false; }
+}
+// Cancel every reminder we previously scheduled, then (if enabled) schedule the upcoming classes.
+async function rescheduleClassNotifications() {
+  const ln = LN(); if (!ln || !isNative) return;
+  try {
+    const pend = await ln.getPending();
+    if (pend && pend.notifications && pend.notifications.length) await ln.cancel({ notifications: pend.notifications.map((n) => ({ id: n.id })) });
+  } catch (e) { /* ignore */ }
+  const cfg = state.notify || {}; if (!cfg.enabled) return;
+  const lead = (cfg.lead || 30) * 60000, now = Date.now(), horizon = now + 14 * 864e5;
+  const list = visibleClassEvents()
+    .filter((e) => { const at = e.S.getTime() - lead; return at > now + 15000 && e.S.getTime() < horizon; })
+    .sort((a, b) => a.S - b.S).slice(0, 48);
+  if (!list.length) return;
+  const notifications = list.map((e) => ({
+    id: notifId(e),
+    title: "Közelgő óra",
+    body: (cfg.lead || 30) + " percen belül kezdődik: " + (e.summary || "óra") + (e.location ? " · " + e.location : ""),
+    schedule: { at: new Date(e.S.getTime() - lead), allowWhileIdle: true },
+  }));
+  try { await ln.schedule({ notifications }); } catch (e) { /* ignore */ }
+}
 $("detail-close").onclick = () => $("detail-sheet").classList.add("hidden");
 
 // =====================================================================
@@ -1249,7 +1281,27 @@ function syncSettings() {
   updateUpdateStatus();
   updateBreakMinStatus();
   syncSecurityToggles();
+  syncNotifySettings();
 }
+function syncNotifySettings() {
+  const cfg = state.notify || {};
+  const t = $("notify-toggle"); if (t) t.classList.toggle("on", !!cfg.enabled);
+  const s = $("notify-lead-status"); if (s) s.textContent = (cfg.lead || 30) + " perc";
+}
+$("notify-toggle").onclick = async () => {
+  state.notify = state.notify || { enabled: false, lead: 30 };
+  if (!state.notify.enabled) {
+    if (isNative && !(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell a telefon beállításaiban."); return; }
+    state.notify.enabled = true; toast("Értesítés bekapcsolva.");
+  } else { state.notify.enabled = false; toast("Értesítés kikapcsolva."); }
+  saveState(); syncNotifySettings(); rescheduleClassNotifications();
+};
+$("btn-notify-lead").onclick = () => {
+  const items = [];
+  for (let m = 5; m <= 60; m += 5) items.push({ value: String(m), label: m + " perc" });
+  openList({ title: "Mennyivel az óra előtt", selected: String((state.notify && state.notify.lead) || 30), items,
+    onPick: (v) => { state.notify = state.notify || { enabled: false, lead: 30 }; state.notify.lead = parseInt(v, 10) || 30; saveState(); syncNotifySettings(); rescheduleClassNotifications(); } });
+};
 const SEC_TOGGLES = [["sec-startup", "startup"], ["sec-resume", "resume"], ["sec-sensitive", "sensitive"], ["sec-actions", "actions"]];
 function syncSecurityToggles() { SEC_TOGGLES.forEach(([id, key]) => { const el = $(id); if (el) el.classList.toggle("on", secOn(key)); }); }
 SEC_TOGGLES.forEach(([id, key]) => {
@@ -1552,6 +1604,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     renderOb();
   }
   totpTick();
+  if (isNative) rescheduleClassNotifications(); // refresh reminders on every launch
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
 })();
