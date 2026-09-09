@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.047";
+const APP_VERSION = "v0.048";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1195,7 +1195,7 @@ function renderDetail() {
     // Only classes (not exams) can be hidden — for resolving overlaps ("on paper I have two").
     if (!detailExamMode) {
       const hidden = (state.hiddenOcc || []).indexOf(occKey(e)) >= 0;
-      html += `<div class="detail-add" style="margin-top:10px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Újra megjelenítem" : "Ezt nem járom (elrejtés)"}</button></div>`;
+      html += `<div class="detail-add" style="margin-top:10px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Mégis járok erre az órára" : "Erre az órára nem járok be"}</button></div>`;
     }
   } else {
     html += `<div class="detail-add" style="margin-top:14px"><button class="btn outline" id="dn-edit">Szerkesztés</button><button class="btn danger" id="dn-del">Törlés</button></div>`;

@@ -282,9 +282,10 @@ button.row:active { background: var(--surface-2); }
 .tt-event { position: relative; display: flex; align-items: flex-start; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-bottom: 9px; }
 .tt-event.next { border-color: var(--ink-3); background: var(--surface-2); }
 .tt-event.now { border-color: var(--ink-2); background: var(--surface-2); }
-.tt-event.now .tt-info, .tt-event.next .tt-info { padding-right: 74px; } /* keep the title clear of the corner flag */
+/* keep the title clear of the corner flag (any flagged card) */
+.tt-event.now .tt-info, .tt-event.next .tt-info, .tt-event.conflict .tt-info, .tt-event.muted .tt-info { padding-right: 92px; }
 /* Corner indicator instead of a button-like badge */
-.tt-flag { position: absolute; top: 12px; right: 13px; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.tt-flag { position: absolute; top: 12px; right: 13px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .tt-event.next .tt-flag { color: var(--ink-2); }
 .tt-event.now .tt-flag { color: var(--accent); animation: flag-blink 1.6s ease-in-out infinite; }
 /* Real time conflict between two classes */
