@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.037";
+const APP_VERSION = "v0.038";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -756,18 +756,24 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
   if (!list.length) {
     html += `<div class="hint center" style="margin-top:20px">${filter === "upcoming" ? (examMode ? "Nincs közelgő számonkérés." : "Nincs közelgő óra.") : "Nincs esemény ebben az időszakban."}</div>`;
   } else {
-    let lastDay = "", prevEnd = null;
+    // Group events by day into a bounded block with a left "spine" so day boundaries are obvious.
+    const now = new Date(), tmr = new Date(now); tmr.setDate(now.getDate() + 1);
+    const dayMain = (d) => sameDay(d, now) ? "Ma" : sameDay(d, tmr) ? "Holnap" : (TT_DAYS[d.getDay()].charAt(0).toUpperCase() + TT_DAYS[d.getDay()].slice(1));
+    const dayDate = (d) => TT_MON[d.getMonth()] + " " + d.getDate() + ".";
+    let lastDay = "", prevEnd = null, open = false;
     list.forEach((e, i) => {
       const dh = dayHeading(e.S);
-      if (dh !== lastDay) { html += `<div class="tt-day">${esc(dh)}</div>`; lastDay = dh; prevEnd = null; }
-      // Show a "break" block between two classes on the same day when there is a real gap.
+      if (dh !== lastDay) {
+        if (open) html += `</div></div>`; // close previous .tt-daybody + .tt-daygroup
+        html += `<div class="tt-daygroup${sameDay(e.S, now) ? " today" : ""}">
+          <div class="tt-day"><span class="tt-day-main">${esc(dayMain(e.S))}</span><span class="tt-day-date">${esc(dayDate(e.S))}</span></div>
+          <div class="tt-daybody">`;
+        open = true; lastDay = dh; prevEnd = null;
+      }
+      // A gap between two classes on the same day reads as an inset "break", never a new day.
       if (!examMode && prevEnd) {
         const gap = e.S.getTime() - prevEnd.getTime();
-        if (gap >= 20 * 60000) {
-          html += `<div class="tt-break"><span class="tt-break-line"></span>
-            <span class="tt-break-chip">Szünet · ${fmtDur(gap)} <b>${hm(prevEnd)}–${hm(e.S)}</b></span>
-            <span class="tt-break-line"></span></div>`;
-        }
+        if (gap >= 20 * 60000) html += `<div class="tt-gap"><span class="tt-gap-label">Szünet · ${fmtDur(gap)} · ${hm(prevEnd)}–${hm(e.S)}</span></div>`;
       }
       if (!examMode) prevEnd = (!prevEnd || e.E > prevEnd) ? e.E : prevEnd;
       const next = filter === "upcoming" && !examMode && i === 0;
@@ -783,6 +789,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
         </div>
         ${next ? `<span class="tt-badge">Következő</span>` : ""}</div>`;
     });
+    if (open) html += `</div></div>`;
   }
   scroll.innerHTML = html;
   const pb = scroll.querySelector(".period-btn");
