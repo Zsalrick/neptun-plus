@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.050";
+const APP_VERSION = "v0.051";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1335,7 +1335,11 @@ function renderTotpStatus() {
   else if (state.no2fa) box.innerHTML = `<div class="status-pill neutral">2FA kikapcsolva (nincs a sulinál)</div>`;
   else if (hasTotp()) box.innerHTML = `<div class="status-pill ok">${icon("check")} Beállítva: ${esc(state.totp.name)}</div><button class="btn ghost narrow" id="btn-remove-totp" style="margin-top:8px">2FA törlése</button>`;
   else box.innerHTML = `<div class="status-pill neutral">Nincs beállítva</div>`;
-  const rm = $("btn-remove-totp"); if (rm) rm.onclick = () => { state.totp = null; saveState(); renderTotpStatus(); renderHome(); toast("2FA törölve."); };
+  const rm = $("btn-remove-totp"); if (rm) rm.onclick = async () => {
+    if (!(await requireAuthFor("actions"))) return; // guard (respects the Biztonság switch)
+    if (!(await ask({ title: "2FA törlése", okText: "Törlés", body: "Biztosan törlöd a mentett 2FA kulcsot? A belépéshez újra be kell majd olvasnod." }))) return;
+    state.totp = null; saveState(); renderTotpStatus(); renderHome(); toast("2FA törölve.");
+  };
   $("toggle-no2fa").classList.toggle("on", state.no2fa);
 }
 $("in-qr").addEventListener("change", (e) => handleQrPick(e, $("qr-result"), () => { renderTotpStatus(); renderHome(); totpTick(); }));
