@@ -62,5 +62,21 @@
     } catch (e) { setStatus("Aktiválás hiba: " + errMsg(e)); if (opts.onError) opts.onError(e); return { ok: false, reason: "apply", error: errMsg(e) }; }
   }
 
-  window.OTA = { check: check, manifestUrl: manifestUrl, configured: configured, lastStatus: lastStatus };
+  // Lightweight check: fetch the manifest only (no download), report whether a newer version exists.
+  async function peek(current) {
+    var C = window.Capacitor;
+    if (!C || !C.isNativePlatform || !C.isNativePlatform()) return { ok: false, reason: "not-native" };
+    if (!configured()) return { ok: false, reason: "not-configured" };
+    try {
+      var res = await fetch(manifestUrl(), { cache: "no-store" });
+      if (!res.ok) return { ok: false, reason: "http", code: res.status };
+      var m = await res.json();
+      if (!m || !m.version) return { ok: false, reason: "manifest" };
+      var available = verNum(m.version) > verNum(current || "");
+      setStatus(available ? ("Új verzió: " + m.version) : ("Naprakész (" + (current || "") + ")"));
+      return { ok: true, available: available, version: m.version };
+    } catch (e) { return { ok: false, reason: "fetch", error: errMsg(e) }; }
+  }
+
+  window.OTA = { check: check, peek: peek, manifestUrl: manifestUrl, configured: configured, lastStatus: lastStatus };
 })();

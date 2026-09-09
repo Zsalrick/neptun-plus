@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.045";
+const APP_VERSION = "v0.046";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1230,12 +1230,20 @@ $("btn-breakmin").onclick = () => {
     onPick: (v) => { state.breakMin = parseInt(v, 10) || 20; saveState(); updateBreakMinStatus(); renderTimetable(); },
   });
 };
-function updateUpdateStatus() {
-  const el = $("update-status"); if (!el) return;
-  let s = "Verzió " + APP_VERSION;
-  const last = window.OTA && window.OTA.lastStatus && window.OTA.lastStatus();
-  if (last && last.s) s += " · " + last.s;
-  el.textContent = s;
+async function updateUpdateStatus() {
+  const el = $("update-status"), title = $("update-title");
+  if (el) el.textContent = "Verzió " + APP_VERSION; // immediate, before the network check
+  if (title) title.textContent = "Frissítés keresése";
+  if (!isNative || !window.OTA || !window.OTA.peek) return;
+  const res = await window.OTA.peek(APP_VERSION); // manifest only, no download
+  if (!res || !res.ok) return; // offline / not configured → leave defaults
+  if (res.available) {
+    if (title) title.textContent = "Frissítés letöltése";
+    if (el) el.textContent = "Verzió " + APP_VERSION + " · Új: " + res.version;
+  } else {
+    if (title) title.textContent = "Frissítés keresése";
+    if (el) el.textContent = "Verzió " + APP_VERSION + " · Naprakész";
+  }
 }
 $("btn-check-update").onclick = async () => {
   if (!isNative) { toast("A frissítés a telefonos alkalmazásban működik."); return; }
