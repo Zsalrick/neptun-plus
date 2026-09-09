@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.055";
+const APP_VERSION = "v0.056";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1308,25 +1308,45 @@ function openDlcItem(id) {
   const d = (state.dlc || {})[id]; if (!d) return;
   if (d.kind === "accounts") openAccounts(d); else toast("Ismeretlen kiegészítő típus.");
 }
-// ----- accounts viewer: scroll + search by number or name -----
-let accItems = [];
+// ----- accounts viewer: számlaosztály filter + search + hierarchy -----
+let accItems = [], accParent = new Set(), accClass = "";
+const ACC_ORDER = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+const accDigits = (n) => n.split("-")[0];               // leading number of a range like "12-16"
+const accLvl = (n) => Math.min(4, accDigits(n).length); // 1=osztály … 4=alszámla
+function accClassName(c) {
+  const it = accItems.find((x) => x.n === c);
+  const nm = it ? it.t.replace(/^sz[aá]mlaoszt[aá]ly\s*[–-]?\s*/i, "").trim() : "";
+  return c + (nm ? " · " + nm : ". számlaosztály");
+}
 function openAccounts(d) {
   accItems = d.items || [];
+  // Mark every number that is an ancestor of another item → it has a breakdown (parent).
+  const numSet = new Set(accItems.map((i) => i.n)); accParent = new Set();
+  accItems.forEach((it) => { const dd = accDigits(it.n); for (let L = 1; L < dd.length; L++) { const p = dd.slice(0, L); if (numSet.has(p)) accParent.add(p); } });
+  accClass = ""; $("acc-class-lbl").textContent = "Összes osztály";
   $("acc-title").textContent = d.title || "Számlatükör";
   $("acc-search").value = "";
   $("dlc-sheet").classList.add("hidden");
   $("accounts-sheet").classList.remove("hidden");
   renderAccounts("");
 }
+$("acc-class").onclick = () => {
+  const items = [{ value: "", label: "Összes osztály" }].concat(ACC_ORDER.filter((c) => accItems.some((x) => accDigits(x.n)[0] === c)).map((c) => ({ value: c, label: accClassName(c) })));
+  openList({ title: "Számlaosztály", selected: accClass, items, onPick: (v) => { accClass = v; $("acc-class-lbl").textContent = v ? accClassName(v) : "Összes osztály"; renderAccounts($("acc-search").value); } });
+};
 function renderAccounts(q) {
   q = (q || "").trim().toLowerCase();
   const digits = q.replace(/\D/g, "");
   let list = accItems;
-  if (q) list = accItems.filter((it) => (digits && it.n.indexOf(digits) === 0) || it.t.toLowerCase().indexOf(q) >= 0);
+  if (accClass) list = list.filter((it) => accDigits(it.n)[0] === accClass);
+  if (q) list = list.filter((it) => (digits && it.n.indexOf(digits) === 0) || it.t.toLowerCase().indexOf(q) >= 0);
   const host = $("acc-list");
   if (!list.length) { host.innerHTML = `<div class="hint center" style="margin:16px 0">Nincs találat.</div>`; return; }
-  host.innerHTML = list.slice(0, 400).map((it) => `<div class="acc-row"><span class="acc-n">${esc(it.n)}</span><span class="acc-t">${esc(it.t)}</span></div>`).join("")
-    + (list.length > 400 ? `<div class="hint center" style="margin:10px 0">+${list.length - 400} további — pontosíts a keresésen</div>` : "");
+  host.innerHTML = list.slice(0, 500).map((it) => {
+    const lvl = accLvl(it.n), parent = accParent.has(it.n);
+    return `<div class="acc-row lvl${lvl}${parent ? " parent" : ""}"><span class="acc-n">${esc(it.n)}</span><span class="acc-t">${esc(it.t)}</span></div>`;
+  }).join("")
+    + (list.length > 500 ? `<div class="hint center" style="margin:10px 0">+${list.length - 500} további — pontosíts a keresésen</div>` : "");
 }
 $("acc-search").addEventListener("input", (e) => renderAccounts(e.target.value));
 
