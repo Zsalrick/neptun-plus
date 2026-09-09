@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.044";
+const APP_VERSION = "v0.045";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -521,8 +521,10 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
 document.querySelectorAll(".backdrop").forEach((bd) => bd.addEventListener("click", (e) => { if (e.target === bd) bd.classList.add("hidden"); }));
 
 // full-screen busy spinner (for invisible background reads)
-function showBusy(text) { $("busy-text").textContent = text || "Beolvasás…"; $("busy").classList.remove("hidden"); }
-function hideBusy() { $("busy").classList.add("hidden"); }
+let flowCancel = null; // set while a runNeptunFlow is active; lets the busy "Mégse" abort it
+function showBusy(text, cancelable) { $("busy-text").textContent = text || "Beolvasás…"; $("busy-cancel").hidden = !cancelable; $("busy").classList.remove("hidden"); }
+function hideBusy() { $("busy").classList.add("hidden"); $("busy-cancel").hidden = true; }
+$("busy-cancel").onclick = () => { if (flowCancel) flowCancel(); };
 
 // =====================================================================
 //  HOME
@@ -885,8 +887,8 @@ async function scrapeCourses() {
   if (!isNative) { toast("A tárgyak beolvasása a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   await totpTick();
-  courseLog = []; showBusy("Beolvasás indítása…");
-  let ok = false, rawOut = "";
+  courseLog = []; showBusy("Bejelentkezés…", true);
+  let ok = false, rawOut = "", cancelled = false;
   try {
     const res = await neptunReadCourses(); // { courses, semesters, semester, raw }
     rawOut = (res && res.raw) || "";
@@ -896,8 +898,9 @@ async function scrapeCourses() {
       saveState(); renderCourses(); renderTimetable(); ok = true;
       dbg("Siker: " + res.courses.length + " tárgy");
     } else { dbg("Az oldal betöltött, de 0 tárgyat ismertem fel."); }
-  } catch (e) { dbg("HIBA: " + (e && e.message ? e.message : e)); }
+  } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
+  if (cancelled) { toast("Megszakítva"); return; }
   if (ok) { toast(state.courses.list.length + " tárgy beolvasva."); return; }
   // failure: copy raw to clipboard and show the debug log so it can be shared
   try { if (rawOut) await navigator.clipboard.writeText(rawOut); } catch (e) { /* ignore */ }
@@ -920,7 +923,8 @@ function runNeptunFlow(buildScript, gvar) {
       "toolbarcolor=#141518", "navigationbuttoncolor=#ecedee", "closebuttoncolor=#ecedee", "closebuttoncaption=Kész"].join(",");
     const ref = iab.open(srv.url, "_blank", opts);
     let done = false, polling = false, iv = null;
-    const finish = (err, data) => { if (done) return; done = true; clearTimeout(to); if (iv) clearInterval(iv); try { ref.close(); } catch (e) {} err ? reject(err) : resolve(data); };
+    const finish = (err, data) => { if (done) return; done = true; flowCancel = null; clearTimeout(to); if (iv) clearInterval(iv); try { ref.close(); } catch (e) {} err ? reject(err) : resolve(data); };
+    flowCancel = () => finish(new Error("Megszakítva")); // wired to the busy "Mégse" button
     const to = setTimeout(() => finish(new Error("időtúllépés (90s)")), 90000);
     const startPoll = () => {
       if (polling) return; polling = true;
@@ -961,15 +965,16 @@ async function grabIcsLink() {
   if (!isNative) { toast("Az automatikus lekérés a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   await totpTick();
-  courseLog = []; showBusy("Órarend link lekérése…");
-  let url = "", raw = "";
+  courseLog = []; showBusy("Bejelentkezés…", true);
+  let url = "", raw = "", cancelled = false;
   try {
     const res = await neptunReadIcsLink();
     raw = (res && res.raw) || "";
     if (res && res.log) courseLog = res.log.split("\n");
     if (res && res.url) { url = res.url; dbg("Link: " + url); } else dbg("Nem találtam feliratkozási linket.");
-  } catch (e) { dbg("HIBA: " + (e && e.message ? e.message : e)); }
+  } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
+  if (cancelled) { toast("Megszakítva"); return; }
   if (url) {
     // Only fill the field — the user presses Mentés manually.
     const clean = url.replace(/^webcal:\/\//i, "https://");
@@ -993,11 +998,10 @@ function buildIcsGrabScript(username, password, code) {
   function setVal(el,val){ if(!el) return; var proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el,val); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('blur',{bubbles:true})); }
   function waitFor(fn,ms){ return new Promise(function(res){ var t0=Date.now(); (function p(){ var v; try{v=fn();}catch(e){v=null;} if(v) return res(v); if(Date.now()-t0>ms) return res(null); setTimeout(p,300); })(); }); }
   function nodes(){ return Array.prototype.slice.call(document.querySelectorAll('a,button,span,div,li,[role=menuitem],[role=button]')); }
-  function clickText(txt){ txt=txt.toLowerCase(); var els=nodes().filter(function(el){ return vis(el) && (el.textContent||'').trim().toLowerCase()===txt; }); if(!els.length) els=nodes().filter(function(el){ var t=(el.textContent||'').trim().toLowerCase(); return vis(el) && t.indexOf(txt)>=0 && t.length<txt.length+24; }); els.sort(function(a,b){return (a.textContent||'').length-(b.textContent||'').length;}); if(els[0]){ els[0].click(); return true; } return false; }
-  function findSubmit(){ return nodes().filter(function(b){ if(!vis(b)) return false; var h=((b.id||'')+' '+(b.innerText||b.value||'')).toLowerCase(); return /bejelentkez|bel[eé]p|tov[aá]bb|meger[oő]s|hiteles[ií]t|ellen[oő]r|verify|submit|login/.test(h); })[0]; }
-  function findCode(){ return Array.prototype.slice.call(document.querySelectorAll('input')).find(function(el){ if(!vis(el)||el.value) return false; var t=(el.type||'').toLowerCase(); if(['text','tel','number','password'].indexOf(t)===-1) return false; var h=((el.id||'')+' '+(el.name||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); if(/code|otp|token|kod|k[oó]d|hiteles[ií]t|authent|2fa|mfa/.test(h)) return true; var ml=parseInt(el.getAttribute('maxlength')||'0',10); return ml>0&&ml<=8; }); }
-  function anyCode(){ return Array.prototype.slice.call(document.querySelectorAll('input')).some(function(el){ if(!vis(el)) return false; var ml=parseInt(el.getAttribute('maxlength')||'0',10); var h=((el.id||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); return /code|otp|kod|k[oó]d|hiteles|authent|2fa|mfa/.test(h) || (ml>0&&ml<=8); }); }
+  function clickText(txt){ var el=pick(txt); if(el){ el.click(); return true; } return false; }
+  function pick(txt){ txt=txt.toLowerCase(); var els=nodes().filter(function(el){ return vis(el) && (el.textContent||'').trim().toLowerCase()===txt; }); if(!els.length) els=nodes().filter(function(el){ var t=(el.textContent||'').trim().toLowerCase(); return vis(el) && t.indexOf(txt)>=0 && t.length<txt.length+24; }); els.sort(function(a,b){return (a.textContent||'').length-(b.textContent||'').length;}); return els[0]||null; }
   function loggedIn(){ return !document.querySelector('#userName') && !anyCode() && /Men[üu]/i.test(T()); }
+  function anyCode(){ return Array.prototype.slice.call(document.querySelectorAll('input')).some(function(el){ if(!vis(el)) return false; var ml=parseInt(el.getAttribute('maxlength')||'0',10); var h=((el.id||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); return /code|otp|kod|k[oó]d|hiteles|authent|2fa|mfa/.test(h) || (ml>0&&ml<=8); }); }
   function findIcsUrl(){
     var urls=[]; var html=document.body.innerHTML||''; var m=html.match(/(webcal:\\/\\/|https?:\\/\\/)[^\\s"'<>\\\\)]+/gi); if(m) urls=urls.concat(m);
     Array.prototype.slice.call(document.querySelectorAll('input,textarea,[data-clipboard-text]')).forEach(function(el){ if(el.value) urls.push(el.value); var c=el.getAttribute&&el.getAttribute('data-clipboard-text'); if(c) urls.push(c); });
@@ -1010,14 +1014,12 @@ function buildIcsGrabScript(username, password, code) {
       var inOk=await waitFor(loggedIn, 60000);
       log(inOk?"Bejelentkezve":"Nem sikerült időben bejelentkezni");
       if(!inOk){ deliver(""); return; }
-      await sleep(900);
-      log("Menü megnyitása"); if(!clickText("Menü")) log("Nem találom: Menü"); await sleep(900);
-      log("Naptár menü"); if(!clickText("Naptár")) log("Nem találom: Naptár"); await sleep(1600);
-      await waitFor(function(){ return /Napt[aá]r/i.test(T()); }, 12000);
-      log("Naptár kezelése"); if(!clickText("Naptár kezelése")) log("Nem találom: Naptár kezelése"); await sleep(1400);
-      await waitFor(function(){ return /Feliratkoz/i.test(T()); }, 8000);
-      log("Feliratkozás link másolása"); if(!clickText("Feliratkozás link másolása")) log("Nem találom: Feliratkozás link másolása"); await sleep(1400);
-      var url=await waitFor(findIcsUrl, 6000); if(!url) url=findIcsUrl(); log(url?("Talált link"):("Nincs link a modalban"));
+      // Faster than fixed sleeps: click each target the moment it becomes clickable (poll, no long waits).
+      log("Menü"); var mEl=await waitFor(function(){return pick("Menü");},8000); if(mEl){ mEl.click(); await sleep(120);} else log("Nem találom: Menü");
+      log("Naptár"); var nEl=await waitFor(function(){return pick("Naptár");},8000); if(nEl){ nEl.click(); await sleep(120);} else log("Nem találom: Naptár");
+      log("Naptár kezelése"); var kEl=await waitFor(function(){return pick("Naptár kezelése");},8000); if(kEl){ kEl.click(); await sleep(120);} else log("Nem találom: Naptár kezelése");
+      log("Feliratkozás link másolása"); var fEl=await waitFor(function(){return pick("Feliratkozás link másolása");},8000); if(fEl){ fEl.click();} else log("Nem találom: Feliratkozás link másolása");
+      var url=await waitFor(findIcsUrl,8000); if(!url) url=findIcsUrl(); log(url?("Talált link"):("Nincs link a modalban"));
       try{ clickText("Bezárás"); }catch(e){}
       deliver(url);
     }catch(e){ log("HIBA: "+String(e)); deliver(""); }

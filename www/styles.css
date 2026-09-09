@@ -237,6 +237,7 @@ button.row:active { background: var(--surface-2); }
 .spinner { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--line-2); border-top-color: var(--ink); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .busy-text { font-size: 14px; color: var(--ink-2); }
+.busy-cancel { width: auto; margin-top: 8px; padding: 9px 22px; }
 
 /* ---------- Courses + credit watcher ---------- */
 .cred { padding: 16px; }
