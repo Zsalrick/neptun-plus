@@ -160,6 +160,12 @@ button.row:active { background: var(--surface-2); }
 .next-card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface);
   border-radius: 12px; padding: 14px 16px; margin-top: 14px; cursor: pointer; color: inherit; font: inherit; }
 .next-card:active { background: var(--surface-2); }
+/* Currently-running class: brighter, gently pulsing so it stands out. */
+.next-card.nc-now { border-color: var(--ink-2); background: var(--surface-2); animation: nc-pulse 2s ease-in-out infinite; }
+.next-card.nc-now .nc-head { color: var(--accent); }
+.next-card.nc-now .nc-time { font-size: 16px; } /* range fits (HH:MM–HH:MM) */
+@keyframes nc-pulse { 0%, 100% { border-color: var(--line-2); } 50% { border-color: var(--ink); } }
+@media (prefers-reduced-motion: reduce) { .next-card.nc-now { animation: none; } }
 .nc-head { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
 .nc-head svg.ic { width: 14px; height: 14px; }
 .nc-row { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
@@ -204,8 +210,9 @@ button.row:active { background: var(--surface-2); }
 .picker-btn svg.ic { width: 18px; height: 18px; color: var(--ink-3); flex: none; }
 
 /* ---------- Version tag ---------- */
-.version-tag { position: absolute; right: 16px; bottom: calc(var(--nav-h) + 20px); font-size: 11px; color: var(--ink-3);
-  font-family: ui-monospace, Consolas, monospace; pointer-events: none; letter-spacing: .02em; }
+/* In-flow (inside .scroll) so it never hides behind the bottom nav and scrolls with the content. */
+.version-tag { text-align: center; margin: 16px 0 2px; font-size: 11px; color: var(--ink-3);
+  font-family: ui-monospace, Consolas, monospace; letter-spacing: .02em; }
 
 /* ---------- Time picker ---------- */
 .time-cols { display: flex; gap: 10px; margin-top: 12px; }
@@ -271,8 +278,16 @@ button.row:active { background: var(--surface-2); }
 .tt-daygroup.today .tt-day-main { color: var(--accent); }
 .tt-day-date { font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
 .tt-daybody { display: flex; flex-direction: column; }
-.tt-event { display: flex; align-items: flex-start; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-bottom: 9px; }
-.tt-event.next { border-color: var(--line-2); background: var(--surface-2); }
+.tt-event { position: relative; display: flex; align-items: flex-start; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-bottom: 9px; }
+.tt-event.next { border-color: var(--ink-3); background: var(--surface-2); }
+.tt-event.now { border-color: var(--ink-2); background: var(--surface-2); }
+.tt-event.now .tt-info, .tt-event.next .tt-info { padding-right: 74px; } /* keep the title clear of the corner flag */
+/* Corner indicator instead of a button-like badge */
+.tt-flag { position: absolute; top: 12px; right: 13px; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.tt-event.next .tt-flag { color: var(--ink-2); }
+.tt-event.now .tt-flag { color: var(--accent); animation: flag-blink 1.6s ease-in-out infinite; }
+@keyframes flag-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .tt-event.now .tt-flag { animation: none; } }
 .tt-time { display: flex; flex-direction: column; min-width: 46px; }
 .tt-time span { font-family: ui-monospace, Consolas, monospace; font-size: 15px; font-weight: 600; }
 .tt-time .tt-time-e { font-size: 12px; color: var(--ink-3); font-weight: 500; margin-top: 3px; }
@@ -281,7 +296,6 @@ button.row:active { background: var(--surface-2); }
 .tt-title { font-size: 15px; font-weight: 600; }
 .tt-loc { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); margin-top: 5px; }
 .tt-loc svg.ic { width: 14px; height: 14px; }
-.tt-badge { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); padding: 4px 8px; border-radius: 6px; align-self: center; }
 /* A break inside a day: a full dashed-border card — like a class, but thinner and wider so it reads
    as free time. Negative side margins make it a touch longer than the solid class cards. */
 .tt-gap { display: flex; align-items: center; justify-content: center; text-align: center;

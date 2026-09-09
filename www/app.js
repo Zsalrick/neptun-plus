@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.043";
+const APP_VERSION = "v0.044";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -543,15 +543,20 @@ function renderHome() {
   renderNextClass();
   renderNextExam();
 }
-function nextIsland(el, e, headText, tab) {
+function nextIsland(el, e, headText, tab, now) {
   if (!el) return;
+  el.classList.toggle("nc-now", !!now);
   if (!e) { el.classList.add("hidden"); return; }
   el.classList.remove("hidden");
+  const time = now ? `${hm(e.S)}–${hm(e.E)}` : hm(e.S);
   el.innerHTML = `<div class="nc-head">${icon("clock")} ${headText} · ${esc(dayHeading(e.S))}</div>
-    <div class="nc-row"><span class="nc-time">${hm(e.S)}</span><div class="nc-body"><div class="nc-title">${esc(e.summary || "")}</div>${e.location ? `<div class="nc-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}</div></div>`;
+    <div class="nc-row"><span class="nc-time">${time}</span><div class="nc-body"><div class="nc-title">${esc(e.summary || "")}</div>${e.location ? `<div class="nc-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}</div></div>`;
   el.onclick = () => showTab(tab);
 }
-function renderNextClass() { nextIsland($("next-class"), nextClass(), "Következő óra", "tab-timetable"); }
+function renderNextClass() {
+  nextIsland($("current-class"), currentClass(), "Jelenlegi óra", "tab-timetable", true);
+  nextIsland($("next-class"), nextClass(), "Következő óra", "tab-timetable");
+}
 function renderNextExam() { nextIsland($("next-exam"), nextAssessment(), "Következő számonkérés", "tab-exams"); }
 let lastCode = "";
 async function totpTick() {
@@ -642,7 +647,8 @@ function manualExamEvents() {
     summary: m.title || m.subject || "Számonkérés", location: m.location || "", subject: m.subject || "", note: m.note || "", exam: true, manual: true, id: m.id }));
 }
 function examEvents() { return allEvents().filter((e) => e.exam).concat(manualExamEvents()); }
-function nextClass() { const now = Date.now(); return classEvents().filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S)[0] || null; }
+function currentClass() { const now = Date.now(); return classEvents().filter((e) => e.S.getTime() <= now && e.E.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
+function nextClass() { const now = Date.now(); return classEvents().filter((e) => e.S.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
 function nextAssessment() { const now = Date.now(); return examEvents().filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S)[0] || null; }
 function subjects() {
   const set = new Set();
@@ -780,6 +786,11 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
   if (filter === "upcoming") list = items.filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S);
   else { const s = sems.find((x) => x.key === filter); list = s ? items.filter((e) => e.S >= s.start && e.S < s.end).sort((a, b) => a.S - b.S) : []; }
   subEl.textContent = list.length + (examMode ? " számonkérés" : " óra");
+  // Highlight the ongoing class ("Jelenleg") and the soonest upcoming one ("Következő") — only in the
+  // Közelgő view for the timetable (not for exams / past semesters).
+  const showFlags = filter === "upcoming" && !examMode;
+  const nowIdx = showFlags ? list.findIndex((e) => e.S.getTime() <= now && e.E.getTime() > now) : -1;
+  const nextIdx = showFlags ? list.findIndex((e) => e.S.getTime() > now) : -1;
 
   let html = `<div class="controls">${periodBtn(filter)}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
   if (hasFeed) html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${state.ics && state.ics.fetchedAt ? fmtWhen(state.ics.fetchedAt) : "még soha"}</div>`;
@@ -807,9 +818,11 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
         if (gap >= (state.breakMin || 20) * 60000) html += `<div class="tt-gap"><span class="tt-gap-label">Szünet · ${fmtDur(gap)} · ${hm(prevEnd)}–${hm(e.S)}</span></div>`;
       }
       if (!examMode) prevEnd = (!prevEnd || e.E > prevEnd) ? e.E : prevEnd;
-      const next = filter === "upcoming" && !examMode && i === 0;
+      let flagCls = "", flagText = "";
+      if (i === nowIdx) { flagCls = " now"; flagText = "Jelenleg"; }
+      else if (i === nextIdx) { flagCls = " next"; flagText = "Következő"; }
       const noteCount = e.manual ? (e.note ? 1 : 0) : notesForEvent(e).length;
-      html += `<div class="tt-event${next ? " next" : ""}" data-idx="${i}">
+      html += `<div class="tt-event${flagCls}" data-idx="${i}">
         <div class="tt-time"><span>${hm(e.S)}</span>${examMode ? "" : `<span class="tt-time-e">${hm(e.E)}</span>`}</div>
         <div class="tt-info">
           ${e.subject && e.subject !== e.summary ? `<div class="tt-subj">${esc(e.subject)}</div>` : ""}
@@ -818,7 +831,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
           ${e.location ? `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}
           <div class="tt-tags">${e.manual ? `<span class="tag">saját</span>` : ""}${!e.manual && noteCount ? `<span class="tag note">${icon("note")} ${noteCount}</span>` : ""}</div>
         </div>
-        ${next ? `<span class="tt-badge">Következő</span>` : ""}</div>`;
+        ${flagText ? `<span class="tt-flag">${flagText}</span>` : ""}</div>`;
     });
     if (open) html += `</div></div>`;
   }
