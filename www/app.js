@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.040";
+const APP_VERSION = "v0.041";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -61,6 +61,7 @@ function defaultState() {
     ics: null, // { fetchedAt: ISO, events: [{ s, e, allDay, summary, location, categories, description }] }
     manualExams: [], // [{ id, subject, title, start, end, location, note }]
     notes: [], // [{ id, kind:'subject'|'occurrence', subject, occKey, text }]
+    breakMin: 20, // minimum gap (minutes) between two same-day classes to show a "Szünet" block
   };
 }
 function loadState() {
@@ -789,7 +790,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
       // A gap between two classes on the same day reads as an inset "break", never a new day.
       if (!examMode && prevEnd) {
         const gap = e.S.getTime() - prevEnd.getTime();
-        if (gap >= 20 * 60000) html += `<div class="tt-gap"><span class="tt-gap-label">Szünet · ${fmtDur(gap)} · ${hm(prevEnd)}–${hm(e.S)}</span></div>`;
+        if (gap >= (state.breakMin || 20) * 60000) html += `<div class="tt-gap"><span class="tt-gap-label">Szünet · ${fmtDur(gap)} · ${hm(prevEnd)}–${hm(e.S)}</span></div>`;
       }
       if (!examMode) prevEnd = (!prevEnd || e.E > prevEnd) ? e.E : prevEnd;
       const next = filter === "upcoming" && !examMode && i === 0;
@@ -1175,7 +1176,19 @@ function syncSettings() {
   renderServersSettings();
   renderTotpStatus();
   updateUpdateStatus();
+  updateBreakMinStatus();
 }
+function updateBreakMinStatus() { const el = $("breakmin-status"); if (el) el.textContent = (state.breakMin || 20) + " perc"; }
+$("btn-breakmin").onclick = () => {
+  const items = [];
+  for (let m = 5; m <= 120; m += 5) items.push({ value: String(m), label: m + " perc" });
+  openList({
+    title: "Szünet minimum hossza",
+    selected: String(state.breakMin || 20),
+    items,
+    onPick: (v) => { state.breakMin = parseInt(v, 10) || 20; saveState(); updateBreakMinStatus(); renderTimetable(); },
+  });
+};
 function updateUpdateStatus() {
   const el = $("update-status"); if (!el) return;
   let s = "Verzió " + APP_VERSION;
