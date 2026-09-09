@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.064";
+const APP_VERSION = "v0.065";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1691,6 +1691,38 @@ $("open-terms2").onclick = () => $("terms-sheet").classList.remove("hidden");
 $("privacy-close").onclick = () => $("privacy-sheet").classList.add("hidden");
 $("terms-close").onclick = () => $("terms-sheet").classList.add("hidden");
 
+// ----- data export / import (backup & restore) -----
+$("btn-export").onclick = async () => {
+  if (!(await requireAuthFor("sensitive"))) return; // export contains the password + 2FA secret
+  const json = (() => { try { return localStorage.getItem(STORE_KEY) || JSON.stringify(state); } catch (e) { return JSON.stringify(state); } })();
+  $("backup-title").textContent = "Adatok exportálása";
+  $("backup-hint").innerHTML = "Ez a teljes mentésed. <b>Érzékeny adatot tartalmaz</b> (jelszó, 2FA) — tartsd biztonságban. Másold ki és mentsd el.";
+  $("backup-text").value = json; $("backup-text").readOnly = true;
+  $("backup-copy").hidden = false; $("backup-import-ok").hidden = true;
+  $("backup-sheet").classList.remove("hidden");
+  try { await navigator.clipboard.writeText(json); toast("Vágólapra másolva."); } catch (e) { /* manual copy */ }
+  setTimeout(() => { try { $("backup-text").focus(); $("backup-text").select(); } catch (e) {} }, 60);
+};
+$("btn-import").onclick = () => {
+  $("backup-title").textContent = "Adatok importálása";
+  $("backup-hint").innerHTML = "Illeszd be a korábban exportált mentést, majd Importálás. <b>Ez minden jelenlegi adatot felülír.</b>";
+  $("backup-text").value = ""; $("backup-text").readOnly = false;
+  $("backup-copy").hidden = true; $("backup-import-ok").hidden = false;
+  $("backup-sheet").classList.remove("hidden");
+  setTimeout(() => { try { $("backup-text").focus(); } catch (e) {} }, 60);
+};
+$("backup-close").onclick = () => $("backup-sheet").classList.add("hidden");
+$("backup-copy").onclick = async () => { try { await navigator.clipboard.writeText($("backup-text").value); toast("Vágólapra másolva."); } catch (e) { $("backup-text").select(); toast("Jelöld ki és másold."); } };
+$("backup-import-ok").onclick = async () => {
+  const raw = $("backup-text").value.trim();
+  if (!raw) return toast("Illeszd be a mentést.");
+  let data; try { data = JSON.parse(raw); } catch (e) { return toast("Érvénytelen mentés (nem JSON)."); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return toast("Érvénytelen mentés.");
+  if (!(await requireAuthFor("actions"))) return;
+  if (!(await ask({ title: "Adatok importálása", okText: "Felülírás", cancelText: "Mégse", body: "Biztosan visszatöltöd ezt a mentést? Minden jelenlegi adat felülíródik, és az app újraindul." }))) return;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { return toast("Nem sikerült menteni."); }
+  location.reload();
+};
 $("btn-reset").onclick = () => { $("reset-delpin").classList.remove("on"); $("confirm-dialog").classList.remove("hidden"); };
 $("reset-delpin").onclick = () => $("reset-delpin").classList.toggle("on");
 $("confirm-cancel").onclick = () => $("confirm-dialog").classList.add("hidden");

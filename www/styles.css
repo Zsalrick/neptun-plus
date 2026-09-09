@@ -258,6 +258,8 @@ button.row:active { background: var(--surface-2); }
   color: var(--accent-ink); background: var(--accent); padding: 5px 10px; border-radius: 999px; }
 .notif-subj { font-size: 20px; font-weight: 700; margin: 12px 0 10px; line-height: 1.25; }
 
+.backup-area { width: 100%; resize: vertical; min-height: 120px; font-size: 12px; line-height: 1.4; word-break: break-all; }
+
 /* DLC / add-ons */
 .dlc-row { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
 .dlc-row:last-child { border-bottom: 0; }

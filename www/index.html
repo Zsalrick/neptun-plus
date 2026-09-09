@@ -337,6 +337,16 @@
 
                 <div class="section-label">Adatok</div>
                 <div class="card">
+                  <button class="row" id="btn-export">
+                    <span class="row-ic"><span data-icon="doc"></span></span>
+                    <span class="row-main"><span class="row-title">Adatok exportálása</span><span class="row-sub">Biztonsági mentés (érzékeny adat)</span></span>
+                    <span class="row-chev" data-icon="chev"></span>
+                  </button>
+                  <button class="row" id="btn-import">
+                    <span class="row-ic"><span data-icon="down"></span></span>
+                    <span class="row-main"><span class="row-title">Adatok importálása</span><span class="row-sub">Mentés visszatöltése (felülír mindent)</span></span>
+                    <span class="row-chev" data-icon="chev"></span>
+                  </button>
                   <button class="row danger" id="btn-reset">
                     <span class="row-ic danger"><span data-icon="trash"></span></span>
                     <span class="row-main"><span class="row-title">Minden adat törlése</span><span class="row-sub">Visszaáll a kezdő beállításra</span></span>
@@ -409,6 +419,19 @@
   </div>
 
   <!-- ICS subscription link setup sheet -->
+  <div class="backdrop hidden" id="backup-sheet">
+    <div class="sheet">
+      <div class="sheet-title" id="backup-title">Adatok exportálása</div>
+      <div class="hint" id="backup-hint" style="margin:0 0 10px"></div>
+      <textarea class="input mono backup-area" id="backup-text" rows="7" spellcheck="false" autocomplete="off"></textarea>
+      <div class="sheet-actions">
+        <button class="btn outline" id="backup-close">Bezárás</button>
+        <button class="btn outline" id="backup-copy">Másolás</button>
+        <button class="btn primary" id="backup-import-ok">Importálás</button>
+      </div>
+    </div>
+  </div>
+
   <div class="backdrop hidden" id="notif-sheet">
     <div class="sheet">
       <span class="notif-badge" id="notif-head">Emlékeztető</span>
