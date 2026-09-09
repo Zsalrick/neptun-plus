@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.048";
+const APP_VERSION = "v0.049";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -651,7 +651,11 @@ function dedupEvents(list) {
   return out;
 }
 function classEvents() { return dedupEvents(allEvents().filter((e) => !e.exam)); }
-function isHiddenOcc(e) { return (state.hiddenOcc || []).indexOf(occKey(e)) >= 0; }
+// Hiding is a RULE, not a single date: subject + weekday + start time + semester. So hiding one
+// "XY hétfő 8:00" occurrence hides every XY Monday-08:00 class in that same semester.
+function semKeyFor(d) { const s = allSemesters().find((x) => d >= x.start && d < x.end); return s ? s.key : ""; }
+function hideKey(e) { return (e.summary || "") + "|" + e.S.getDay() + "|" + hm(e.S) + "|" + semKeyFor(e.S); }
+function isHiddenOcc(e) { return (state.hiddenOcc || []).indexOf(hideKey(e)) >= 0; }
 function visibleClassEvents() { return classEvents().filter((e) => !isHiddenOcc(e)); }
 function manualExamEvents() {
   return (state.manualExams || []).map((m) => ({ S: new Date(m.start), E: new Date(m.end || m.start), s: m.start, e: m.end || m.start,
@@ -801,10 +805,9 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
   // Közelgő view for the timetable (not for exams / past semesters). Computed over VISIBLE (non-hidden)
   // classes so hiding a conflict promotes the remaining one.
   const showFlags = filter === "upcoming" && !examMode;
-  const hiddenSet = new Set(!examMode ? (state.hiddenOcc || []) : []);
   let nowKey = "", nextKey = "", conflictSet = new Set();
   if (!examMode) {
-    const vis = list.filter((e) => !hiddenSet.has(occKey(e)));
+    const vis = list.filter((e) => !isHiddenOcc(e));
     if (showFlags) {
       const on = vis.find((e) => e.S.getTime() <= now && e.E.getTime() > now);
       const nx = vis.find((e) => e.S.getTime() > now);
@@ -844,7 +847,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
       if (!examMode) prevEnd = (!prevEnd || e.E > prevEnd) ? e.E : prevEnd;
       const k = occKey(e);
       let flagCls = "", flagText = "";
-      if (!examMode && hiddenSet.has(k)) { flagCls = " muted"; flagText = "Rejtve"; }
+      if (!examMode && isHiddenOcc(e)) { flagCls = " muted"; flagText = "Rejtve"; }
       else if (!examMode && conflictSet.has(k)) { flagCls = " conflict"; flagText = "Ütközés"; }
       else if (k === nowKey && nowKey) { flagCls = " now"; flagText = "Jelenleg"; }
       else if (k === nextKey && nextKey) { flagCls = " next"; flagText = "Következő"; }
@@ -1194,8 +1197,9 @@ function renderDetail() {
       <div class="detail-add"><button class="btn outline" id="dn-occ">Csak erre az alkalomra</button><button class="btn outline" id="dn-sub">Minden ilyen órára</button></div>`;
     // Only classes (not exams) can be hidden — for resolving overlaps ("on paper I have two").
     if (!detailExamMode) {
-      const hidden = (state.hiddenOcc || []).indexOf(occKey(e)) >= 0;
-      html += `<div class="detail-add" style="margin-top:10px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Mégis járok erre az órára" : "Erre az órára nem járok be"}</button></div>`;
+      const hidden = isHiddenOcc(e);
+      html += `<div class="detail-add" style="margin-top:10px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Mégis járok erre az órára" : "Erre az órára nem járok be"}</button></div>
+        <div class="hint" style="margin:8px 2px 0">A félév összes ilyen órájára érvényes (${esc(TT_DAYS[e.S.getDay()])} ${esc(hm(e.S))}).</div>`;
     }
   } else {
     html += `<div class="detail-add" style="margin-top:14px"><button class="btn outline" id="dn-edit">Szerkesztés</button><button class="btn danger" id="dn-del">Törlés</button></div>`;
@@ -1215,10 +1219,10 @@ function renderDetail() {
   if ($("dn-occ")) $("dn-occ").onclick = () => add("occurrence");
   if ($("dn-sub")) $("dn-sub").onclick = () => add("subject");
   if ($("dn-hide")) $("dn-hide").onclick = () => {
-    const k = occKey(e); state.hiddenOcc = state.hiddenOcc || [];
+    const k = hideKey(e); state.hiddenOcc = state.hiddenOcc || [];
     const was = state.hiddenOcc.indexOf(k) >= 0;
     state.hiddenOcc = was ? state.hiddenOcc.filter((x) => x !== k) : state.hiddenOcc.concat(k);
-    saveState(); renderDetail(); refreshAgendas(); toast(was ? "Újra látható." : "Elrejtve.");
+    saveState(); renderDetail(); refreshAgendas(); toast(was ? "Újra látható." : "Elrejtve a félév ilyen óráira.");
   };
   if ($("dn-edit")) $("dn-edit").onclick = () => { $("detail-sheet").classList.add("hidden"); openExamEdit(e); };
   if ($("dn-del")) $("dn-del").onclick = () => {
