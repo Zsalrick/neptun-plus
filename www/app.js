@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.062";
+const APP_VERSION = "v0.063";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -568,7 +568,7 @@ function renderHome() {
   if (showTotp) $("totp-account").textContent = state.totp.name || "2FA kód";
   const ready = !!(state.username && state.password);
   $("btn-login").disabled = !ready;
-  $("home-sub").textContent = ready ? "Készen áll" : "Állítsd be a belépést";
+  $("home-sub").textContent = semLoading ? "Félévek beolvasása…" : (ready ? "Készen áll" : "Állítsd be a belépést");
   $("login-hint").textContent = isNative ? "Egy érintés, a többit az alkalmazás elvégzi." : "Előnézet. Az alkalmazásban ez automatikusan belép.";
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
   renderNextClass();
@@ -950,6 +950,7 @@ function dbg(m) { courseLog.push(m); $("busy-text").textContent = m; }
 async function scrapeCourses() {
   if (!isNative) { toast("A tárgyak beolvasása a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
+  if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
   let ok = false, rawOut = "", cancelled = false;
@@ -973,10 +974,13 @@ async function scrapeCourses() {
 }
 // Shared runner: open a (debug-visible) InAppBrowser, inject an in-page routine on each
 // load, and poll `window.<gvar>` for a {done:true,...} result while surfacing its live log.
+let flowActive = false; // only one Neptun InAppBrowser flow at a time
 function runNeptunFlow(buildScript, gvar) {
   return new Promise((resolve, reject) => {
     const iab = window.cordova && window.cordova.InAppBrowser;
     if (!iab) return reject(new Error("InAppBrowser plugin hiányzik"));
+    if (flowActive) return reject(new Error("Már fut egy Neptun folyamat"));
+    flowActive = true;
     const srv = activeServer();
     const loginScript = buildInjectScript(state.username, state.password, state.no2fa ? "" : lastCode);
     const script = buildScript(state.username, state.password, state.no2fa ? "" : lastCode);
@@ -987,7 +991,7 @@ function runNeptunFlow(buildScript, gvar) {
       "toolbarcolor=#141518", "navigationbuttoncolor=#ecedee", "closebuttoncolor=#ecedee", "closebuttoncaption=Kész"].join(",");
     const ref = iab.open(srv.url, "_blank", opts);
     let done = false, polling = false, iv = null;
-    const finish = (err, data) => { if (done) return; done = true; flowCancel = null; clearTimeout(to); if (iv) clearInterval(iv); try { ref.close(); } catch (e) {} err ? reject(err) : resolve(data); };
+    const finish = (err, data) => { if (done) return; done = true; flowActive = false; flowCancel = null; clearTimeout(to); if (iv) clearInterval(iv); try { ref.close(); } catch (e) {} err ? reject(err) : resolve(data); };
     flowCancel = () => finish(new Error("Megszakítva")); // wired to the busy "Mégse" button
     const to = setTimeout(() => finish(new Error("időtúllépés (90s)")), 90000);
     const startPoll = () => {
@@ -1064,6 +1068,7 @@ function buildSemesterScript(username, password, code) {
 async function grabSemesters() {
   if (!isNative) { toast("A félévek beolvasása a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
+  if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
   let sems = [], cancelled = false;
@@ -1085,20 +1090,26 @@ function hasSemesters() { return !!(state.semesters && state.semesters.list && s
 function canAutoLogin() { return !!(state.username && state.password && (state.no2fa || hasTotp())); }
 // Startup: if there is no saved semester data yet and we can log in unattended, fetch it silently
 // (no spinner, no interruption). Runs behind the lock; retries next launch if it fails.
+let semLoading = false; // shown in the home topbar subtitle while the background fetch runs
 async function grabSemestersSilent() {
   if (!isNative || hasSemesters() || !canAutoLogin()) return;
+  await new Promise((r) => setTimeout(r, 1500)); // let boot/OTA settle first
+  if (hasSemesters() || flowActive) return; // someone else may have run/started meanwhile
+  semLoading = true; renderHome();
   try {
     await totpTick();
     const res = await neptunReadSemesters();
     const sems = (res && res.sems) || [];
     if (sems.length) { state.semesters = { fetchedAt: new Date().toISOString(), list: sems }; saveState(); syncSemStatus(); renderTimetable(); renderExams(); renderCourses(); toast(sems.length + " félév beolvasva."); }
   } catch (e) { /* silent; will retry next launch */ }
+  finally { semLoading = false; renderHome(); }
 }
 
 // Grab the timetable subscription (iCal) link: login → Menü → Naptár → Naptár kezelése → read link.
 async function grabIcsLink() {
   if (!isNative) { toast("Az automatikus lekérés a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
+  if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
   let url = "", raw = "", cancelled = false;
