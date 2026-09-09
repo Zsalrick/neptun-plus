@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.053";
+const APP_VERSION = "v0.054";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -429,11 +429,19 @@ function navTo(id) {
   if (cur && MAIN_TABS.includes(id) && MAIN_TABS.includes(cur.id)) dir = MAIN_TABS.indexOf(id) > MAIN_TABS.indexOf(cur.id) ? 1 : -1;
   showTab(id, dir);
 }
-function enterApp() { $("screen-onboarding").classList.add("hidden"); $("app-shell").classList.remove("hidden"); }
+function enterApp() { $("screen-onboarding").classList.add("hidden"); $("app-shell").classList.remove("hidden"); updateScrollPad(); requestAnimationFrame(updateScrollPad); setTimeout(updateScrollPad, 350); }
+// Reserve enough bottom padding in every scroll area to clear the nav bar — measured live, so it
+// stays correct at any text size (large fonts make the nav taller).
+function updateScrollPad() {
+  const nav = document.querySelector(".nav-island"); if (!nav) return;
+  const r = nav.getBoundingClientRect();
+  const pad = Math.max(0, Math.round(window.innerHeight - r.top) + 24);
+  if (pad > 0) document.documentElement.style.setProperty("--scroll-pad", pad + "px");
+}
 document.querySelectorAll(".nav-btn").forEach((b) => b.onclick = () => navTo(b.dataset.tab));
 document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => showTab("tab-settings"));
 $("settings-back").onclick = () => showTab(lastMainTab);
-window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); });
+window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
 // Smoothness: nav-button geometry is cached at gesture start (no per-frame layout reads),

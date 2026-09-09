@@ -65,7 +65,8 @@ svg.ic { width: 20px; height: 20px; display: block; flex: none; stroke: currentC
   font-weight: 600; font-size: 14px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line-2); }
 .brand-badge .plus { color: var(--ink-3); }
 
-.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 18px calc(var(--nav-h) + 24px); -webkit-overflow-scrolling: touch; }
+/* bottom padding clears the nav bar; --scroll-pad is measured at runtime (grows with text size) */
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 18px var(--scroll-pad, calc(var(--nav-h) + 24px)); -webkit-overflow-scrolling: touch; }
 
 /* ---------- Section labels ---------- */
 .section-label { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
@@ -349,7 +350,7 @@ button.row:active { background: var(--surface-2); }
 
 /* ---------- Bottom nav island ---------- */
 .nav-island { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
-  height: var(--nav-h); background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px;
+  min-height: var(--nav-h); background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px;
   display: flex; align-items: stretch; padding: 7px; box-shadow: var(--shadow); z-index: 40; }
 .nav-btn { flex: 1; background: transparent; border: 0; color: var(--ink-3); cursor: pointer; display: flex;
   flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 11px; font: inherit; }
