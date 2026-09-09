@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.041";
+const APP_VERSION = "v0.042";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -313,7 +313,7 @@ function initOnboarding() {
   });
   $("ob-password").addEventListener("input", (e) => { state.password = e.target.value; saveState(); updateObFooter(); });
   $("ob-bio").onclick = () => { state.biometric = !state.biometric; saveState(); $("ob-bio").classList.toggle("on", state.biometric); };
-  $("ob-show-pass").onclick = () => { const el = $("ob-password"); el.type = el.type === "password" ? "text" : "password"; };
+  $("ob-show-pass").onclick = async () => { const el = $("ob-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuth())) return; el.type = "text"; };
   $("ob-2fa-no").onclick = () => { ob2faChoice = "no"; state.no2fa = true; saveState(); renderObTwoFA(); updateObFooter(); };
   $("ob-2fa-yes").onclick = () => { ob2faChoice = "yes"; state.no2fa = false; saveState(); renderObTwoFA(); updateObFooter(); };
   const obAfter2fa = () => { renderObStatus(); updateObFooter(); };
@@ -351,10 +351,23 @@ function skeletonHTML(kind) {
   if (kind === "courses") return `<div class="sk-wrap"><div class="sk-controls"></div>${rows(6, "sk-row")}</div>`;
   return `<div class="sk-wrap"><div class="sk-controls"></div><div class="sk-day"></div>${rows(3, "sk-event")}<div class="sk-day" style="margin-top:20px"></div>${rows(2, "sk-event")}</div>`;
 }
+// Debounced real render: keep the skeleton while the user is still swiping; only build the real
+// (heavy) content once they've rested on a tab for a moment. Swiping away cancels the pending build,
+// so the expensive render never runs during an animation → no jank on fast swipes.
+let renderTimer = 0;
+function cancelPendingRender() { if (renderTimer) { clearTimeout(renderTimer); renderTimer = 0; } }
+function scheduleRender(id, delay) {
+  cancelPendingRender();
+  renderTimer = setTimeout(() => {
+    renderTimer = 0;
+    const act = document.querySelector(".tabscreen.active");
+    if (act && act.id === id) renderForTab(id); // still resting here → build it
+  }, delay);
+}
 // Prepare a tab for display: skeleton for heavy tabs (cheap), full render for light ones.
-function prepTab(id) { const k = HEAVY_TABS[id]; if (k) { const el = scrollElFor(id); if (el) el.innerHTML = skeletonHTML(k); } else renderForTab(id); }
-// After the transition settles, swap the skeleton for the real content (next frame).
-function afterShow(id) { if (HEAVY_TABS[id]) requestAnimationFrame(() => renderForTab(id)); }
+function prepTab(id) { cancelPendingRender(); const k = HEAVY_TABS[id]; if (k) { const el = scrollElFor(id); if (el) el.innerHTML = skeletonHTML(k); } else renderForTab(id); }
+// After the transition settles, build the real content only if the user stays ~0.25s.
+function afterShow(id) { if (HEAVY_TABS[id]) scheduleRender(id, 250); }
 function moveNavIndicator(id) {
   const ind = $("nav-ind"); if (!ind) return;
   const btn = document.querySelector(`.nav-btn[data-tab="${id}"]`);
@@ -435,6 +448,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     if (e.touches.length !== 1 || swErr(e.target)) { active = false; return; }
     if (document.querySelector(".backdrop:not(.hidden)") || !$("lock").classList.contains("hidden")) { active = false; return; }
     runPending(); // finish any in-flight slide so the DOM has exactly one active pane
+    cancelPendingRender(); // if a heavy render was queued, drop it — we're moving again
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     const cur = document.querySelector(".tabscreen.active"); curIdx = MAIN_TABS.indexOf(cur ? cur.id : "");
     if (curIdx < 0) { active = false; return; }
@@ -1214,7 +1228,7 @@ $("in-username").addEventListener("input", (e) => {
   $("in-username-err").hidden = v.length === 0 || validCode(v);
 });
 $("in-password").addEventListener("input", (e) => { state.password = e.target.value; saveState(); });
-$("btn-show-pass").onclick = () => { const el = $("in-password"); el.type = el.type === "password" ? "text" : "password"; };
+$("btn-show-pass").onclick = async () => { const el = $("in-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuth())) return; el.type = "text"; };
 
 function renderServersSettings() {
   const list = $("server-list"); list.innerHTML = "";
