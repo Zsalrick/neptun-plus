@@ -237,8 +237,18 @@ button.row:active { background: var(--surface-2); }
   align-items: center; justify-content: center; gap: 16px; }
 .spinner { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--line-2); border-top-color: var(--ink); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.busy-text { font-size: 14px; color: var(--ink-2); }
+.busy-text { font-size: 14px; color: var(--ink-2); max-width: 80%; text-align: center; }
+.busy-step { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+.busy-bar { width: 220px; max-width: 70%; height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin-top: -4px; }
+.busy-bar > span { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 999px; transition: width .35s ease; }
 .busy-cancel { width: auto; margin-top: 8px; padding: 9px 22px; }
+.sync-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.sync-list .check { width: 100%; }
+.sync-list .sync-master { border-style: dashed; }
+.sync-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; flex: none; margin-left: 8px; }
+.sync-tag.have { color: var(--ink-3); border: 1px solid var(--line-2); }
+.sync-tag.miss { color: var(--accent-ink); background: var(--ink); }
+.next-card.sync-cta { border-color: var(--ink-3); background: var(--surface-2); }
 
 /* Reminder category cards: lead-time chips + add button */
 .notify-cat { margin-bottom: 10px; }

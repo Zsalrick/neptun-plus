@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.078";
+const APP_VERSION = "v0.079";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -333,6 +333,7 @@ function finishOnboarding() {
   state.setupComplete = true; saveState();
   enterApp(); showTab("tab-home");
   toast("Beállítás kész, kezdheted.");
+  setTimeout(maybeOfferDataSync, 700); // right after setup, offer to read the missing data
 }
 function initOnboarding() {
   $("ob-next").onclick = () => {
@@ -579,7 +580,13 @@ document.querySelectorAll(".backdrop").forEach((bd) => bd.addEventListener("clic
 // full-screen busy spinner (for invisible background reads)
 let flowCancel = null; // set while a runNeptunFlow is active; lets the busy "Mégse" abort it
 function showBusy(text, cancelable) { $("busy-text").textContent = text || "Beolvasás…"; $("busy-cancel").hidden = !cancelable; $("busy").classList.remove("hidden"); }
-function hideBusy() { $("busy").classList.add("hidden"); $("busy-cancel").hidden = true; }
+function hideBusy() { $("busy").classList.add("hidden"); $("busy-cancel").hidden = true; $("busy-bar").hidden = true; $("busy-step").hidden = true; }
+// Overall progress across a multi-step read (shown beside the spinner).
+function setBusyProgress(done, total, stepLabel) {
+  const bar = $("busy-bar"), fill = $("busy-fill"), step = $("busy-step");
+  if (total > 0) { bar.hidden = false; fill.style.width = Math.round((done / total) * 100) + "%"; }
+  if (stepLabel) { step.hidden = false; step.textContent = stepLabel; } else step.hidden = true;
+}
 $("busy-cancel").onclick = () => { if (flowCancel) flowCancel(); };
 
 // =====================================================================
@@ -601,6 +608,28 @@ function renderHome() {
   renderNextClass();
   renderNextExam();
   renderProgress();
+  renderSyncCard();
+}
+// Hub card that opens the unified data read. Prominent when data is missing; a quiet
+// "refresh" entry once everything is in.
+function renderSyncCard() {
+  const el = $("btn-sync"); if (!el) return;
+  if (!canAutoLogin()) { el.classList.add("hidden"); el.onclick = null; return; }
+  el.classList.remove("hidden");
+  const missing = DATA_TASKS.filter((t) => !t.has());
+  if (missing.length) {
+    el.classList.add("sync-cta");
+    el.innerHTML = `<div class="nc-head">${icon("down")} Szükséges adatok beolvasása</div>`
+      + `<div class="nc-title" style="margin-top:8px">Hiányzik: ${esc(missing.map((t) => t.label).join(", "))}</div>`
+      + `<div class="nc-loc">Olvasd be egyben a Neptunból — pár perc.</div>`;
+    el.onclick = () => openDataSync(missing.map((t) => t.id));
+  } else {
+    el.classList.remove("sync-cta");
+    el.innerHTML = `<div class="nc-head">${icon("refresh")} Adatok frissítése</div>`
+      + `<div class="nc-title" style="margin-top:8px">Órarend, félévek, kredit, tárgyak</div>`
+      + `<div class="nc-loc">Válaszd ki, mit olvassak be újra.</div>`;
+    el.onclick = () => openDataSync(null);
+  }
 }
 let hubSeg = 0; // 0 = Belépés, 1 = Áttekintés (used by the pager for in-hub swipe)
 function showHubSeg(seg) {
@@ -1208,18 +1237,135 @@ async function grabProgress() {
 }
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
 function canAutoLogin() { return !!(state.username && state.password && (state.no2fa || hasTotp())); }
-// Startup: if there is no saved semester data yet and we can log in unattended, fetch it silently
-// (no spinner, no interruption). Runs behind the lock; retries next launch if it fails.
-let semLoading = false, semOffered = false;
-// On launch (once), if there is no saved semester data, offer to read it now. Re-offered every
-// launch until data exists. Waits until the app is unlocked and settled.
-async function maybeOfferSemesters() {
-  if (semOffered || !isNative || !state.setupComplete || hasSemesters() || !canAutoLogin()) return;
+let semLoading = false;
+
+// =====================================================================
+//  DATA SYNC — unified "read necessary data" system
+//  Each task logs into Neptun, reads one kind of data, and saves it. To add a
+//  new readable data type later, just append one entry here (with has()/run()).
+// =====================================================================
+const DATA_TASKS = [
+  { id: "ics",     label: "Órarend (naptár)", sub: "Feliratkozási link és a naptár eseményei",
+    has: () => !!state.icsUrl && !!(state.ics && state.ics.events && state.ics.events.length), run: syncIcs },
+  { id: "sems",    label: "Félévek",          sub: "Aktív féléveid — a naptár szűréséhez, új tanévhez",
+    has: hasSemesters, run: syncSemesters },
+  { id: "credit",  label: "Kredit",           sub: "Kredit‑előrehaladás (teljesített / összes)",
+    has: () => !!(state.progress && state.progress.total), run: syncCredit },
+  { id: "courses", label: "Tárgyak",          sub: "Felvett tárgyaid listája — pl. ha újat vettél fel",
+    has: () => !!(state.courses && state.courses.list && state.courses.list.length), run: syncCourses },
+];
+function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
+function missingTaskIds() { return DATA_TASKS.filter((t) => !t.has()).map((t) => t.id); }
+
+// --- low-level readers: run one flow, save state, return {ok, detail}. No busy/ask of their own. ---
+async function syncIcs() {
+  const res = await neptunReadIcsLink();
+  const url = (res && res.url) ? res.url.replace(/^webcal:\/\//i, "https://") : "";
+  if (!url) return { ok: false, detail: "nem találtam feliratkozási linket" };
+  state.icsUrl = url; saveState(); updateIcsStatus();
+  await fetchTimetable(); // downloads + saves the events
+  const n = (state.ics && state.ics.events) ? state.ics.events.length : 0;
+  return { ok: n > 0, detail: n ? (n + " esemény") : "a link mentve, de nem jött esemény" };
+}
+async function syncSemesters() {
+  const res = await neptunReadSemesters();
+  const sems = (res && res.sems) || [];
+  if (!sems.length) return { ok: false, detail: "nem találtam félévet" };
+  state.semesters = { fetchedAt: new Date().toISOString(), list: sems }; saveState(); syncSemStatus();
+  return { ok: true, detail: sems.length + " félév" };
+}
+async function syncCredit() {
+  const res = await neptunReadProgress();
+  const p = (res && res.progress) || null;
+  if (!p || !p.total) return { ok: false, detail: "nem találtam kredit adatot" };
+  state.progress = { fetchedAt: new Date().toISOString(), done: p.done, total: p.total, free: p.free || 0 };
+  saveState(); syncProgStatus();
+  return { ok: true, detail: p.done + "/" + p.total + " kredit" };
+}
+async function syncCourses() {
+  const res = await neptunReadCourses();
+  const list = (res && res.courses) || [];
+  if (!list.length) return { ok: false, detail: "nem ismertem fel tárgyat" };
+  state.courses = { fetchedAt: new Date().toISOString(), list, semesters: res.semesters || [] };
+  saveState(); renderCourses();
+  return { ok: true, detail: list.length + " tárgy" };
+}
+
+// --- orchestrator: run the selected tasks in sequence with an overall progress bar ---
+let dataSyncOffered = false;
+async function runDataSync(ids) {
+  ids = (ids || []).filter(dataTask);
+  if (!ids.length) return;
+  if (!isNative) { toast("A beolvasás a telefonos alkalmazásban működik."); return; }
+  if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
+  if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
+  const results = [];
+  courseLog = []; showBusy("Bejelentkezés…", true);
+  setBusyProgress(0, ids.length, `1 / ${ids.length}`);
+  let cancelled = false;
+  for (let i = 0; i < ids.length; i++) {
+    const t = dataTask(ids[i]);
+    setBusyProgress(i, ids.length, `${t.label} · ${i + 1} / ${ids.length}`);
+    $("busy-text").textContent = t.label + " beolvasása…";
+    try { await totpTick(); const r = await t.run(); results.push({ label: t.label, ok: r.ok, detail: r.detail }); }
+    catch (e) {
+      if (e && /Megszakítva/.test(e.message)) { cancelled = true; break; }
+      results.push({ label: t.label, ok: false, detail: (e && e.message) ? e.message : "hiba" });
+    }
+  }
+  setBusyProgress(ids.length, ids.length); hideBusy();
+  if (cancelled && !results.length) { toast("Megszakítva"); return; }
+  const okN = results.filter((r) => r.ok).length;
+  const rows = results.map((r) => `${r.ok ? "✅" : "⚠️"} <b>${esc(r.label)}</b> — ${esc(r.detail)}`).join("<br>");
+  refreshAgendas();
+  await ask({ title: cancelled ? "Beolvasás megszakítva" : (okN === results.length ? "Beolvasás kész" : "Beolvasás — részben kész"),
+    okText: "OK", cancelText: "Bezárás",
+    body: rows + (cancelled ? "<br><br>A többi részt megszakítottad." : "") });
+}
+
+// --- selection popup: pick which parts to read (checkboxes, extensible from DATA_TASKS) ---
+let syncSel = {};
+function renderSyncList() {
+  const wrap = $("sync-list"); wrap.innerHTML = "";
+  const allOn = DATA_TASKS.every((t) => syncSel[t.id]);
+  const master = document.createElement("button");
+  master.type = "button"; master.className = "check sync-master" + (allOn ? " on" : "");
+  master.innerHTML = `<span class="box">${icon("check")}</span><span><span class="c-t">Minden adat</span><span class="c-b">Jelöld ki az összeset egyszerre.</span></span>`;
+  master.onclick = () => { const v = !DATA_TASKS.every((t) => syncSel[t.id]); DATA_TASKS.forEach((t) => syncSel[t.id] = v); renderSyncList(); };
+  wrap.appendChild(master);
+  DATA_TASKS.forEach((t) => {
+    const on = !!syncSel[t.id];
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "check" + (on ? " on" : "");
+    const tag = t.has() ? `<span class="sync-tag have">megvan</span>` : `<span class="sync-tag miss">hiányzik</span>`;
+    b.innerHTML = `<span class="box">${icon("check")}</span><span><span class="c-t">${esc(t.label)}${tag}</span><span class="c-b">${esc(t.sub)}</span></span>`;
+    b.onclick = () => { syncSel[t.id] = !syncSel[t.id]; renderSyncList(); };
+    wrap.appendChild(b);
+  });
+  $("sync-go").disabled = !DATA_TASKS.some((t) => syncSel[t.id]);
+}
+function openDataSync(prefill) {
+  syncSel = {};
+  const pre = (prefill && prefill.length) ? prefill : DATA_TASKS.map((t) => t.id);
+  DATA_TASKS.forEach((t) => syncSel[t.id] = pre.indexOf(t.id) >= 0);
+  renderSyncList();
+  $("sync-sheet").classList.remove("hidden");
+}
+$("sync-cancel").onclick = () => $("sync-sheet").classList.add("hidden");
+$("sync-go").onclick = () => {
+  const ids = DATA_TASKS.filter((t) => syncSel[t.id]).map((t) => t.id);
+  $("sync-sheet").classList.add("hidden");
+  runDataSync(ids);
+};
+
+// Offer the read once per launch (and right after onboarding) when something is still missing.
+async function maybeOfferDataSync() {
+  if (dataSyncOffered || !isNative || !state.setupComplete || !canAutoLogin()) return;
   if (!$("lock").classList.contains("hidden")) return; // wait until unlocked
-  semOffered = true;
-  const ok = await ask({ title: "Félévek beolvasása", okText: "Beolvasás", cancelText: "Majd később",
-    body: "Nincs elmentve, mely féléveid vannak. Beolvassam most a Neptunból? Ez kell a naptár félév szerinti szűréséhez." });
-  if (ok) grabSemesters();
+  const missing = missingTaskIds();
+  if (!missing.length) return;
+  dataSyncOffered = true;
+  openDataSync(missing);
 }
 
 // Grab the timetable subscription (iCal) link: login → Menü → Naptár → Naptár kezelése → read link.
@@ -2131,7 +2277,7 @@ function requireAuth() {
 }
 function lockSuccess() {
   if (lockVerifyCb) { const cb = lockVerifyCb; lockVerifyCb = null; $("lock-cancel").hidden = true; if (!isLocked) $("lock").classList.add("hidden"); cb(true); }
-  else { isLocked = false; $("lock").classList.add("hidden"); setTimeout(maybeOfferSemesters, 500); } // offer after cold-start unlock
+  else { isLocked = false; $("lock").classList.add("hidden"); setTimeout(maybeOfferDataSync, 500); } // offer after cold-start unlock
 }
 function renderLock() {
   const useBio = state.biometric && bioOK;
@@ -2189,7 +2335,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     const ln = LN();
     if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
     rescheduleNotifications(); // refresh reminders on every launch
-    setTimeout(maybeOfferSemesters, 1600); // offer semester read if none saved (once unlocked/settled)
+    setTimeout(maybeOfferDataSync, 1600); // offer the data read if something is still missing
     if (state.setupComplete) setTimeout(dailyBackup, 2500); // one encrypted auto-backup per day
   }
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.

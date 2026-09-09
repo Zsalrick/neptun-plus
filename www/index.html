@@ -207,6 +207,7 @@
                 </div>
 
                 <div id="hub-overview" hidden>
+                  <button class="card next-card hidden" id="btn-sync" type="button"></button>
                   <div class="card cred hidden" id="hub-credit"></div>
                   <button class="card next-card hidden" id="current-class" type="button"></button>
                   <button class="card next-card hidden" id="next-class" type="button"></button>
@@ -739,7 +740,17 @@
     </div>
   </div>
 
-  <div class="busy hidden" id="busy"><div class="spinner"></div><div class="busy-text" id="busy-text">Beolvasás…</div><button class="btn outline busy-cancel" id="busy-cancel" type="button" hidden>Mégse</button></div>
+  <div class="busy hidden" id="busy"><div class="spinner"></div><div class="busy-step" id="busy-step" hidden></div><div class="busy-text" id="busy-text">Beolvasás…</div><div class="busy-bar" id="busy-bar" hidden><span id="busy-fill"></span></div><button class="btn outline busy-cancel" id="busy-cancel" type="button" hidden>Mégse</button></div>
+
+  <!-- Data sync (read necessary data) sheet -->
+  <div class="backdrop hidden" id="sync-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Szükséges adatok beolvasása</div>
+      <div class="sheet-body">Válaszd ki, mit olvassak be a Neptunból. Minden kijelölt részhez külön belépek, ezért ez akár <b>néhány percig</b> is eltarthat — hagyd nyitva az appot közben.</div>
+      <div id="sync-list" class="sync-list"></div>
+      <div class="sheet-actions"><button class="btn outline" id="sync-cancel" type="button">Mégse</button><button class="btn primary" id="sync-go" type="button">Beolvasás</button></div>
+    </div>
+  </div>
 
   <div class="toast hidden" id="toast"></div>
 
