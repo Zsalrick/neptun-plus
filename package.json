@@ -1,0 +1,20 @@
+{
+  "name": "neptun-autologin",
+  "version": "1.0.0",
+  "description": "Neptun automatikus bejelentkezés (Capacitor)",
+  "private": true,
+  "scripts": {
+    "preview": "node server.js",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capgo/capacitor-updater": "^6.51.15",
+    "capacitor-native-biometric": "^4.2.2",
+    "cordova-plugin-inappbrowser": "^5.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

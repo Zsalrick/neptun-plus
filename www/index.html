@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Neptun+</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="preview-stage">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="app" id="app">
+
+        <!-- ============ ONBOARDING ============ -->
+        <section class="screen" id="screen-onboarding">
+          <div class="ob-top">
+            <div class="ob-progress"><div class="ob-progress-bar" id="ob-bar"></div></div>
+            <div class="ob-count" id="ob-count">1 / 4</div>
+          </div>
+          <div class="ob-body" id="ob-body">
+
+            <!-- Step 0: welcome + legal -->
+            <div class="ob-step active" data-step="0">
+              <div class="ob-hero"><span data-icon="key"></span></div>
+              <h1 class="ob-title">Neptun<span class="plus">+</span></h1>
+              <p class="ob-sub">Belépés a Neptunba egyetlen érintéssel. Az azonosítót, a jelszót és a 2FA kódot az alkalmazás kitölti helyetted, itt az eszközödön.</p>
+              <div class="ob-content">
+                <p class="legal-note">Mielőtt belevágunk, kérlek olvasd el és fogadd el az alábbi dokumentumokat. Az adataid csak ezen az eszközön maradnak, semmit nem küldünk külső szerverre.</p>
+                <button class="doc-row" id="open-privacy" type="button">
+                  <span class="row-ic"><span data-icon="shield"></span></span>
+                  <span class="d-t">Adatkezelési tájékoztató</span>
+                  <span class="d-ic" data-icon="chev"></span>
+                </button>
+                <button class="doc-row" id="open-terms" type="button">
+                  <span class="row-ic"><span data-icon="doc"></span></span>
+                  <span class="d-t">Általános Szerződési Feltételek</span>
+                  <span class="d-ic" data-icon="chev"></span>
+                </button>
+                <button class="check mt" id="ob-legal" type="button">
+                  <span class="box"><span data-icon="check"></span></span>
+                  <span><span class="c-t">Elolvastam és elfogadom</span><span class="c-b">Az adatkezelési tájékoztatót és az ÁSZF tartalmát.</span></span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 1: university -->
+            <div class="ob-step" data-step="1">
+              <div class="ob-hero"><span data-icon="building"></span></div>
+              <h1 class="ob-title">Egyetem</h1>
+              <p class="ob-sub">Keresd ki az egyetemed. A Neptun szervert automatikusan beállítjuk.</p>
+              <div class="ob-content">
+                <div class="uni-search field-ic">
+                  <span class="ic-left" data-icon="search"></span>
+                  <input class="input" id="ob-uni-search" placeholder="Keresés, például Pannon, ELTE, PTE" autocomplete="off" />
+                </div>
+                <div class="uni-list" id="ob-uni-list"></div>
+                <button class="opt mt" id="ob-uni-custom" type="button">
+                  <span class="o-radio"></span>
+                  <span class="o-main"><span class="o-t">Nincs a listában</span><span class="o-b">Add meg a Neptun bejelentkező linkjét</span></span>
+                </button>
+                <div id="ob-custom-wrap" class="hidden mt">
+                  <div class="field"><label>Egyetem neve</label><input class="input" id="ob-custom-label" placeholder="például Saját egyetem" /></div>
+                  <div class="field"><label>Bejelentkező cím</label><input class="input" id="ob-custom-url" placeholder="https://..." /></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 2: credentials -->
+            <div class="ob-step" data-step="2">
+              <div class="ob-hero"><span data-icon="user"></span></div>
+              <h1 class="ob-title">Belépési adatok</h1>
+              <p class="ob-sub">A Neptun azonosítód és a jelszavad. Csak ezen az eszközön tárolódik.</p>
+              <div class="ob-content">
+                <div class="field"><label>Azonosító</label><input class="input" id="ob-username" placeholder="Neptun azonosító" autocomplete="off" autocapitalize="characters" maxlength="6" /></div>
+                <div class="hint err" id="ob-username-err" hidden>A Neptun azonosító pontosan 6 karakter, csak betű és szám.</div>
+                <div class="field"><label>Jelszó</label>
+                  <div class="input-group">
+                    <input class="input" id="ob-password" type="password" placeholder="Jelszó" autocomplete="off" />
+                    <button class="iconbtn" id="ob-show-pass" type="button"><span data-icon="eye"></span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3: app lock -->
+            <div class="ob-step" data-step="3">
+              <div class="ob-hero"><span data-icon="lock"></span></div>
+              <h1 class="ob-title">Alkalmazászár</h1>
+              <p class="ob-sub" id="ob-pin-sub">Adj meg egy 4 számjegyű kódot. Ezt kérni fogja az app minden megnyitáskor.</p>
+              <div class="ob-content">
+                <div class="pin-dots" id="ob-pin-dots" style="justify-content:center"></div>
+                <div class="keypad" id="ob-keypad" style="margin:0 auto"></div>
+                <button class="check mt" id="ob-bio" type="button" hidden>
+                  <span class="box"><span data-icon="check"></span></span>
+                  <span><span class="c-t">Biometrikus feloldás</span><span class="c-b">Ujjlenyomat vagy arc a kód helyett, ha az eszköz támogatja.</span></span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 4: 2FA -->
+            <div class="ob-step" data-step="4">
+              <div class="ob-hero"><span data-icon="shield"></span></div>
+              <h1 class="ob-title">Kétlépcsős kód</h1>
+              <p class="ob-sub">Van kétlépcsős azonosítás az egyetemed Neptunjához?</p>
+              <div class="ob-content">
+                <button class="opt" id="ob-2fa-no" type="button">
+                  <span class="o-radio"></span>
+                  <span class="o-main"><span class="o-t">Nincs</span><span class="o-b">A belépéshez csak az azonosító és a jelszó kell.</span></span>
+                </button>
+                <button class="opt" id="ob-2fa-yes" type="button">
+                  <span class="o-radio"></span>
+                  <span class="o-main"><span class="o-t">Van, beállítom</span><span class="o-b">Kép feltöltése vagy kézi kulcs.</span></span>
+                </button>
+
+                <div id="ob-2fa-setup" class="hidden mt">
+                  <label class="btn tonal" id="ob-qr-btn"><span data-icon="qr"></span> Authenticator kép feltöltése
+                    <input type="file" id="ob-qr" accept="image/*" hidden /></label>
+                  <div class="input-group mt">
+                    <input class="input mono" id="ob-secret" placeholder="Titkos kulcs, például JBSWY3DPEHPK3PXP" autocomplete="off" />
+                    <button class="btn outline narrow" id="ob-secret-save" type="button">Hozzáad</button>
+                  </div>
+                  <div class="section-label" style="margin-left:2px">Találatok</div>
+                  <div id="ob-qr-result" class="qr-accts"></div>
+                  <div id="ob-2fa-status" class="mt"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="ob-footer">
+            <button class="btn outline back" id="ob-back" type="button"><span data-icon="back"></span></button>
+            <button class="btn primary" id="ob-next" type="button">Tovább</button>
+          </div>
+        </section>
+
+        <!-- ============ APP SHELL ============ -->
+        <div class="app-shell hidden" id="app-shell">
+          <div class="tab-host">
+
+            <section class="tabscreen active" id="tab-home">
+              <header class="topbar">
+                <div style="flex:1"><div class="wordmark">Neptun<span class="plus">+</span></div><div class="topbar-sub" id="home-sub">Készen áll a belépésre</div></div>
+                <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
+              </header>
+              <div class="scroll">
+                <div class="card hero">
+                  <div class="hero-top">
+                    <div style="min-width:0">
+                      <div class="hero-cap">Azonosító</div>
+                      <div class="hero-id" id="disp-username">Nincs adat</div>
+                      <div class="hero-uni" id="disp-server"></div>
+                    </div>
+                    <button class="chip" id="server-chip"><span data-icon="swap"></span> Váltás</button>
+                  </div>
+                  <div class="totp-tile" id="totp-tile">
+                    <div class="ring-wrap"><svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"></circle><circle class="fg" id="ring-fg" cx="22" cy="22" r="19"></circle></svg><span class="ring-sec" id="totp-seconds">30</span></div>
+                    <div class="totp-main"><div class="totp-lbl" id="totp-account">2FA kód</div><div class="totp-code" id="totp-code">000 000</div></div>
+                    <button class="iconbtn plain" id="btn-copy-code" title="Másolás"><span data-icon="copy"></span></button>
+                  </div>
+                  <span class="chip-muted hidden" id="chip-no2fa"><span data-icon="shield"></span> Kétlépcsős azonosítás kikapcsolva</span>
+                </div>
+                <button class="btn primary lg" id="btn-login"><span data-icon="key"></span> <span id="btn-login-text">Bejelentkezés</span></button>
+                <div class="hint center" id="login-hint"></div>
+                <button class="card next-card hidden" id="next-class" type="button"></button>
+                <button class="card next-card hidden" id="next-exam" type="button"></button>
+              </div>
+              <div class="version-tag" id="version-tag"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-timetable">
+              <header class="topbar">
+                <div style="flex:1"><div class="wordmark">Órarend</div><div class="topbar-sub" id="tt-sub">Feliratkozási link szükséges</div></div>
+                <button class="iconbtn" id="tt-refresh" title="Frissítés" hidden><span data-icon="refresh"></span></button>
+                <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
+              </header>
+              <div class="ptr" id="tt-ptr" data-icon="refresh"></div>
+              <div class="scroll" id="tt-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-exams">
+              <header class="topbar">
+                <div style="flex:1"><div class="wordmark">Vizsgák</div><div class="topbar-sub" id="ex-sub">Számonkérések</div></div>
+                <button class="iconbtn" id="ex-refresh" title="Frissítés" hidden><span data-icon="refresh"></span></button>
+                <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
+              </header>
+              <div class="ptr" id="ex-ptr" data-icon="refresh"></div>
+              <div class="scroll" id="ex-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-courses">
+              <header class="topbar">
+                <div style="flex:1"><div class="wordmark">Tárgyak</div><div class="topbar-sub" id="co-sub">Felvett tárgyak</div></div>
+                <button class="iconbtn" id="co-refresh" title="Beolvasás"><span data-icon="refresh"></span></button>
+                <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
+              </header>
+              <div class="scroll" id="co-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-settings">
+              <header class="topbar">
+                <button class="iconbtn plain" id="settings-back" title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Beállítások</div><div class="topbar-sub">Fiók és biztonság</div></div>
+              </header>
+              <div class="scroll">
+                <div class="section-label">Fiók</div>
+                <div class="card"><div class="card-pad">
+                  <div class="field"><label>Azonosító</label><input class="input" id="in-username" placeholder="Neptun azonosító" autocomplete="off" autocapitalize="characters" maxlength="6" />
+                    <div class="hint err" id="in-username-err" hidden>A Neptun azonosító pontosan 6 karakter, csak betű és szám.</div>
+                  </div>
+                  <div class="field"><label>Jelszó</label>
+                    <div class="input-group">
+                      <input class="input" id="in-password" type="password" placeholder="Jelszó" autocomplete="off" />
+                      <button class="iconbtn" id="btn-show-pass" type="button"><span data-icon="eye"></span></button>
+                    </div>
+                  </div>
+                </div></div>
+
+                <div class="section-label">Egyetem és szerver</div>
+                <div class="card">
+                  <button class="row" id="btn-change-uni">
+                    <span class="row-ic"><span data-icon="building"></span></span>
+                    <span class="row-main"><span class="row-title" id="cur-uni">Nincs kiválasztva</span><span class="row-sub">Egyetem módosítása</span></span>
+                    <span class="row-chev" data-icon="chev"></span>
+                  </button>
+                </div>
+                <div class="card" id="server-list"></div>
+
+                <div class="section-label">Kétlépcsős hitelesítés</div>
+                <div class="card"><div class="card-pad">
+                  <div id="totp-status"></div>
+                  <label class="btn tonal mt" id="set-qr-btn"><span data-icon="qr"></span> Kép feltöltése
+                    <input type="file" id="in-qr" accept="image/*" hidden /></label>
+                  <div id="qr-result" class="qr-accts"></div>
+                  <div class="divider-or">vagy kézi kulcs</div>
+                  <div class="input-group">
+                    <input class="input mono" id="in-secret" placeholder="JBSWY3DPEHPK3PXP" autocomplete="off" />
+                    <button class="btn outline narrow" id="btn-save-secret" type="button">Mentés</button>
+                  </div>
+                  <button class="check mt" id="toggle-no2fa" type="button">
+                    <span class="box"><span data-icon="check"></span></span>
+                    <span><span class="c-t">A sulimnál nincs kétlépcsős azonosítás</span><span class="c-b">A belépéshez csak az azonosító és a jelszó kell.</span></span>
+                  </button>
+                </div></div>
+
+                <div class="section-label">Órarend</div>
+                <div class="card">
+                  <button class="row" id="btn-ics">
+                    <span class="row-ic"><span data-icon="calendar"></span></span>
+                    <span class="row-main"><span class="row-title">Feliratkozási link</span><span class="row-sub" id="ics-status">Nincs beállítva</span></span>
+                    <span class="row-chev" data-icon="chev"></span>
+                  </button>
+                </div>
+
+                <div class="section-label">Dokumentumok</div>
+                <div class="card">
+                  <button class="row" id="open-privacy2"><span class="row-ic"><span data-icon="shield"></span></span><span class="row-main"><span class="row-title">Adatkezelési tájékoztató</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" id="open-terms2"><span class="row-ic"><span data-icon="doc"></span></span><span class="row-main"><span class="row-title">Általános Szerződési Feltételek</span></span><span class="row-chev" data-icon="chev"></span></button>
+                </div>
+
+                <div class="section-label">Adatok</div>
+                <div class="card">
+                  <button class="row danger" id="btn-reset">
+                    <span class="row-ic danger"><span data-icon="trash"></span></span>
+                    <span class="row-main"><span class="row-title">Minden adat törlése</span><span class="row-sub">Visszaáll a kezdő beállításra</span></span>
+                  </button>
+                </div>
+                <div class="hint center" style="margin:16px 0 6px">Neptun+, minden adat csak ezen az eszközön</div>
+              </div>
+            </section>
+
+          </div>
+
+          <nav class="nav-island">
+            <div class="nav-ind" id="nav-ind"></div>
+            <button class="nav-btn active" data-tab="tab-home"><span data-icon="key"></span><span class="nlabel">Belépés</span></button>
+            <button class="nav-btn" data-tab="tab-timetable"><span data-icon="calendar"></span><span class="nlabel">Órarend</span></button>
+            <button class="nav-btn" data-tab="tab-exams"><span data-icon="clipboard"></span><span class="nlabel">Vizsgák</span></button>
+            <button class="nav-btn" data-tab="tab-courses"><span data-icon="book"></span><span class="nlabel">Tárgyak</span></button>
+          </nav>
+        </div>
+
+        <!-- App lock overlay -->
+        <div class="lock hidden" id="lock">
+          <div class="lock-badge"><span data-icon="lock"></span></div>
+          <div class="lock-title">Neptun+</div>
+          <div class="lock-hint" id="lock-hint">Add meg a kódot a folytatáshoz.</div>
+          <div class="pin-dots" id="lock-dots"></div>
+          <div class="keypad" id="lock-keypad"></div>
+          <button class="btn ghost lock-alt" id="lock-cancel" hidden>Mégse</button>
+        </div>
+
+      </div>
+    </div>
+    <div class="stage-note" data-preview-only><b>Neptun+ előnézet.</b> Így néz ki az app a telefonon. A valódi belépés az alkalmazásban történik.</div>
+  </div>
+
+  <!-- University picker sheet -->
+  <div class="backdrop hidden" id="uni-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Egyetem választása</div>
+      <div class="uni-search field-ic" style="margin-top:12px"><span class="ic-left" data-icon="search"></span>
+        <input class="input" id="uni-sheet-search" placeholder="Keresés" autocomplete="off" /></div>
+      <div class="uni-list" id="uni-sheet-list" style="margin-top:10px"></div>
+      <div class="sheet-actions"><button class="btn outline" id="uni-sheet-close">Mégse</button></div>
+    </div>
+  </div>
+
+  <!-- Server switch sheet -->
+  <div class="backdrop hidden" id="server-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Szerver választása</div>
+      <div id="server-sheet-list" style="margin-top:10px"></div>
+      <div class="sheet-actions"><button class="btn outline" id="server-sheet-close">Mégse</button></div>
+    </div>
+  </div>
+
+  <!-- Confirm reset -->
+  <div class="backdrop hidden" id="confirm-dialog">
+    <div class="sheet">
+      <div class="sheet-title">Biztosan törlöd?</div>
+      <div class="sheet-body">Törlődik az azonosító, a Neptun jelszó, a kétlépcsős kulcs és az egyetem. A folytatáshoz igazolnod kell magad.</div>
+      <button class="check" id="reset-delpin" type="button" style="margin-top:14px">
+        <span class="box"><span data-icon="check"></span></span>
+        <span><span class="c-t">A PIN kódot és a biometriát is töröljem</span><span class="c-b">Alapból megmarad, hogy ne kelljen újra beállítani.</span></span>
+      </button>
+      <div class="sheet-actions">
+        <button class="btn outline" id="confirm-cancel">Mégse</button>
+        <button class="btn danger" id="confirm-ok">Törlés</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ICS subscription link setup sheet -->
+  <div class="backdrop hidden" id="ics-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Órarend feliratkozási link</div>
+      <div class="doc">
+        <p>A Neptunban: <b>Naptár</b> menü, majd <b>Export</b> vagy <b>Feliratkozás</b>. Másold ki a feliratkozási linket, és illeszd be ide. Ez a link mindig az aktuális órarendet adja, belépés nélkül.</p>
+      </div>
+      <button class="btn tonal" id="ics-auto" style="margin-top:12px"><span data-icon="refresh"></span> Automatikus lekérés a Neptunból</button>
+      <div class="divider-or">vagy kézzel</div>
+      <div class="field"><input class="input mono" id="ics-input" placeholder="https://...ical vagy webcal://..." autocomplete="off" /></div>
+      <div class="sheet-actions">
+        <button class="btn outline" id="ics-cancel">Mégse</button>
+        <button class="btn primary" id="ics-save">Mentés és frissítés</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event detail sheet (notes, delete) -->
+  <div class="backdrop hidden" id="detail-sheet">
+    <div class="sheet">
+      <div id="detail-body"></div>
+      <div class="sheet-actions"><button class="btn outline" id="detail-close">Bezárás</button></div>
+    </div>
+  </div>
+
+  <!-- Manual exam / ZH add sheet -->
+  <div class="backdrop hidden" id="exam-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Számonkérés hozzáadása</div>
+      <div class="field"><label>Tárgy</label><button class="picker-btn" id="ex-subject-btn" type="button"><span id="ex-subject-lbl">Válassz tárgyat</span><span data-icon="down"></span></button></div>
+      <div class="input-group">
+        <div class="field" style="flex:1"><label>Dátum</label><button class="picker-btn" id="ex-date-btn" type="button"><span id="ex-date-lbl">Válassz dátumot</span><span data-icon="calendar"></span></button></div>
+        <div class="field" style="width:130px"><label>Kezdés</label><button class="picker-btn" id="ex-time-btn" type="button"><span id="ex-time-lbl">--:--</span><span data-icon="clock"></span></button></div>
+      </div>
+      <div class="field"><label>Helyszín</label><input class="input" id="ex-loc" placeholder="opcionális" autocomplete="off" /></div>
+      <div class="field"><label>Leírás</label><input class="input" id="ex-note" placeholder="például ZH 1" autocomplete="off" /></div>
+      <div class="sheet-actions"><button class="btn outline" id="exam-cancel">Mégse</button><button class="btn primary" id="exam-save">Mentés</button></div>
+    </div>
+  </div>
+
+  <!-- Generic list picker (custom, replaces native selects) -->
+  <div class="backdrop hidden" id="picker-sheet">
+    <div class="sheet">
+      <div class="sheet-title" id="pk-title"></div>
+      <div class="chips" id="pk-chips" hidden style="margin-top:10px"></div>
+      <div class="uni-search field-ic" id="pk-search-wrap" hidden style="margin-top:10px"><span class="ic-left" data-icon="search"></span><input class="input" id="pk-search" placeholder="Keresés vagy beírás" autocomplete="off" /></div>
+      <div class="uni-list" id="pk-list" style="margin-top:10px"></div>
+      <div class="sheet-actions"><button class="btn outline" id="pk-close">Mégse</button></div>
+    </div>
+  </div>
+
+  <!-- Custom time picker -->
+  <div class="backdrop hidden" id="time-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Időpont</div>
+      <div class="time-cols">
+        <div class="time-col" id="tp-hours"></div>
+        <div class="time-col" id="tp-mins"></div>
+      </div>
+      <div class="sheet-actions"><button class="btn outline" id="tp-cancel">Mégse</button><button class="btn primary" id="tp-ok">Kész</button></div>
+    </div>
+  </div>
+
+  <!-- Custom calendar picker -->
+  <div class="backdrop hidden" id="cal-sheet">
+    <div class="sheet">
+      <div class="cal-head"><button class="iconbtn" id="cal-prev" type="button"><span data-icon="back"></span></button><div class="cal-title" id="cal-title"></div><button class="iconbtn" id="cal-next" type="button"><span data-icon="chev"></span></button></div>
+      <div class="cal-week"><span>H</span><span>K</span><span>Sze</span><span>Cs</span><span>P</span><span>Szo</span><span>V</span></div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="sheet-actions"><button class="btn outline" id="cal-cancel">Mégse</button></div>
+    </div>
+  </div>
+
+  <!-- Generic confirm dialog -->
+  <div class="backdrop hidden" id="ask-dialog">
+    <div class="sheet">
+      <div class="sheet-title" id="ask-title"></div>
+      <div class="sheet-body" id="ask-body"></div>
+      <div class="sheet-actions">
+        <button class="btn outline" id="ask-cancel">Mégse</button>
+        <button class="btn primary" id="ask-ok">Igen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login preview modal -->
+  <div class="backdrop hidden" id="login-modal">
+    <div class="sheet">
+      <div class="sheet-title">Bejelentkezés, előnézet</div>
+      <div class="sheet-body" id="login-modal-body"></div>
+      <div class="sheet-actions">
+        <button class="btn outline" id="login-modal-close">Bezárás</button>
+        <button class="btn primary" id="lm-open">Neptun megnyitása</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privacy sheet -->
+  <div class="backdrop hidden" id="privacy-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Adatkezelési tájékoztató</div>
+      <div class="doc">
+        <div class="meta">
+          <b>Szolgáltató és adatkezelő:</b> Kiss Ádám egyéni vállalkozó<br>
+          Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844<br>
+          Email: info@kissadamev.hu
+        </div>
+        <h3>1. A tájékoztató tárgya</h3>
+        <p>Ez a tájékoztató a Neptun+ alkalmazás adatkezelését ismerteti, a GDPR szabályaival összhangban. A weboldal adatkezeléséről külön tájékoztató szól a kissadamev.hu címen.</p>
+        <h3>2. Milyen adatokat kezel az alkalmazás</h3>
+        <ul>
+          <li>Neptun azonosító és jelszó</li>
+          <li>Kétlépcsős azonosítás kulcsa, ha megadod</li>
+          <li>A kiválasztott egyetem és Neptun szerver</li>
+        </ul>
+        <h3>3. Hol tárolódnak</h3>
+        <p>Ezek az adatok kizárólag a te eszközödön tárolódnak, az alkalmazás helyi tárolójában. A Szolgáltató ezekhez nem fér hozzá, és nem is látja őket.</p>
+        <h3>4. Adattovábbítás</h3>
+        <p>Az alkalmazás nem küldi el ezeket az adatokat a Szolgáltatónak és semmilyen külső szervernek. Az egyetlen hálózati kapcsolat közvetlenül a te eszközöd és az általad választott egyetem Neptun szervere között jön létre, kizárólag a bejelentkezés céljából. Ezt a szervert az adott egyetem üzemelteti, nem a Szolgáltató.</p>
+        <h3>5. Nyomon követés</h3>
+        <p>Az alkalmazás nem használ analitikát, reklámot, sütit vagy egyéb nyomkövetést a Szolgáltató részéről.</p>
+        <h3>6. Az adatok törlése</h3>
+        <p>Az adatok bármikor törölhetők a Beállítások menü Minden adat törlése pontjával, vagy az alkalmazás eltávolításával.</p>
+        <h3>7. Jogaid és kapcsolat</h3>
+        <p>Mivel a Szolgáltató nem fér hozzá az adataidhoz és nem tárolja azokat, érdemi adatkezelést nem végez. Kérdés esetén az info@kissadamev.hu címen fordulhatsz hozzá.</p>
+        <h3>8. Külső rendszerek</h3>
+        <p>A Neptun rendszert és az egyetemek szervereit önálló szervezetek üzemeltetik. Az azokon végzett adatkezelésre ez a tájékoztató nem terjed ki.</p>
+      </div>
+      <div class="sheet-actions"><button class="btn outline" id="privacy-close">Bezárás</button></div>
+    </div>
+  </div>
+
+  <!-- Terms sheet -->
+  <div class="backdrop hidden" id="terms-sheet">
+    <div class="sheet">
+      <div class="sheet-title">Általános Szerződési Feltételek</div>
+      <div class="doc">
+        <div class="meta">
+          <b>Szolgáltató:</b> Kiss Ádám egyéni vállalkozó<br>
+          Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844<br>
+          Email: info@kissadamev.hu
+        </div>
+        <h3>1. Az alkalmazás</h3>
+        <p>A Neptun+ egy segédalkalmazás, amely a felhasználó eszközén tárolt adatokkal megkönnyíti a belépést a felhasználó egyetemének Neptun rendszerébe.</p>
+        <h3>2. Díj</h3>
+        <p>Az alkalmazás használata ingyenes.</p>
+        <h3>3. Használat</h3>
+        <p>Az alkalmazást a felhasználó kizárólag a saját Neptun fiókjához, jogszerűen használhatja. A belépési adatok védelme a felhasználó felelőssége.</p>
+        <h3>4. Függetlenség</h3>
+        <p>Az alkalmazás nem hivatalos. Nincs kapcsolatban sem az egyetemekkel, sem a Neptun rendszer fejlesztőjével vagy üzemeltetőjével.</p>
+        <h3>5. Felelősség korlátozása</h3>
+        <p>Az alkalmazás abban az állapotában érhető el, ahogy van, mindenféle jótállás nélkül. A Szolgáltató nem felel az esetleges hibákból, a Neptun oldal változásaiból, az elmaradt belépésből vagy adatvesztésből eredő károkért. A használat a felhasználó saját felelősségére történik.</p>
+        <h3>6. Módosítás</h3>
+        <p>A Szolgáltató a feltételeket módosíthatja. A módosítás az alkalmazás frissítésével lép hatályba.</p>
+        <h3>7. Irányadó jog</h3>
+        <p>A feltételekre a magyar jog az irányadó.</p>
+        <h3>8. Elfogadás</h3>
+        <p>Az alkalmazás használatával a felhasználó elfogadja ezeket a feltételeket.</p>
+      </div>
+      <div class="sheet-actions"><button class="btn outline" id="terms-close">Bezárás</button></div>
+    </div>
+  </div>
+
+  <div class="busy hidden" id="busy"><div class="spinner"></div><div class="busy-text" id="busy-text">Beolvasás…</div></div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="lib/jsQR.js"></script>
+  <script src="update.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
