@@ -21,40 +21,46 @@
   // "v0.033" / "0.033" / "0.0.33" -> a comparable integer
   function verNum(v) { return parseInt(String(v || "").replace(/[^0-9]/g, ""), 10) || 0; }
 
+  // Persist a human-readable status so it can be shown in Settings (helps diagnose on device).
+  function setStatus(s) { try { localStorage.setItem("neptun-ota-status", JSON.stringify({ t: Date.now(), s: s })); } catch (e) {} log(s); }
+  function lastStatus() { try { return JSON.parse(localStorage.getItem("neptun-ota-status") || "null"); } catch (e) { return null; } }
+  var errMsg = (e) => (e && (e.message || e.errorMessage)) ? (e.message || e.errorMessage) : String(e);
+
   // opts: { current, onFound(manifest), onDone(manifest), onError(e), apply:"next"|"now" }
+  // Always resolves with a result object: { ok, updated?, version?, reason?, error? }.
   async function check(opts) {
     opts = opts || {};
     var C = window.Capacitor;
     var UP = C && C.Plugins && C.Plugins.CapacitorUpdater;
-    if (!C || !C.isNativePlatform || !C.isNativePlatform() || !UP) { log("kihagyva (nem natív / nincs plugin)"); return; }
-    // Tell Capgo the current bundle booted fine so it never rolls back.
+    if (!C || !C.isNativePlatform || !C.isNativePlatform() || !UP) { return { ok: false, reason: "not-native" }; }
     try { await UP.notifyAppReady(); } catch (e) { log("notifyAppReady", e); }
-    if (!configured()) { log("nincs beállítva GH_USER/GH_REPO"); return; }
+    if (!configured()) { return { ok: false, reason: "not-configured" }; }
 
     var manifest;
     try {
+      setStatus("Frissítés keresése");
       var res = await fetch(manifestUrl(), { cache: "no-store" });
-      if (!res.ok) { log("manifest HTTP " + res.status); return; }
+      if (!res.ok) { setStatus("Manifest HTTP " + res.status); return { ok: false, reason: "http", code: res.status }; }
       manifest = await res.json();
-    } catch (e) { log("manifest lekérés hiba", e); return; }
-    if (!manifest || !manifest.version || !manifest.url) { log("hiányos manifest", manifest); return; }
+    } catch (e) { setStatus("Hálózati hiba: " + errMsg(e)); return { ok: false, reason: "fetch", error: errMsg(e) }; }
+    if (!manifest || !manifest.version || !manifest.url) { setStatus("Hibás manifest"); return { ok: false, reason: "manifest" }; }
 
     var cur = opts.current || "";
-    if (verNum(manifest.version) <= verNum(cur)) { log("nincs újabb (" + manifest.version + " <= " + cur + ")"); return; }
-    log("új verzió elérhető: " + manifest.version + " (jelenlegi " + cur + ")");
+    if (verNum(manifest.version) <= verNum(cur)) { setStatus("Naprakész (" + cur + ")"); return { ok: true, updated: false, version: manifest.version }; }
+    setStatus("Új verzió: " + manifest.version + ", letöltés…");
     if (opts.onFound) { try { opts.onFound(manifest); } catch (e) {} }
 
     var bundle;
     try {
       bundle = await UP.download({ url: manifest.url, version: String(manifest.version) });
-    } catch (e) { log("letöltés hiba", e); if (opts.onError) opts.onError(e); return; }
+    } catch (e) { setStatus("Letöltés hiba: " + errMsg(e)); if (opts.onError) opts.onError(e); return { ok: false, reason: "download", error: errMsg(e) }; }
     try {
-      if (opts.apply === "now") await UP.set({ id: bundle.id });      // immediate reload
-      else await UP.next({ id: bundle.id });                          // apply on next launch/background
-      log("letöltve és beütemezve: " + manifest.version);
+      if (opts.apply === "now") { setStatus("Alkalmazás…"); await UP.set({ id: bundle.id }); } // reloads
+      else { await UP.next({ id: bundle.id }); setStatus("Letöltve: " + manifest.version + " (újraindításkor lép életbe)"); }
       if (opts.onDone) opts.onDone(manifest);
-    } catch (e) { log("aktiválás hiba", e); if (opts.onError) opts.onError(e); }
+      return { ok: true, updated: true, version: manifest.version };
+    } catch (e) { setStatus("Aktiválás hiba: " + errMsg(e)); if (opts.onError) opts.onError(e); return { ok: false, reason: "apply", error: errMsg(e) }; }
   }
 
-  window.OTA = { check: check, manifestUrl: manifestUrl, configured: configured };
+  window.OTA = { check: check, manifestUrl: manifestUrl, configured: configured, lastStatus: lastStatus };
 })();

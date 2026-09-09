@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.036";
+const APP_VERSION = "v0.037";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -37,7 +37,6 @@ const P = {
   down: '<path d="m6 9 6 6 6-6"/>',
   note: '<path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M9 9h6M9 13h4"/>',
   book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 0-2 2z"/><path d="M5 4v16M18 20a2 2 0 0 1 2 2"/>',
-  coffee: '<path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 9h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M8 2.5c.6.7.6 1.3 0 2M12 2.5c.6.7.6 1.3 0 2"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ""}</svg>`; }
 function renderIcons(root = document) {
@@ -766,7 +765,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
         const gap = e.S.getTime() - prevEnd.getTime();
         if (gap >= 20 * 60000) {
           html += `<div class="tt-break"><span class="tt-break-line"></span>
-            <span class="tt-break-chip">${icon("coffee")} Szünet · ${fmtDur(gap)} <b>${hm(prevEnd)}–${hm(e.S)}</b></span>
+            <span class="tt-break-chip">Szünet · ${fmtDur(gap)} <b>${hm(prevEnd)}–${hm(e.S)}</b></span>
             <span class="tt-break-line"></span></div>`;
         }
       }
@@ -1152,7 +1151,28 @@ function syncSettings() {
   $("cur-uni").textContent = state.university || "Nincs kiválasztva";
   renderServersSettings();
   renderTotpStatus();
+  updateUpdateStatus();
 }
+function updateUpdateStatus() {
+  const el = $("update-status"); if (!el) return;
+  let s = "Verzió " + APP_VERSION;
+  const last = window.OTA && window.OTA.lastStatus && window.OTA.lastStatus();
+  if (last && last.s) s += " · " + last.s;
+  el.textContent = s;
+}
+$("btn-check-update").onclick = async () => {
+  if (!isNative) { toast("A frissítés a telefonos alkalmazásban működik."); return; }
+  if (!window.OTA) { toast("A frissítő nem elérhető."); return; }
+  showBusy("Frissítés keresése…");
+  let res;
+  try { res = await window.OTA.check({ current: APP_VERSION, apply: "now" }); }
+  catch (e) { res = { ok: false, reason: "exception", error: String(e) }; }
+  finally { hideBusy(); }
+  updateUpdateStatus();
+  if (res && res.ok && res.updated) toast("Új verzió letöltve, frissítés…"); // set() reloads
+  else if (res && res.ok) toast("Az alkalmazás naprakész (" + APP_VERSION + ").");
+  else toast("Frissítés nem sikerült: " + ((res && (res.error || res.reason)) || "ismeretlen"));
+};
 $("in-username").addEventListener("input", (e) => {
   const v = normCode(e.target.value); e.target.value = v; state.username = v; saveState();
   $("in-username-err").hidden = v.length === 0 || validCode(v);
@@ -1381,8 +1401,9 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     setBootText("Frissítés keresése");
     try {
       await Promise.race([
-        window.OTA.check({ current: APP_VERSION, apply: "now", onFound: () => setBootText("Új verzió letöltése") }),
-        new Promise((r) => setTimeout(r, 8000)), // don't let a slow network hold the app hostage
+        window.OTA.check({ current: APP_VERSION, apply: "now", onFound: () => setBootText("Új verzió letöltése"),
+          onError: (e) => setBootText("Frissítés kihagyva") }),
+        new Promise((r) => setTimeout(r, 12000)), // don't let a slow network hold the app hostage
       ]);
     } catch (e) { /* proceed into the app regardless */ }
   }

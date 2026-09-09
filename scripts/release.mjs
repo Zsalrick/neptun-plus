@@ -5,10 +5,11 @@
 // create a GitHub release tagged with the version and upload www-<ver>.zip + latest.json.
 // GH_USER/GH_REPO are read from www/update.js (single source of truth).
 // Requires the GitHub CLI (`gh`) authenticated: `gh auth login`.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import JSZip from "jszip";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const notesArg = (() => { const i = process.argv.indexOf("--notes"); return i >= 0 ? process.argv[i + 1] : ""; })();
@@ -32,11 +33,21 @@ if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
 const zipPath = join(distDir, zipName);
 const bundleUrl = `https://github.com/${ghUser}/${ghRepo}/releases/download/${tag}/${zipName}`;
 
-// --- zip www/* (contents at zip root) via PowerShell Compress-Archive ---
+// --- zip www/* (contents at zip root) with forward-slash paths ---
+// IMPORTANT: use jszip, not PowerShell Compress-Archive — the latter writes backslash entry
+// paths ("lib\ical.js") which Android/Capgo can't unzip into folders, so the bundle fails to
+// load and rolls back. jszip always writes spec-compliant "/" separators.
 console.log("Zipping www/ -> dist/" + zipName);
-const ps = `Compress-Archive -Path '${join(ROOT, "www")}\\*' -DestinationPath '${zipPath}' -Force`;
-const z = spawnSync("powershell", ["-NoProfile", "-Command", ps], { stdio: "inherit" });
-if (z.status !== 0) die("Compress-Archive failed.");
+const zip = new JSZip();
+(function add(dir, base) {
+  for (const name of readdirSync(dir)) {
+    const fp = join(dir, name), rel = base ? base + "/" + name : name;
+    if (statSync(fp).isDirectory()) add(fp, rel);
+    else zip.file(rel, readFileSync(fp));
+  }
+})(join(ROOT, "www"), "");
+const zipBuf = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } });
+writeFileSync(zipPath, zipBuf);
 
 // --- manifest ---
 const manifest = { version: tag, url: bundleUrl, notes: notesArg, published: new Date().toISOString() };
