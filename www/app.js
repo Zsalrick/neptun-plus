@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.109";
+const APP_VERSION = "v0.110";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -45,10 +45,16 @@ function renderIcons(root = document) {
 }
 
 // ---------- state ----------
+// Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
+// These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
+// and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress"];
 function defaultState() {
   return {
     setupComplete: false,
     legalAccepted: false,
+    profiles: [], // [{ id, ...PROFILE_FIELDS }] — one per Neptun identity (university). Mirror of the active one lives at top level.
+    activeProfileId: null,
     university: "",
     servers: UNIVERSITIES[0].servers.map((s, i) => ({ id: "u" + i, label: s.label, url: s.url })),
     activeServerId: "u0",
@@ -84,7 +90,17 @@ function defaultState() {
 function loadState() {
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) return migrate(Object.assign(defaultState(), JSON.parse(raw))); }
   catch { /* ignore */ }
-  return defaultState();
+  return ensureProfiles(defaultState());
+}
+// Guarantee at least one profile exists and activeProfileId points to a real one.
+function ensureProfiles(s) {
+  if (!Array.isArray(s.profiles) || !s.profiles.length) {
+    const p = { id: uid() }; PROFILE_FIELDS.forEach((k) => p[k] = s[k]);
+    s.profiles = [p]; s.activeProfileId = p.id;
+  } else if (!s.activeProfileId || !s.profiles.some((p) => p.id === s.activeProfileId)) {
+    s.activeProfileId = s.profiles[0].id;
+  }
+  return s;
 }
 // Bring older saved shapes up to date (Object.assign is shallow, so nested objects need fixing).
 function migrate(s) {
@@ -96,9 +112,15 @@ function migrate(s) {
     s.notify = { classes: { enabled: on, leads: [lead] }, zh: d.notify.zh, vizsga: d.notify.vizsga };
   }
   ["classes", "zh", "vizsga"].forEach((c) => { if (!s.notify[c]) s.notify[c] = d.notify[c]; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
+  // Multi-profile migration: wrap the existing single identity as profile #1.
+  ensureProfiles(s);
   return s;
 }
-function saveState() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* ignore */ } }
+function activeProfile() { return (state.profiles || []).find((p) => p.id === state.activeProfileId) || null; }
+function syncActiveToProfiles() { const p = activeProfile(); if (p) PROFILE_FIELDS.forEach((k) => { p[k] = state[k]; }); }
+function loadProfileToTop(p) { PROFILE_FIELDS.forEach((k) => { state[k] = p[k]; }); }
+function profileLabel(p) { return (p && (p.university || (p.username ? "Neptun" : ""))) || "Új profil"; }
+function saveState() { try { syncActiveToProfiles(); localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* ignore */ } }
 let state = loadState();
 
 const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -236,14 +258,16 @@ function renderUniList(container, query, selectedName, onPick) {
 // =====================================================================
 //  ONBOARDING
 // =====================================================================
-const OB_LAST = 5;
-let obStep = 0;
+let obSeq = [0, 1, 2, 3, 4, 5]; // data-step sequence; add-profile mode uses a shorter one
+let obPos = 0;                  // index into obSeq
+let obStep = 0;                 // = obSeq[obPos]
+let obMode = "";                // "" normal setup, "add" adding another profile
 let obSel = null; // university object, or "custom", or null
 let obPin = "", obFirst = null, obPinDone = false;
 
 function updateObProgress() {
-  $("ob-bar").style.width = ((obStep + 1) / (OB_LAST + 1) * 100) + "%";
-  $("ob-count").textContent = `${obStep + 1} / ${OB_LAST + 1}`;
+  $("ob-bar").style.width = ((obPos + 1) / obSeq.length * 100) + "%";
+  $("ob-count").textContent = `${obPos + 1} / ${obSeq.length}`;
 }
 function obStepValid() {
   if (obStep === 0) return state.legalAccepted;
@@ -258,8 +282,8 @@ function obStepValid() {
   return true;
 }
 function updateObFooter() {
-  $("ob-back").style.visibility = obStep === 0 ? "hidden" : "visible";
-  $("ob-next").textContent = obStep === OB_LAST ? "Befejezés" : "Tovább";
+  $("ob-back").style.visibility = (obPos === 0 && obMode !== "add") ? "hidden" : "visible";
+  $("ob-next").textContent = (obPos === obSeq.length - 1) ? "Befejezés" : "Tovább";
   $("ob-next").disabled = !obStepValid();
 }
 function renderOb() {
@@ -332,6 +356,14 @@ function commitObStep1() {
   else if (obSel) applyUniversity(obSel);
 }
 function finishOnboarding() {
+  if (obMode === "add") {
+    obMode = ""; obSeq = [0, 1, 2, 3, 4, 5]; obPos = 0; obStep = 0;
+    dataSyncOffered = false; saveState();
+    enterApp(); showTab("tab-home"); renderHome();
+    toast("Profil hozzáadva.");
+    setTimeout(maybeOfferDataSync, 700);
+    return;
+  }
   state.setupComplete = true; saveState();
   enterApp(); showTab("tab-home");
   toast("Beállítás kész, kezdheted.");
@@ -341,10 +373,13 @@ function initOnboarding() {
   $("ob-next").onclick = () => {
     if (!obStepValid()) return;
     if (obStep === 1) commitObStep1();
-    if (obStep === OB_LAST) return finishOnboarding();
-    obStep++; renderOb();
+    if (obPos === obSeq.length - 1) return finishOnboarding();
+    obPos++; obStep = obSeq[obPos]; renderOb();
   };
-  $("ob-back").onclick = () => { if (obStep > 0) { obStep--; renderOb(); } };
+  $("ob-back").onclick = () => {
+    if (obPos > 0) { obPos--; obStep = obSeq[obPos]; renderOb(); }
+    else if (obMode === "add") cancelAddProfile();
+  };
   $("ob-legal").onclick = () => { state.legalAccepted = !state.legalAccepted; saveState(); $("ob-legal").classList.toggle("on", state.legalAccepted); updateObFooter(); };
   $("open-privacy").onclick = () => $("privacy-sheet").classList.remove("hidden");
   $("open-terms").onclick = () => $("terms-sheet").classList.remove("hidden");
@@ -454,6 +489,46 @@ function navTo(id) {
   showTab(id, dir);
 }
 function enterApp() { $("screen-onboarding").classList.add("hidden"); $("app-shell").classList.remove("hidden"); updateScrollPad(); requestAnimationFrame(updateScrollPad); setTimeout(updateScrollPad, 350); }
+function showOnboardingScreen() { $("app-shell").classList.add("hidden"); $("screen-onboarding").classList.remove("hidden"); }
+
+// ---------- profiles (multiple Neptun identities, one per university) ----------
+function resetProfileCaches() { apiSession = null; lastCode = ""; coFilter = null; exSubjSem = null; ttFilter = "upcoming"; exFilter = "upcoming"; coSeg = "aktualis"; semLoading = false; dataSyncOffered = false; }
+function switchProfile(id) {
+  if (id === state.activeProfileId) return;
+  const target = (state.profiles || []).find((p) => p.id === id); if (!target) return;
+  syncActiveToProfiles();
+  state.activeProfileId = id; loadProfileToTop(target);
+  resetProfileCaches(); saveState();
+  updateIcsStatus(); renderHome(); renderTimetable(); renderExams(); renderCourses();
+  totpTick(); rescheduleNotifications();
+  toast("Profil: " + profileLabel(target));
+}
+function startAddProfile() {
+  syncActiveToProfiles();
+  const p = { id: uid() }; PROFILE_FIELDS.forEach((k) => p[k] = defaultState()[k]);
+  state.profiles.push(p); state.activeProfileId = p.id; loadProfileToTop(p);
+  resetProfileCaches();
+  // Clear onboarding inputs for the fresh identity.
+  ["ob-username", "ob-password", "ob-uni-search", "ob-secret", "ob-custom-label", "ob-custom-url"].forEach((id) => { const el = $(id); if (el) el.value = ""; });
+  obSel = null; ob2faChoice = null;
+  obMode = "add"; obSeq = [1, 2, 5]; obPos = 0; obStep = obSeq[0]; // university → credentials → 2FA (legal/PIN/biometrics are global)
+  showOnboardingScreen(); renderOb();
+}
+function cancelAddProfile() {
+  const cur = state.activeProfileId;
+  state.profiles = state.profiles.filter((p) => p.id !== cur);
+  const back = state.profiles[state.profiles.length - 1];
+  state.activeProfileId = back ? back.id : null;
+  if (back) loadProfileToTop(back);
+  obMode = ""; obSeq = [0, 1, 2, 3, 4, 5]; obPos = 0; obStep = 0;
+  resetProfileCaches(); saveState();
+  enterApp(); showTab("tab-home"); renderHome();
+}
+function openProfilePicker() {
+  const items = (state.profiles || []).map((p) => ({ value: p.id, label: profileLabel(p), sub: p.username || "" }));
+  items.push({ value: "__add__", label: "➕ Új profil hozzáadása" });
+  openList({ title: "Profil", items, selected: state.activeProfileId, onPick: (v) => { if (v === "__add__") startAddProfile(); else switchProfile(v); } });
+}
 // Reserve enough bottom padding in every scroll area to clear the nav bar — measured live, so it
 // stays correct at any text size (large fonts make the nav taller).
 function updateScrollPad() {
@@ -607,6 +682,14 @@ function renderHome() {
   $("home-sub").textContent = semLoading ? "Félévek beolvasása…" : (ready ? "Készen áll" : "Állítsd be a belépést");
   $("login-hint").textContent = isNative ? "Egy érintés, a többit az alkalmazás elvégzi." : "Előnézet. Az alkalmazásban ez automatikusan belép.";
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
+  const pbtn = $("profile-btn");
+  if (pbtn) {
+    const multi = (state.profiles || []).length > 1;
+    const ap = activeProfile();
+    $("profile-name").textContent = ap ? profileLabel(ap) : "Profil";
+    pbtn.querySelector(".row-sub").textContent = multi ? "Profil váltása vagy hozzáadása" : "Profil hozzáadása (másik egyetem)";
+    pbtn.onclick = openProfilePicker;
+  }
   renderNextClass();
   renderNextExam();
   renderProgress();
