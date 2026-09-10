@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.095";
+const APP_VERSION = "v0.096";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1260,24 +1260,91 @@ function buildProgressScript(username, password, code) {
   return "started";
 })();`;
 }
+// =====================================================================
+//  DIRECT NEPTUN API (native HTTP) — reliable reads, no DOM scraping.
+//  Endpoints are constants of the Neptun (SDA) software, shared across
+//  institutions; only the base URL differs. Log in once via the browser to
+//  grab the session token, then read via CapacitorHttp (bypasses CORS).
+// =====================================================================
+function CHTTP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp; }
+let apiSession = null; // { base, token, at }
+// Grab { token, base } by logging in (browser) and reading sessionStorage.access_token.
+function neptunGetSession() { return runNeptunFlow(buildTokenGrabScript, "__tok"); }
+function buildTokenGrabScript(username, password, code) {
+  return `(function(){
+  if(window.__tokRunning) return "running"; window.__tokRunning=true; window.__tok=""; window.__ncLog="";
+  var LOG=[]; function log(m){ LOG.push(m); window.__ncLog=LOG.join("\\n"); }
+  function deliver(o){ o=o||{}; try{ window.__tok=JSON.stringify(Object.assign({done:true,log:LOG.slice(-20).join("\\n")},o)); }catch(e){} try{ window.location.href="https://neptunplus.done/?d="+encodeURIComponent(JSON.stringify({token:o.token||"",base:o.base||"",log:LOG.slice(-12).join("\\n")})); }catch(e){} }
+  function waitFor(fn,ms){ return new Promise(function(res){ var t0=Date.now(); (function p(){ var v; try{v=fn();}catch(e){v=null;} if(v) return res(v); if(Date.now()-t0>ms) return res(null); setTimeout(p,300); })(); }); }
+  (async function(){
+    try{
+      log("Bejelentkezés…");
+      var tok=await waitFor(function(){ try{ return window.sessionStorage.getItem('access_token'); }catch(e){ return null; } }, 60000);
+      var base=""; try{ base=new URL('api/', document.baseURI).href; }catch(e){ base=location.origin+'/hallgato/api/'; }
+      log(tok?("Token megvan ("+tok.length+" kar.)"):"Nincs token a sessionStorage-ban");
+      deliver({token:tok||"", base:base});
+    }catch(err){ log("HIBA: "+String(err)); deliver({}); }
+  })();
+  return "started";
+})();`;
+}
+async function getApiSession(force) {
+  if (!force && apiSession && (Date.now() - apiSession.at) < 4 * 60 * 1000) return apiSession;
+  const res = await neptunGetSession();
+  if (res && res.token) { apiSession = { base: res.base || "", token: res.token, at: Date.now() }; return apiSession; }
+  return null;
+}
+// GET a Neptun API endpoint (native HTTP → no CORS). Returns { status, data } with data parsed.
+async function apiGet(sess, ep) {
+  const url = (sess.base || "") + ep;
+  const headers = sess.token ? { Authorization: "Bearer " + sess.token } : {};
+  const CH = CHTTP();
+  if (CH) {
+    const res = await CH.get({ url, headers });
+    let data = res && res.data;
+    if (typeof data === "string") { try { data = JSON.parse(data); } catch (e) { /* leave string */ } }
+    return { status: res ? res.status : 0, data };
+  }
+  const r = await fetch(url, { headers, credentials: "include" });
+  return { status: r.status, data: await r.json().catch(() => null) };
+}
+
 async function grabProgress() {
   if (!isNative) { toast("A kredit beolvasása a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
-  let prog = null, cancelled = false;
+  let prog = null, cancelled = false, viaApi = false;
   try {
-    const res = await neptunReadProgress();
-    if (res && res.log) courseLog = res.log.split("\n");
-    prog = (res && res.progress) || null;
+    // Preferred: direct API.
+    const sess = await getApiSession();
+    if (sess && sess.token) {
+      $("busy-text").textContent = "Kredit lekérése…";
+      try {
+        const r = await apiGet(sess, "advancement/creditprogress");
+        const d = r && r.data && r.data.data;
+        if (d && (d.requiredCredit || d.completedCredit)) {
+          prog = { done: d.completedCredit || 0, total: d.requiredCredit || 0, free: d.completedOptionalSubjectCredit || 0 };
+          viaApi = true;
+        } else { dbg("API válasz nem tartalmazott kredit adatot (status " + (r && r.status) + ")"); }
+      } catch (e) { dbg("API hiba: " + (e && e.message ? e.message : e)); }
+    } else { dbg("Nem sikerült token — visszaesés a régi módszerre"); }
+    // Fallback: DOM scraping.
+    if (!prog) {
+      $("busy-text").textContent = "Beolvasás…";
+      const res = await neptunReadProgress();
+      if (res && res.log) courseLog = res.log.split("\n");
+      const p = (res && res.progress) || null;
+      if (p && p.total) prog = { done: p.done, total: p.total, free: p.free || 0 };
+    }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
   if (cancelled) { toast("Megszakítva"); return; }
   if (prog && prog.total) {
     state.progress = { fetchedAt: new Date().toISOString(), done: prog.done, total: prog.total, free: prog.free || 0 };
     saveState(); syncProgStatus(); renderHome();
-    toast("Kredit beolvasva: " + prog.done + "/" + prog.total); return;
+    toast("Kredit beolvasva: " + prog.done + "/" + prog.total + (viaApi ? " (API)" : "")); return;
   }
   await ask({ title: "Kredit lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
 }
@@ -1554,8 +1621,18 @@ async function syncSemesters() {
   return { ok: true, detail: sems.length + " félév" };
 }
 async function syncCredit() {
-  const res = await neptunReadProgress();
-  const p = (res && res.progress) || null;
+  let p = null;
+  // Preferred: direct API.
+  try {
+    const sess = await getApiSession();
+    if (sess && sess.token) {
+      const r = await apiGet(sess, "advancement/creditprogress");
+      const d = r && r.data && r.data.data;
+      if (d && (d.requiredCredit || d.completedCredit)) p = { done: d.completedCredit || 0, total: d.requiredCredit || 0, free: d.completedOptionalSubjectCredit || 0 };
+    }
+  } catch (e) { /* fall back */ }
+  // Fallback: DOM scraping.
+  if (!p || !p.total) { const res = await neptunReadProgress(); p = (res && res.progress) || null; }
   if (!p || !p.total) return { ok: false, detail: "nem találtam kredit adatot" };
   state.progress = { fetchedAt: new Date().toISOString(), done: p.done, total: p.total, free: p.free || 0 };
   saveState(); syncProgStatus();
