@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.111";
+const APP_VERSION = "v0.112";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2839,12 +2839,47 @@ function nativeLogin(srv) {
   const iab = window.cordova && window.cordova.InAppBrowser;
   if (!iab) { toast("InAppBrowser plugin hiányzik (lásd README)."); return; }
   const code = state.no2fa ? "" : lastCode;
-  const script = buildInjectScript(state.username, state.password, code);
+  // API-first login (new Neptun): authenticate via the API, drop the token in, and load the
+  // dashboard already logged in — independent of the login page's layout. Falls back to filling
+  // the form (works on the standard Angular login) if the API isn't there / doesn't return a token.
+  const script = buildLoginScript(state.username, state.password, code);
   const opts = ["location=yes", "hideurlbar=no", "hidenavigationbuttons=no", "zoom=yes", "hardwareback=yes", "footer=no",
     "toolbarcolor=#141518", "navigationbuttoncolor=#ecedee", "closebuttoncolor=#ecedee", "closebuttoncaption=Kész"].join(",");
   const ref = iab.open(srv.url, "_blank", opts);
   ref.addEventListener("loadstop", () => { try { ref.executeScript({ code: script }); } catch (e) { /* ignore */ } });
-  toast("Neptun megnyitása, automatikus kitöltés folyamatban.");
+  toast("Belépés folyamatban…");
+}
+// Combined login: try the Neptun API (Account/Authenticate) first, then fall back to filling the form.
+function buildLoginScript(username, password, code) {
+  const u = JSON.stringify(username), p = JSON.stringify(password), c = JSON.stringify(code || "");
+  return `(function(){
+  if(window.__npLoginRan) return; window.__npLoginRan=true;
+  function setVal(el,val){ if(!el) return false; var proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el,val); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('blur',{bubbles:true})); return true; }
+  function click(el){ if(el){ el.click(); return true;} return false; }
+  function visible(el){ return el && el.offsetParent!==null && !el.disabled; }
+  function waitFor(sel,timeout){ return new Promise(function(res){ var t0=Date.now(); (function poll(){ var el=(typeof sel==='function')?sel():document.querySelector(sel); if(el&&visible(el)) return res(el); if(Date.now()-t0>timeout) return res(null); setTimeout(poll,250); })(); }); }
+  function findCodeField(){ return Array.prototype.slice.call(document.querySelectorAll('input')).find(function(el){ if(!visible(el)||el.value) return false; var t=(el.type||'').toLowerCase(); if(['text','tel','number','password'].indexOf(t)===-1) return false; var hay=((el.id||'')+' '+(el.name||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('aria-label')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); if(/code|otp|token|kod|kód|hitelesít|authent|2fa|mfa|one-time/.test(hay)) return true; var ml=parseInt(el.getAttribute('maxlength')||'0',10); return ml>0&&ml<=8; }); }
+  function findSubmit(){ return Array.prototype.slice.call(document.querySelectorAll('button, input[type=submit]')).find(function(b){ if(!visible(b)) return false; var hay=((b.id||'')+' '+(b.innerText||b.value||'')+' '+(b.getAttribute('aria-label')||'')).toLowerCase(); return /bejelentkez|bel[eé]p|tov[aá]bb|meger[oő]s|hiteles[ií]t|ellen[oő]r|verify|confirm|submit|login/.test(hay); }); }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+  async function domLogin(){ click(document.querySelector('#notification-bar-0-notification-button-accept')); var user=await waitFor('#userName',8000); if(user){ setVal(user, ${u}); setVal(document.querySelector('#password-form-password'), ${p}); await sleep(150); click(document.querySelector('#login-button')); } var CODE=${c}; if(CODE){ var codeEl=await waitFor(findCodeField,12000); if(codeEl){ setVal(codeEl,CODE); await sleep(250); setVal(codeEl,CODE); await sleep(1000); var btn=await waitFor(findSubmit,8000); if(btn){ btn.click(); await sleep(700); if(visible(btn)) btn.click(); } } } }
+  (async function(){
+    try{
+      if(sessionStorage.getItem('__npLogged')){ return; } // already logged in via API on a previous load
+      var base=document.baseURI;
+      var authUrl=new URL('api/Account/Authenticate', base).href;
+      var r=await fetch(authUrl,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},credentials:'include',body:JSON.stringify({userName:${u},password:${p},captcha:"",captchaIdentifier:"",token:${c}||"",LCID:1038})});
+      if(r && r.ok){ var d=null; try{ d=await r.json(); }catch(e){}
+        var tok=d&&(d.accessToken||(d.data&&d.data.accessToken));
+        if(tok){ try{ sessionStorage.setItem('access_token',tok); }catch(e){}
+          var exp=d&&(d.accessTokenExpiration||d.accessTokenExpirationDate||(d.data&&(d.data.accessTokenExpiration||d.data.accessTokenExpirationDate))); if(exp){ try{ sessionStorage.setItem('access_token_expiration_date',exp); }catch(e){} }
+          try{ sessionStorage.setItem('__npLogged','1'); }catch(e){}
+          location.href=base; return; // load the dashboard, logged in — no buttons to press
+        }
+      }
+      await domLogin(); // API not available or no token → fill the form the old way
+    }catch(e){ try{ await domLogin(); }catch(_){} }
+  })();
+})();`;
 }
 function browserPreviewLogin(srv) {
   const code = state.no2fa ? "" : lastCode;
