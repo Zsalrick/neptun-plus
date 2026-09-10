@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.119";
+const APP_VERSION = "v0.120";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -539,6 +539,7 @@ function switchProfile(id) {
   updateIcsStatus(); renderHome(); renderTimetable(); renderExams(); renderCourses();
   totpTick(); rescheduleNotifications();
   toast("Profil: " + profileLabel(target));
+  warmSession("profile"); // pre-authenticate the new identity so login/reads are instant
 }
 function startAddProfile() {
   syncActiveToProfiles();
@@ -758,8 +759,10 @@ function renderHome() {
   if (showTotp) $("totp-account").textContent = state.totp.name || "2FA kód";
   const ready = !!(state.username && state.password);
   $("btn-login").disabled = !ready;
-  $("home-sub").textContent = semLoading ? "Félévek beolvasása…" : (ready ? "Készen áll" : "Állítsd be a belépést");
-  $("login-hint").textContent = isNative ? "Egy érintés, a többit az alkalmazás elvégzi." : "Előnézet. Az alkalmazásban ez automatikusan belép.";
+  const warm = isNative && apiSessionValid(60000);
+  $("home-sub").textContent = semLoading ? "Félévek beolvasása…" : warming ? "Munkamenet előkészítése…" : warm ? "Aktív munkamenet" : (ready ? "Készen áll" : "Állítsd be a belépést");
+  $("login-hint").textContent = !isNative ? "Előnézet. Az alkalmazásban ez automatikusan belép."
+    : warm ? "Aktív munkamenet, a belépés azonnali." : "Egy érintés, a többit az alkalmazás elvégzi.";
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
   const hp = $("home-profile");
   if (hp) { hp.onclick = openProfilePicker; hp.classList.toggle("has-multi", (state.profiles || []).length > 1); }
@@ -1492,7 +1495,19 @@ function buildProgressScript(username, password, code) {
 //  grab the session token, then read via CapacitorHttp (bypasses CORS).
 // =====================================================================
 function CHTTP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp; }
-let apiSession = null; // { base, token, at }
+let apiSession = null; // { base, token, at, exp }
+// Read the JWT `exp` claim (ms epoch). 0 if not a parseable JWT.
+function tokenExp(tok) {
+  try { const p = JSON.parse(atob(String(tok).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); return p && p.exp ? p.exp * 1000 : 0; }
+  catch (e) { return 0; }
+}
+// A cached session is usable if the token is not within `marginMs` of expiring.
+// Falls back to a 4-minute window from grab time when the token has no readable exp.
+function apiSessionValid(marginMs) {
+  if (!apiSession || !apiSession.token) return false;
+  const m = marginMs == null ? 30000 : marginMs;
+  return apiSession.exp ? (Date.now() < apiSession.exp - m) : ((Date.now() - apiSession.at) < 4 * 60 * 1000);
+}
 // Grab { token, base } by logging in (browser) and reading sessionStorage.access_token.
 function neptunGetSession() { return runNeptunFlow(buildTokenGrabScript, "__tok"); }
 function buildTokenGrabScript(username, password, code) {
@@ -1514,10 +1529,32 @@ function buildTokenGrabScript(username, password, code) {
 })();`;
 }
 async function getApiSession(force) {
-  if (!force && apiSession && (Date.now() - apiSession.at) < 4 * 60 * 1000) return apiSession;
+  if (!force && apiSessionValid()) return apiSession;
   const res = await neptunGetSession();
-  if (res && res.token) { apiSession = { base: res.base || "", token: res.token, at: Date.now() }; return apiSession; }
+  if (res && res.token) { apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) }; onSessionChanged(); return apiSession; }
   return null;
+}
+// ---------- keep a warm Neptun session (no manual re-login) ----------
+// We hold the credentials + TOTP secret, so instead of fighting the OS to keep a token alive in the
+// background, we silently (re-)authenticate on demand: at app start, on resume, and on profile switch.
+// A fresh token then makes both data reads and the visible "Bejelentkezés" instant.
+let warming = false, lastWarmAt = 0;
+function onSessionChanged() {
+  try {
+    renderHome();
+    const act = document.querySelector(".tabscreen.active");
+    if (act && act.id === "tab-more") renderMore();
+  } catch (e) {}
+}
+async function warmSession(reason) {
+  if (!isNative || !canAutoLogin()) return;      // nothing to log in with
+  if (apiSessionValid(60000)) { onSessionChanged(); return; } // already comfortably valid
+  if (warming || flowActive) return;             // don't stack onto a running flow
+  if (Date.now() - lastWarmAt < 45000) return;   // throttle repeated resume events
+  warming = true; lastWarmAt = Date.now();
+  try { await totpTick(); await getApiSession(true); }
+  catch (e) { dbg("warmSession: " + (e && e.message ? e.message : e)); }
+  finally { warming = false; }
 }
 // GET a Neptun API endpoint (native HTTP → no CORS). Returns { status, data } with data parsed.
 // Pass query params via `params` (object) — CapacitorHttp doesn't reliably forward a query
@@ -2908,26 +2945,28 @@ $("btn-login").onclick = async () => {
   if (!state.username || !state.password) return toast("Hiányoznak a belépési adatok.");
   await totpTick();
   const srv = activeServer();
-  if (isNative) return nativeLogin(srv);
+  if (isNative) return nativeLogin(srv, apiSessionValid(60000) ? apiSession.token : "");
   return browserPreviewLogin(srv);
 };
-function nativeLogin(srv) {
+function nativeLogin(srv, token) {
   const iab = window.cordova && window.cordova.InAppBrowser;
   if (!iab) { toast("InAppBrowser plugin hiányzik (lásd README)."); return; }
   const code = state.no2fa ? "" : lastCode;
   // API-first login (new Neptun): authenticate via the API, drop the token in, and load the
   // dashboard already logged in — independent of the login page's layout. Falls back to filling
   // the form (works on the standard Angular login) if the API isn't there / doesn't return a token.
-  const script = buildLoginScript(state.username, state.password, code);
+  // If we already hold a still-valid warm token, inject it straight in → instant, no re-auth / no 2FA.
+  const script = buildLoginScript(state.username, state.password, code, token || "");
   const opts = ["location=yes", "hideurlbar=no", "hidenavigationbuttons=no", "zoom=yes", "hardwareback=yes", "footer=no",
     "toolbarcolor=#141518", "navigationbuttoncolor=#ecedee", "closebuttoncolor=#ecedee", "closebuttoncaption=Kész"].join(",");
   const ref = iab.open(srv.url, "_blank", opts);
   ref.addEventListener("loadstop", () => { try { ref.executeScript({ code: script }); } catch (e) { /* ignore */ } });
-  toast("Belépés folyamatban…");
+  toast(token ? "Belépés (aktív munkamenet)…" : "Belépés folyamatban…");
 }
-// Combined login: try the Neptun API (Account/Authenticate) first, then fall back to filling the form.
-function buildLoginScript(username, password, code) {
-  const u = JSON.stringify(username), p = JSON.stringify(password), c = JSON.stringify(code || "");
+// Combined login: reuse a warm token if given, else try the Neptun API (Account/Authenticate),
+// then fall back to filling the form.
+function buildLoginScript(username, password, code, token) {
+  const u = JSON.stringify(username), p = JSON.stringify(password), c = JSON.stringify(code || ""), t = JSON.stringify(token || "");
   return `(function(){
   if(window.__npLoginRan) return; window.__npLoginRan=true;
   function setVal(el,val){ if(!el) return false; var proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el,val); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('blur',{bubbles:true})); return true; }
@@ -2947,6 +2986,12 @@ function buildLoginScript(username, password, code) {
     try{
       if(sessionStorage.getItem('__npLogged')){ return; } // already logged in via API on a previous load
       var base=document.baseURI;
+      var TOKEN=${t};
+      if(TOKEN){ // warm token from the app → land on the dashboard instantly, no auth round-trip
+        try{ sessionStorage.setItem('access_token',TOKEN); }catch(e){}
+        try{ sessionStorage.setItem('__npLogged','1'); }catch(e){}
+        location.href=base; return;
+      }
       var authUrl=new URL('api/Account/Authenticate', base).href;
       var r=await fetch(authUrl,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},credentials:'include',body:JSON.stringify({userName:${u},password:${p},captcha:"",captchaIdentifier:"",token:${c}||"",LCID:1038})});
       if(r && r.ok){ var d=null; try{ d=await r.json(); }catch(e){}
@@ -3132,6 +3177,15 @@ function onBackNav() {
   try { history.pushState(null, ""); } catch (e) {}
 })();
 
+// Re-warm the Neptun session when the app returns to the foreground (resume). Real background
+// keep-alive isn't reliable on Android (the WebView's timers freeze), so we simply re-authenticate
+// silently on resume — fast because we hold the credentials + TOTP.
+(function setupResumeWarm() {
+  const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+  if (App && App.addListener) { try { App.addListener("appStateChange", (s) => { if (s && s.isActive) warmSession("resume"); }); } catch (e) {} }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") warmSession("resume"); });
+})();
+
 function setBootText(t) { const b = $("boot-text"); if (b) b.textContent = t; }
 function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot--hide"); setTimeout(() => { b.hidden = true; }, 420); }
 
@@ -3164,7 +3218,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
     rescheduleNotifications(); // refresh reminders on every launch
     setTimeout(maybeOfferDataSync, 1600); // offer the data read if something is still missing
-    if (state.setupComplete) setTimeout(dailyBackup, 2500); // one encrypted auto-backup per day
+    if (state.setupComplete) { setTimeout(dailyBackup, 2500); setTimeout(() => warmSession("start"), 1200); } // warm the Neptun session so login/reads are instant
   }
   // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
