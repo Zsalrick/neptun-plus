@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.101";
+const APP_VERSION = "v0.102";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1612,8 +1612,7 @@ async function runApiDiagnostics() {
     const tr = results.find((r) => r.ep === "MyTrainings");
     const trainRow = tr && tr.data && tr.data.data && tr.data.data[0];
     if (row) {
-      const ct = row.curriculumTemplateId, ar = row.advancementRowId;
-      const sid = trainRow && trainRow.studentTrainingId, term = trainRow && trainRow.actualTermId;
+      const ar = row.advancementRowId;
       // advancementRowId provably binds (the 400 only rejected curriculumTemplateId) → probe rowId-keyed endpoints.
       // The drill-down endpoint wants parentAdvancementRowId: pass the root row id to get its
       // children (subgroups + subjects), then recurse into subgroups by their own rowId.
