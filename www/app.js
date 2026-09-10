@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.099";
+const APP_VERSION = "v0.100";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1571,13 +1571,12 @@ async function runApiDiagnostics() {
       const ct = row.curriculumTemplateId, ar = row.advancementRowId;
       const sid = trainRow && trainRow.studentTrainingId, term = trainRow && trainRow.actualTermId;
       // advancementRowId provably binds (the 400 only rejected curriculumTemplateId) → probe rowId-keyed endpoints.
+      // The drill-down endpoint wants parentAdvancementRowId: pass the root row id to get its
+      // children (subgroups + subjects), then recurse into subgroups by their own rowId.
       const candidates = [
-        ["Advancement/GetSubjectGroupData", { advancementRowId: ar }],
-        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { advancementRowId: ar }],
-        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { advancementRowId: ar, needSubjectGroups: true }],
-        ["Advancement/GetStudentHierarchicalAdvancements", { advancementRowId: ar }],
-        ["Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate", { CurriculumTemplateId: ct, needSubjectGroups: true, advancementRowId: ar }],
-        ["Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate", { curriculumTemplateId: ct, needSubjectGroups: true, advancementRowId: ar, studentTrainingId: sid }],
+        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { parentAdvancementRowId: ar }],
+        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { parentAdvancementRowId: ar, needSubjectGroups: true }],
+        ["Curriculum/GetOptionalSubjectsWithoutCurriculum", { advancementRowId: ar }],
       ];
       for (const [ep, params] of candidates) {
         if (Object.values(params).some((v) => v === undefined || v === null)) continue;
