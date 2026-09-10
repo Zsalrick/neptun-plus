@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.104";
+const APP_VERSION = "v0.105";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1029,6 +1029,7 @@ function coEmpty(scroll, title, text, btnText, onRead) {
 }
 function renderCourses() {
   const scroll = $("co-scroll"); if (!scroll) return;
+  recomputeCourseCompletion(); // keep enrolled-subject checkmarks in sync with the curriculum
   // segmented control (same look as the hub)
   let html = `<div class="seg seg-3" id="co-seg">` + CO_SEGS.map((s) => `<button class="seg-btn ${s === coSeg ? "active" : ""}" data-coseg="${s}" type="button">${CO_SEG_LABEL[s]}</button>`).join("") + `</div>`;
   scroll.innerHTML = html;
@@ -1372,16 +1373,34 @@ async function apiReadTerms(sess) {
   return list.map((t) => ({ id: t.value, label: t.text })).filter((t) => t.id && t.label);
 }
 // Enrolled ("felvett") subjects across the given terms → flat course list with semester labels.
+// Completion is filled in later by recomputeCourseCompletion() (needs the curriculum).
 async function apiReadTakenAll(sess, terms) {
-  const done = {};
-  if (state.curriculum && state.curriculum.required) state.curriculum.required.forEach((c) => { if (c.completed && c.code) done[c.code] = 1; });
   const out = [];
   for (const t of terms) {
     let r; try { r = await apiGet(sess, "TakenSubjects/GetTakenSubjects", { termId: t.id }); } catch (e) { continue; }
     const arr = r && r.data && r.data.data; if (!Array.isArray(arr)) continue;
-    arr.forEach((s) => { out.push({ code: s.subjectCode || "", name: s.subjectName || "", credits: +s.subjectCredit || 0, completed: !!done[s.subjectCode], semester: t.label, teacher: "", type: s.requirementType || "" }); });
+    arr.forEach((s) => { out.push({ code: s.subjectCode || "", name: s.subjectName || "", credits: +s.subjectCredit || 0, completed: false, semester: t.label, teacher: "", type: s.requirementType || "" }); });
   }
   return out;
+}
+// Mark enrolled subjects completed using the curriculum (required isSuccessful + all free electives,
+// which the API only lists when completed). If a subject was taken in several terms, mark only the
+// LATEST one — an earlier attempt was most likely a fail. Runs whenever courses or curriculum changes.
+function recomputeCourseCompletion() {
+  if (!state.courses || !state.courses.list || !state.courses.list.length || !state.curriculum) return;
+  const completed = {};
+  (state.curriculum.required || []).forEach((c) => { if (c.completed && c.code) completed[c.code] = 1; });
+  (state.curriculum.free || []).forEach((c) => { if (c.code) completed[c.code] = 1; });
+  const byCode = {}, target = new Map();
+  state.courses.list.forEach((c) => { target.set(c, false); (byCode[c.code] = byCode[c.code] || []).push(c); });
+  Object.keys(byCode).forEach((code) => {
+    if (!code || !completed[code]) return;
+    const entries = byCode[code].slice().sort((a, b) => (a.semester > b.semester ? 1 : a.semester < b.semester ? -1 : 0));
+    target.set(entries[entries.length - 1], true); // latest semester it appears in
+  });
+  let changed = false;
+  state.courses.list.forEach((c) => { const t = target.get(c); if (!!c.completed !== t) { c.completed = t; changed = true; } });
+  if (changed) saveState();
 }
 // iCal subscription link via API (replaces the calendar page scrape).
 async function apiReadIcsUrl(sess) {
