@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.088";
+const APP_VERSION = "v0.089";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1401,7 +1401,15 @@ function buildApiSniffScript(username, password, code) {
   return `(function(){
   if(window.__apidiagRunning) return "running"; window.__apidiagRunning=true; window.__apidiag=""; window.__ncLog="";
   var LOG=[]; function log(m){ LOG.push(m); window.__ncLog=LOG.join("\\n"); }
-  function deliver(o){ try{ window.__apidiag=JSON.stringify(Object.assign({done:true,log:LOG.join("\\n")},o||{})); }catch(e){} }
+  // Keep the payload small enough for the InAppBrowser executeScript bridge to return in one shot.
+  function deliver(o){ o=o||{};
+    function build(obj){ try{ return JSON.stringify(Object.assign({done:true,log:LOG.slice(-40).join("\\n")},obj)); }catch(e){ return ""; } }
+    var s=build(o);
+    if(s.length>45000 && o.calls){ o.calls.forEach(function(c){ if(c.resp) c.resp=c.resp.slice(0,500); }); s=build(o); }
+    if(s.length>45000 && o.calls){ o.calls.forEach(function(c){ c.resp=''; }); s=build(o); }
+    if(s.length>45000){ o.storage=[]; s=build(o); }
+    if(!s) s=JSON.stringify({done:true,error:"serialize",log:LOG.slice(-20).join("\\n")});
+    window.__apidiag=s; }
   function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
   function vis(el){ return el && el.offsetParent!==null && !el.disabled; }
   function T(){ return (document.body&&document.body.innerText)||""; }
@@ -1426,8 +1434,11 @@ function buildApiSniffScript(username, password, code) {
   }
   function tokenKeys(){ var out=[]; [['local',window.localStorage],['session',window.sessionStorage]].forEach(function(pair){ try{ var st=pair[1]; for(var i=0;i<st.length;i++){ var k=st.key(i); var v=st.getItem(k)||''; var looksTok=/token|auth|oidc|msal|bearer|jwt|access/i.test(k) || (/^ey[A-Za-z0-9_-]+\\./.test(v)); if(looksTok) out.push({store:pair[0],key:k,len:v.length,preview:redact(v)}); } }catch(e){} }); return out; }
   function interesting(c){ var u=(c.url||''); if(/\\.(js|css|png|jpe?g|svg|woff2?|ttf|ico|gif|map)(\\?|$)/i.test(u)) return false; var ct=(c.ct||''); return /json/i.test(ct) || /\\/api\\/|hallgato|kreptn|neptun|advancement|curriculum|subject|targ/i.test(u); }
+  var KEYCTRL=/curriculum|credit|advancement|training|subject|myTrainings|progress|kredit|targ/i;
   function collect(){ var seen={}, out=[]; (window.__apiCalls||[]).forEach(function(c){ if(!interesting(c)) return; var key=c.method+' '+c.url; if(seen[key]) return; seen[key]=1;
-    out.push({method:c.method,url:c.url,status:c.status,ct:c.ct,headers:c.headers,body:c.body,resp:(c.resp||'').slice(0,1500)}); }); return out.slice(0,50); }
+    // Keep the full endpoint list, but only carry a response sample for the data controllers (bounds payload size).
+    var keep=KEYCTRL.test(c.url||'');
+    out.push({method:c.method,url:c.url,status:c.status,ct:c.ct,headers:c.headers,body:c.body,resp:keep?(c.resp||'').slice(0,1500):''}); }); return out.slice(0,60); }
   (async function(){
     try{
       log("Várakozás a bejelentkezésre…");
