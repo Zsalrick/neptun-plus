@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.084";
+const APP_VERSION = "v0.085";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1433,19 +1433,12 @@ function buildApiSniffScript(username, password, code) {
       var inOk=await waitFor(loggedIn, 60000); log(inOk?"Bejelentkezve":"Nem sikerült bejelentkezni");
       if(!inOk){ deliver({calls:collect(),storage:tokenKeys()}); return; }
       log("Alap URL: "+location.origin);
-      // Visit Előrehaladás only (credit + curriculum: all subjects + free electives).
+      // Just open Tanulmányok → Előrehaladás and see what it loads. Do NOT expand anything.
       log("Tanulmányok → Előrehaladás"); var m=await waitFor(function(){return pick("Menü");},8000); if(m){m.click(); await sleep(250);}
       var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){t.click(); await sleep(250);}
       var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){e.click();}
-      await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000); await sleep(1800);
-      // Expand every group to trigger each lazy subject-list API call.
-      for(var pass=0; pass<8; pass++){
-        try{ window.scrollTo(0, document.body.scrollHeight); }catch(_){} await sleep(400);
-        var togs=Array.prototype.slice.call(document.querySelectorAll('button[id*="toggle-header-btn"]')).filter(function(b){ return vis(b) && b.getAttribute('aria-expanded')==='false'; });
-        if(!togs.length) break;
-        log("Csoportok kinyitása: "+togs.length);
-        for(var i=0;i<togs.length;i++){ try{ togs[i].scrollIntoView({block:'center'}); togs[i].click(); }catch(_){} await sleep(2200); }
-      }
+      await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000);
+      log("Oldal betöltve, várakozás a hívásokra…"); await sleep(4000);
       var calls=collect(); log("Rögzített API-hívások: "+calls.length);
       deliver({origin:location.origin, path:location.pathname, calls:calls, storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
@@ -1458,7 +1451,7 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "API diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, megnyitja a <b>Tanulmányok → Előrehaladás</b> oldalt, kinyitja a csoportokat, és rögzíti, milyen API‑hívásokat csinál a Neptun (kredit, összes tárgy, szabadon választhatók). A tokeneket kitakarom. A végén a teljes riportot a vágólapra másolom — illeszd be a beszélgetésbe.<br><br>Eltarthat egy percig." });
+    body: "Bejelentkezik, megnyitja a <b>Tanulmányok → Előrehaladás</b> oldalt (nem nyit ki semmit), és rögzíti, milyen API‑hívásokat csinál a Neptun. A tokeneket kitakarom. A végén a teljes riportot a vágólapra másolom — illeszd be a beszélgetésbe.<br><br>Eltarthat fél‑egy percig." });
   if (!ok) return;
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
