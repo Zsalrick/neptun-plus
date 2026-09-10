@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.118";
+const APP_VERSION = "v0.119";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -457,6 +457,7 @@ function renderForTab(id) {
   else if (id === "tab-exams") renderExams();
   else if (id === "tab-more") renderMore();
   else if (id === "tab-courses") renderCourses();
+  else if (id === "tab-profile") renderProfilePage();
   else if (id === "tab-settings") syncSettings();
 }
 // Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
@@ -560,15 +561,40 @@ function cancelAddProfile() {
   resetProfileCaches(); saveState();
   enterApp(); showTab("tab-home"); renderHome();
 }
-function openProfilePicker() {
-  const items = (state.profiles || []).map((p) => ({ value: p.id, label: profileLabel(p), sub: p.username || "" }));
-  items.push({ value: "__add__", label: "Új profil hozzáadása" });
-  if ((state.profiles || []).length > 1) items.push({ value: "__del__", label: "Profil törlése" });
-  openList({ title: "Profil", items, selected: state.activeProfileId, onPick: (v) => { if (v === "__add__") startAddProfile(); else if (v === "__del__") openDeleteProfilePicker(); else switchProfile(v); } });
-}
-function openDeleteProfilePicker() {
-  const items = (state.profiles || []).map((p) => ({ value: p.id, label: profileLabel(p), sub: p.username || "" }));
-  openList({ title: "Melyik profilt törlöd?", items, onPick: (v) => deleteProfile(v) });
+// Full-screen profile page (replaces the old bottom-sheet picker): switch, add, delete.
+function openProfilePicker() { showTab("tab-profile"); }
+function renderProfilePage() {
+  const host = $("profile-scroll"); if (!host) return;
+  const profiles = state.profiles || [];
+  const multi = profiles.length > 1;
+  const rows = profiles.map((p) => {
+    const active = p.id === state.activeProfileId;
+    const label = profileLabel(p);
+    const init = (label.trim()[0] || "K").toUpperCase();
+    const right = active
+      ? `<span class="row-chev pf-check">${icon("check")}</span>`
+      : (multi ? `<span class="pf-del" data-del="${p.id}" title="Törlés">${icon("trash")}</span>` : `<span class="row-chev">${icon("chev")}</span>`);
+    return `<button class="row" data-pf="${p.id}" type="button">`
+      + `<span class="row-ic pf-badge">${esc(init)}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(label)}</span><span class="row-sub">${esc(p.username || "Nincs azonosító")}</span></span>`
+      + right + `</button>`;
+  }).join("");
+  host.innerHTML = `<div class="section-label">Profilok</div><div class="card">${rows}</div>`
+    + `<div class="card" style="margin-top:14px"><button class="row" id="pf-add" type="button">`
+    + `<span class="row-ic">${icon("plus")}</span>`
+    + `<span class="row-main"><span class="row-title">Új profil hozzáadása</span><span class="row-sub">Másik egyetem vagy Neptun azonosító</span></span>`
+    + `<span class="row-chev">${icon("chev")}</span></button></div>`;
+  host.querySelectorAll("[data-pf]").forEach((b) => b.onclick = () => {
+    const id = b.dataset.pf;
+    if (id !== state.activeProfileId) switchProfile(id);
+    showTab(lastMainTab);
+  });
+  host.querySelectorAll("[data-del]").forEach((el) => el.onclick = async (e) => {
+    e.stopPropagation();
+    await deleteProfile(el.dataset.del);
+    renderProfilePage();
+  });
+  const add = $("pf-add"); if (add) add.onclick = startAddProfile;
 }
 async function deleteProfile(id) {
   if ((state.profiles || []).length <= 1) { toast("Az utolsó profilt nem lehet törölni."); return; }
@@ -600,6 +626,7 @@ document.querySelectorAll(".nav-btn").forEach((b) => b.onclick = () => navTo(b.d
 document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => showTab("tab-settings"));
 $("settings-back").onclick = () => showTab(lastMainTab);
 { const cb = $("courses-back"); if (cb) cb.onclick = () => showTab(lastMainTab); }
+{ const pb = $("profile-back"); if (pb) pb.onclick = () => showTab(lastMainTab); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
@@ -3067,6 +3094,44 @@ attachPTR($("tt-scroll"), $("tt-ptr"), fetchTimetable);
 attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
 if (isNative) { document.body.classList.add("native"); document.querySelectorAll("[data-preview-only]").forEach((el) => el.remove()); }
 initOnboarding();
+
+// ---------- hardware / gesture back navigation ----------
+// One place decides what "back" means. Returns true if it consumed the back (stay in app),
+// false only at the true root (first-run onboarding, or the home tab with nothing open) → app may exit.
+const SUB_SCREENS = ["tab-settings", "tab-courses", "tab-profile"];
+function onBackNav() {
+  const openBd = document.querySelector(".backdrop:not(.hidden)");
+  if (openBd) { document.querySelectorAll(".backdrop:not(.hidden)").forEach((b) => b.classList.add("hidden")); return true; }
+  if (!$("lock").classList.contains("hidden")) return true; // locked → ignore
+  if (!$("screen-onboarding").classList.contains("hidden")) {
+    if (obPos > 0) { const bk = $("ob-back"); if (bk) bk.click(); return true; }
+    if (obMode === "add") { cancelAddProfile(); return true; }
+    return false; // first-run onboarding, step 0 → allow exit
+  }
+  const act = document.querySelector(".tabscreen.active");
+  const id = act ? act.id : "";
+  if (SUB_SCREENS.includes(id)) { showTab(lastMainTab); return true; }
+  if (id && id !== "tab-home") { showTab("tab-home"); return true; }
+  return false; // home, nothing open → allow exit
+}
+// Prefer the native App plugin (clean exitApp) when it's present in the APK; otherwise fall back to
+// the History API, which Capacitor's WebView routes the hardware back button through — works OTA,
+// no native rebuild needed.
+(function setupBackButton() {
+  const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+  if (App && App.addListener) {
+    App.addListener("backButton", () => { if (!onBackNav()) App.exitApp(); });
+    return;
+  }
+  let exitHint = 0;
+  window.addEventListener("popstate", () => {
+    if (onBackNav()) { try { history.pushState(null, ""); } catch (e) {} return; }
+    if (Date.now() - exitHint < 2000) return; // second press within 2s → let it exit
+    exitHint = Date.now(); toast("Nyomd meg újra a kilépéshez"); try { history.pushState(null, ""); } catch (e) {}
+  });
+  try { history.pushState(null, ""); } catch (e) {}
+})();
+
 function setBootText(t) { const b = $("boot-text"); if (b) b.textContent = t; }
 function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot--hide"); setTimeout(() => { b.hidden = true; }, 420); }
 

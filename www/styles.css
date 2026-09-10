@@ -181,6 +181,13 @@ button.row:active { background: var(--surface-2); }
 #home-profile.has-multi::after { content: ""; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--brand-plus); border: 2px solid var(--bg); }
 
+/* Profile page rows */
+.pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }
+.pf-check { color: var(--ink); }
+.pf-del { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: var(--ink-3); flex: none; }
+.pf-del:active { color: var(--danger); background: var(--surface-2); }
+.pf-del svg.ic { width: 18px; height: 18px; }
+
 /* premium: lift the hero and stat cards a touch off the ground */
 .card.hero { box-shadow: var(--shadow-sm); }
 
