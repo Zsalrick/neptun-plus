@@ -181,6 +181,17 @@ button.row:active { background: var(--surface-2); }
 #home-profile.has-multi::after { content: ""; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--brand-plus); border: 2px solid var(--bg); }
 
+/* Credit page */
+.cred-hero { padding: 26px 20px 22px; text-align: center; box-shadow: var(--shadow-sm); }
+.ch-pct { font-family: var(--font-brand); font-weight: 800; font-size: 58px; line-height: 1; letter-spacing: -.02em; }
+.ch-pct span { font-size: 26px; color: var(--ink-2); margin-left: 2px; }
+.ch-cap { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-top: 6px; }
+.ch-sub { font-size: 14px; color: var(--ink-2); margin-top: 12px; font-weight: 550; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow-sm); }
+.stat-v { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 24px; font-weight: 700; }
+.stat-l { font-size: 12px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+
 /* Profile page rows */
 .pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }
 .pf-check { color: var(--ink); }
@@ -483,7 +494,12 @@ button.row:active { background: var(--surface-2); }
 /* ---------- Bottom nav island ---------- */
 .nav-island { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
   min-height: var(--nav-h); background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px;
-  display: flex; align-items: stretch; padding: 7px; box-shadow: var(--shadow); z-index: 40; }
+  display: flex; align-items: stretch; padding: 7px; box-shadow: var(--shadow); z-index: 40;
+  transition: transform .28s cubic-bezier(.33,0,.2,1), opacity .18s ease; }
+/* Sub-screens (Beállítások, Profil, Kredit, Tárgyak) slide the nav out — it doesn't belong there. */
+.app-shell.nav-hidden .nav-island { transform: translateY(180%); opacity: 0; pointer-events: none; }
+.app-shell.nav-hidden .tabscreen.active .scroll { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
+@media (prefers-reduced-motion: reduce) { .nav-island { transition: none; } }
 .nav-btn { flex: 1; background: transparent; border: 0; color: var(--ink-3); cursor: pointer; display: flex;
   flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 11px; font: inherit; }
 .nav-btn .nlabel { font-size: 10.5px; font-weight: 550; }

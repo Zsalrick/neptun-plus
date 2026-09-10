@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.120";
+const APP_VERSION = "v0.121";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -450,6 +450,9 @@ function initOnboarding() {
 //  TABS
 // =====================================================================
 const MAIN_TABS = ["tab-home", "tab-timetable", "tab-exams", "tab-more"];
+// Sub-screens are reached from within the app (grid tiles, back buttons), not the bottom nav —
+// the nav bar hides while they're open, and the hardware/gesture back leaves them to the main tab.
+const SUB_SCREENS = ["tab-settings", "tab-courses", "tab-profile", "tab-credit"];
 let lastMainTab = "tab-home";
 function renderForTab(id) {
   if (id === "tab-home") renderHome();
@@ -457,6 +460,7 @@ function renderForTab(id) {
   else if (id === "tab-exams") renderExams();
   else if (id === "tab-more") renderMore();
   else if (id === "tab-courses") renderCourses();
+  else if (id === "tab-credit") renderCreditPage();
   else if (id === "tab-profile") renderProfilePage();
   else if (id === "tab-settings") syncSettings();
 }
@@ -494,10 +498,14 @@ function moveNavIndicator(id) {
   ind.style.transform = `translate3d(${btn.offsetLeft}px,0,0)`;
   ind.style.opacity = "1";
 }
+function updateNavVisibility(id) {
+  const sh = $("app-shell"); if (sh) sh.classList.toggle("nav-hidden", SUB_SCREENS.includes(id));
+}
 function setActive(id) {
   document.querySelectorAll(".tabscreen").forEach((el) => el.classList.toggle("active", el.id === id));
   document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === id));
   if (MAIN_TABS.includes(id)) { lastMainTab = id; moveNavIndicator(id); } else moveNavIndicator(id);
+  updateNavVisibility(id);
 }
 function showTab(id, dir) {
   const cur = document.querySelector(".tabscreen.active");
@@ -628,6 +636,8 @@ document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => sh
 $("settings-back").onclick = () => showTab(lastMainTab);
 { const cb = $("courses-back"); if (cb) cb.onclick = () => showTab(lastMainTab); }
 { const pb = $("profile-back"); if (pb) pb.onclick = () => showTab(lastMainTab); }
+{ const cb = $("credit-back"); if (cb) cb.onclick = () => showTab(lastMainTab); }
+{ const cr = $("credit-refresh"); if (cr) cr.onclick = () => grabProgress(); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
@@ -799,7 +809,7 @@ function renderSyncCard() {
 // =====================================================================
 const MORE_SERVICES = [
   { id: "courses", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => showTab("tab-courses") },
-  { id: "credit", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => { if (state.progress && state.progress.total) openCreditPopup(); else grabProgress(); } },
+  { id: "credit", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => showTab("tab-credit") },
   { id: "dlc", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "finance", label: "Pénzügyek", sub: "Egyenleg és számlák", icon: "wallet", soon: true },
@@ -820,6 +830,34 @@ function renderMore() {
   host.innerHTML = `<div class="svc-grid">${avail.map(tile).join("")}</div>`
     + `<div class="dash-label">Hamarosan</div><div class="svc-grid">${soon.map(tile).join("")}</div>`;
   host.querySelectorAll("[data-svc]").forEach((b) => { const s = MORE_SERVICES.find((x) => x.id === b.dataset.svc); if (s && s.go) b.onclick = s.go; });
+}
+// Full-screen Kredit page (own page, not a popup).
+function renderCreditPage() {
+  const host = $("credit-scroll"); if (!host) return;
+  const p = state.progress;
+  if (!p || !p.total) {
+    host.innerHTML = `<div class="empty" style="flex:none;padding:52px 32px 8px">`
+      + `<div class="empty-ic">${icon("chart")}</div>`
+      + `<h2>Nincs még kredit adat</h2>`
+      + `<p>Olvasd be a Neptunból a teljesített és az összes kreditet.</p>`
+      + `<button class="btn primary narrow" id="cred-read" style="margin-top:4px">${icon("book")} Kredit beolvasása</button></div>`;
+    const b = $("cred-read"); if (b) b.onclick = grabProgress;
+    return;
+  }
+  const pct = Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
+  const remaining = Math.max(0, p.total - p.done);
+  const stat = (val, label) => `<div class="stat"><div class="stat-v">${esc(String(val))}</div><div class="stat-l">${esc(label)}</div></div>`;
+  host.innerHTML = `<div class="card cred-hero">`
+    + `<div class="ch-pct">${pct}<span>%</span></div>`
+    + `<div class="ch-cap">teljesítve</div>`
+    + `<div class="cred-bar" style="margin-top:16px"><div class="cred-fill" style="width:${pct}%"></div></div>`
+    + `<div class="ch-sub">${p.done} / ${p.total} kredit</div>`
+    + `</div>`
+    + `<div class="stat-grid">`
+    + stat(p.done, "Teljesített") + stat(remaining, "Hátralévő")
+    + stat(p.total, "Összes kredit") + stat(p.free || 0, "Szabadon vál.")
+    + `</div>`
+    + `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(p.fetchedAt))}</div>`;
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
@@ -1684,6 +1722,7 @@ async function grabProgress() {
   if (prog && prog.total) {
     state.progress = { fetchedAt: new Date().toISOString(), done: prog.done, total: prog.total, free: prog.free || 0 };
     saveState(); syncProgStatus(); renderHome();
+    { const act = document.querySelector(".tabscreen.active"); if (act && act.id === "tab-credit") renderCreditPage(); else if (act && act.id === "tab-more") renderMore(); }
     toast("Kredit beolvasva: " + prog.done + "/" + prog.total + (viaApi ? " (API)" : "")); return;
   }
   await ask({ title: "Kredit lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
@@ -3143,7 +3182,6 @@ initOnboarding();
 // ---------- hardware / gesture back navigation ----------
 // One place decides what "back" means. Returns true if it consumed the back (stay in app),
 // false only at the true root (first-run onboarding, or the home tab with nothing open) → app may exit.
-const SUB_SCREENS = ["tab-settings", "tab-courses", "tab-profile"];
 function onBackNav() {
   const openBd = document.querySelector(".backdrop:not(.hidden)");
   if (openBd) { document.querySelectorAll(".backdrop:not(.hidden)").forEach((b) => b.classList.add("hidden")); return true; }
