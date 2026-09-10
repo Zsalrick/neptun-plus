@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.092";
+const APP_VERSION = "v0.093";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1423,7 +1423,7 @@ function buildApiSniffScript(username, password, code) {
   function loggedIn(){ return !document.querySelector('#userName') && !anyCode() && /Men[üu]/i.test(T()); }
   // ---- install the network hook once, as early as possible ----
   function redact(v){ v=String(v||''); if(v.length<=10) return '['+v.length+' kar.]'; return v.slice(0,10)+'…['+v.length+' kar.]'; }
-  function redH(h){ var o={}; try{ if(h&&h.forEach){ h.forEach(function(v,k){ if(/^authorization$/i.test(k)) window.__bearer=v; o[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }); } else if(h&&typeof h==='object'){ Object.keys(h).forEach(function(k){ if(/^authorization$/i.test(k)) window.__bearer=h[k]; o[k]=/authorization|cookie|token/i.test(k)?redact(h[k]):h[k]; }); } }catch(e){} return o; }
+  function redH(h){ var o={}; try{ if(h&&h.forEach){ h.forEach(function(v,k){ if(/^authorization$/i.test(k)){ window.__bearer=v; if(window.__maybeStart)window.__maybeStart(); } o[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }); } else if(h&&typeof h==='object'){ Object.keys(h).forEach(function(k){ if(/^authorization$/i.test(k)){ window.__bearer=h[k]; if(window.__maybeStart)window.__maybeStart(); } o[k]=/authorization|cookie|token/i.test(k)?redact(h[k]):h[k]; }); } }catch(e){} return o; }
   if(!window.__apiHook){ window.__apiHook=true; window.__apiCalls=[]; window.__lastApi=Date.now();
     function rec(e){ try{ if(/\\/api\\//.test(e.url||'')) window.__lastApi=Date.now(); if(window.__apiCalls.length<120) window.__apiCalls.push(e); }catch(_){} }
     var of=window.fetch;
@@ -1431,7 +1431,7 @@ function buildApiSniffScript(username, password, code) {
       return of.apply(this,arguments).then(function(res){ try{ var c=res.clone(); c.text().then(function(t){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status,ct:(res.headers&&res.headers.get('content-type'))||'',resp:(t||'').slice(0,2500)}); },function(){}); }catch(e){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status}); } return res; }); }; }
     var oOpen=XMLHttpRequest.prototype.open, oSend=XMLHttpRequest.prototype.send, oSet=XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.open=function(m,u){ this.__m=m; this.__u=u; this.__h={}; return oOpen.apply(this,arguments); };
-    XMLHttpRequest.prototype.setRequestHeader=function(k,v){ try{ if(/^authorization$/i.test(k)) window.__bearer=v; this.__h[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }catch(e){} return oSet.apply(this,arguments); };
+    XMLHttpRequest.prototype.setRequestHeader=function(k,v){ try{ if(/^authorization$/i.test(k)){ window.__bearer=v; if(window.__maybeStart)window.__maybeStart(); } this.__h[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }catch(e){} return oSet.apply(this,arguments); };
     XMLHttpRequest.prototype.send=function(b){ var self=this; try{ this.addEventListener('load',function(){ try{ var e={t:'xhr',url:self.__u,method:self.__m,headers:self.__h,body:b?String(b).slice(0,500):'',status:self.status,ct:self.getResponseHeader('content-type')||'',resp:(self.responseText||'').slice(0,2500)}; rec(e); if(/\\/api\\//.test(self.__u||'')) log("API: "+self.__m+" "+String(self.__u).split('/api/')[1]); }catch(_){} }); }catch(e){} return oSend.apply(this,arguments); };
     log("Hálózat-figyelő telepítve");
   }
@@ -1442,27 +1442,26 @@ function buildApiSniffScript(username, password, code) {
     // Keep the full endpoint list, but only carry a response sample for the data controllers (bounds payload size).
     var keep=KEYCTRL.test(c.url||'');
     out.push({method:c.method,url:c.url,status:c.status,ct:c.ct,headers:c.headers,body:c.body,resp:keep?(c.resp||'').slice(0,1500):''}); }); return out.slice(0,60); }
-  (async function(){
+  // Each fetch is capped at 12s so a hanging endpoint can't stall the whole run.
+  function hit(ep){ var url=new URL('api/'+ep, document.baseURI).href; var ctrl=window.AbortController?new AbortController():null; var timer;
+    var run=(async function(){ try{ var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include', signal:ctrl?ctrl.signal:undefined}); var t=await r.text(); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,4000)}; }catch(e){ return {ep:ep,url:url,error:String(e)}; } })();
+    var to=new Promise(function(res){ timer=setTimeout(function(){ if(ctrl){try{ctrl.abort();}catch(_){}} res({ep:ep,url:url,error:"timeout(12s)"}); },12000); });
+    return Promise.race([run,to]).then(function(out){ try{clearTimeout(timer);}catch(_){}; log("Direct "+ep+" → "+(out.status||out.error)); return out; }); }
+  // Event-driven: fire the direct study calls the moment a Bearer token is captured (active network),
+  // instead of polling for login/token which the throttled hidden webview can freeze.
+  async function runDirect(){
     try{
-      log("Várakozás a bejelentkezésre…");
-      var inOk=await waitFor(loggedIn, 60000); log(inOk?"Bejelentkezve":"Nem sikerült bejelentkezni");
-      if(!inOk){ deliver({calls:collect(),storage:tokenKeys()}); return; }
-      log("Token elkapása (az app saját hívásából)…");
-      await waitFor(function(){ return window.__bearer; }, 30000);
-      log(window.__bearer ? "Bearer token megvan" : "Nincs token — cookie-val próbálom");
-      // Directly call the study endpoints (seen in the network log). Active period, no idle-timer wait.
-      var base=document.baseURI; // e.g. https://neptun-ws01.uni-pannon.hu/hallgato/
-      // Each fetch is capped at 12s so a hanging endpoint can't stall the whole run.
-      function hit(ep){ var url=new URL('api/'+ep, base).href; var ctrl=window.AbortController?new AbortController():null; var timer;
-        var run=(async function(){ try{ var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include', signal:ctrl?ctrl.signal:undefined}); var t=await r.text(); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,4000)}; }catch(e){ return {ep:ep,url:url,error:String(e)}; } })();
-        var to=new Promise(function(res){ timer=setTimeout(function(){ if(ctrl){try{ctrl.abort();}catch(_){}} res({ep:ep,url:url,error:"timeout(12s)"}); },12000); });
-        return Promise.race([run,to]).then(function(out){ try{clearTimeout(timer);}catch(_){}; log("Direct "+ep+" → "+(out.status||out.error)); return out; }); }
+      log("Token megvan — közvetlen lekérések…");
       var eps=["advancement/creditprogress","Advancement/GetStudentCurriculumTemplates","Curriculum/GetOptionalSubjectsSummary"];
       var direct=[]; for(var i=0;i<eps.length;i++){ direct.push(await hit(eps[i])); }
-      var calls=collect(); log("Kész — közvetlen: "+direct.length+", rögzített: "+calls.length);
-      deliver({origin:location.origin, base:base, bearer: window.__bearer?("["+String(window.__bearer).length+" kar.]"):"nincs", direct:direct, calls:calls, storage:tokenKeys()});
+      log("Kész — közvetlen: "+direct.length);
+      deliver({origin:location.origin, base:document.baseURI, bearer: window.__bearer?("["+String(window.__bearer).length+" kar.]"):"nincs", direct:direct, calls:collect(), storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
-  })();
+  }
+  function maybeStart(){ if(window.__bearer && !window.__directStarted){ window.__directStarted=true; runDirect(); } }
+  window.__maybeStart=maybeStart;
+  log("Figyelés indul — token bevárása (eseményvezérelt)");
+  maybeStart(); // in case a bearer is already available
   return "started";
 })();`;
 }
