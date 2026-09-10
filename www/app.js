@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.094";
+const APP_VERSION = "v0.095";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1404,7 +1404,7 @@ function buildApiSniffScript(username, password, code) {
   // Keep the payload small enough for the InAppBrowser executeScript bridge to return in one shot.
   function deliver(o){ o=o||{};
     function build(obj){ try{ return JSON.stringify(Object.assign({done:true,log:LOG.slice(-40).join("\\n")},obj)); }catch(e){ return ""; } }
-    var LIM=20000, s=build(o);
+    var LIM=35000, s=build(o);
     // Secondary data first: drop the captured-call response samples, then storage.
     if(s.length>LIM && o.calls){ o.calls.forEach(function(c){ c.resp=''; }); s=build(o); }
     if(s.length>LIM){ o.storage=[]; s=build(o); }
@@ -1446,7 +1446,7 @@ function buildApiSniffScript(username, password, code) {
     out.push({method:c.method,url:c.url,status:c.status,ct:c.ct,headers:c.headers,body:c.body,resp:keep?(c.resp||'').slice(0,1500):''}); }); return out.slice(0,60); }
   // Each fetch is capped at 12s so a hanging endpoint can't stall the whole run.
   function hit(ep){ var url=new URL('api/'+ep, document.baseURI).href; var ctrl=window.AbortController?new AbortController():null; var timer;
-    var run=(async function(){ try{ var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include', signal:ctrl?ctrl.signal:undefined}); var t=await r.text(); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,4000)}; }catch(e){ return {ep:ep,url:url,error:String(e)}; } })();
+    var run=(async function(){ try{ var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include', signal:ctrl?ctrl.signal:undefined}); var t=await r.text(); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,9000)}; }catch(e){ return {ep:ep,url:url,error:String(e)}; } })();
     var to=new Promise(function(res){ timer=setTimeout(function(){ if(ctrl){try{ctrl.abort();}catch(_){}} res({ep:ep,url:url,error:"timeout(12s)"}); },12000); });
     return Promise.race([run,to]).then(function(out){ try{clearTimeout(timer);}catch(_){}; log("Direct "+ep+" → "+(out.status||out.error)); return out; }); }
   // Event-driven: fire the direct study calls the moment a Bearer token is captured (active network),
@@ -1454,8 +1454,14 @@ function buildApiSniffScript(username, password, code) {
   async function runDirect(){
     try{
       log("Token megvan — közvetlen lekérések…");
-      var eps=["advancement/creditprogress","Advancement/GetStudentCurriculumTemplates","Curriculum/GetOptionalSubjectsSummary"];
-      var direct=[]; for(var i=0;i<eps.length;i++){ direct.push(await hit(eps[i])); }
+      var direct=[];
+      direct.push(await hit("advancement/creditprogress"));
+      var tpl=await hit("Advancement/GetStudentCurriculumTemplates"); direct.push(tpl);
+      direct.push(await hit("Curriculum/GetOptionalSubjectsSummary"));
+      // Pull the curriculum + advancement ids out of the templates response, then fetch the subject list.
+      var ctid="", arid=""; try{ var tb=tpl.body||""; var m1=tb.match(/"curriculumTemplateId":(\\d+)/); if(m1)ctid=m1[1]; var m2=tb.match(/"advancementRowId":"([^"]+)"/); if(m2)arid=m2[1]; }catch(_){}
+      log("Képzés id="+(ctid||"?")+" adv="+(arid?arid.slice(0,8):"?"));
+      if(ctid){ var q="Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate?curriculumTemplateId="+ctid+"&needSubjectGroups=true"+(arid?"&advancementRowId="+arid:""); direct.push(await hit(q)); }
       log("Kész — közvetlen: "+direct.length);
       deliver({origin:location.origin, base:document.baseURI, bearer: window.__bearer?("["+String(window.__bearer).length+" kar.]"):"nincs", direct:direct, calls:collect(), storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
