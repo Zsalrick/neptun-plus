@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.114";
+const APP_VERSION = "v0.115";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -184,6 +184,22 @@ function ask({ title, body, okText = "Igen", cancelText = "Mégse" }) {
     $("ask-dialog").classList.remove("hidden");
     const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").onclick = null; $("ask-cancel").onclick = null; res(v); };
     $("ask-ok").onclick = () => done(true); $("ask-cancel").onclick = () => done(false);
+  });
+}
+// Confirm dialog that requires typing a specific word (e.g. "törlés") before the action button enables.
+function askConfirmText({ title, body, mustType, okText = "Törlés", cancelText = "Mégse" }) {
+  return new Promise((res) => {
+    $("ask-title").textContent = title;
+    $("ask-body").innerHTML = body + `<input class="input" id="ask-confirm-input" placeholder="${esc(mustType)}" autocomplete="off" autocapitalize="none" style="margin-top:12px" />`;
+    $("ask-ok").textContent = okText; $("ask-cancel").textContent = cancelText;
+    $("ask-dialog").classList.remove("hidden");
+    const inp = $("ask-confirm-input");
+    const ok = () => (inp.value || "").trim().toLowerCase() === String(mustType).toLowerCase();
+    const refresh = () => { $("ask-ok").disabled = !ok(); };
+    inp.oninput = refresh; refresh(); setTimeout(() => inp.focus(), 60);
+    const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").onclick = null; $("ask-cancel").onclick = null; inp.oninput = null; $("ask-ok").disabled = false; res(v); };
+    $("ask-ok").onclick = () => { if (ok()) done(true); };
+    $("ask-cancel").onclick = () => done(false);
   });
 }
 
@@ -542,7 +558,30 @@ function cancelAddProfile() {
 function openProfilePicker() {
   const items = (state.profiles || []).map((p) => ({ value: p.id, label: profileLabel(p), sub: p.username || "" }));
   items.push({ value: "__add__", label: "➕ Új profil hozzáadása" });
-  openList({ title: "Profil", items, selected: state.activeProfileId, onPick: (v) => { if (v === "__add__") startAddProfile(); else switchProfile(v); } });
+  if ((state.profiles || []).length > 1) items.push({ value: "__del__", label: "🗑️ Profil törlése" });
+  openList({ title: "Profil", items, selected: state.activeProfileId, onPick: (v) => { if (v === "__add__") startAddProfile(); else if (v === "__del__") openDeleteProfilePicker(); else switchProfile(v); } });
+}
+function openDeleteProfilePicker() {
+  const items = (state.profiles || []).map((p) => ({ value: p.id, label: profileLabel(p), sub: p.username || "" }));
+  openList({ title: "Melyik profilt törlöd?", items, onPick: (v) => deleteProfile(v) });
+}
+async function deleteProfile(id) {
+  if ((state.profiles || []).length <= 1) { toast("Az utolsó profilt nem lehet törölni."); return; }
+  const p = (state.profiles || []).find((x) => x.id === id); if (!p) return;
+  if (!(await requireAuth())) return; // PIN / biometrics (skipped if no app-lock set)
+  const ok = await askConfirmText({
+    title: "Profil törlése",
+    body: `Biztosan törlöd ezt a profilt?<br><b>${esc(profileLabel(p))}</b>${p.username ? " · " + esc(p.username) : ""}<br><br>Minden hozzá tartozó adat (tárgyak, órarend, kredit, félévek…) törlődik erről az eszközről. A többi profilod megmarad.<br><br>A megerősítéshez írd be: <b>törlés</b>`,
+    mustType: "törlés", okText: "Törlés",
+  });
+  if (!ok) return;
+  const wasActive = id === state.activeProfileId;
+  state.profiles = state.profiles.filter((x) => x.id !== id);
+  if (wasActive) { const nx = state.profiles[0]; state.activeProfileId = nx.id; loadProfileToTop(nx); resetProfileCaches(); }
+  saveState();
+  renderHome();
+  if (wasActive) { updateIcsStatus(); renderTimetable(); renderExams(); renderCourses(); totpTick(); rescheduleNotifications(); }
+  toast("Profil törölve.");
 }
 // Reserve enough bottom padding in every scroll area to clear the nav bar — measured live, so it
 // stays correct at any text size (large fonts make the nav taller).
