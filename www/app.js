@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.100";
+const APP_VERSION = "v0.101";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1314,6 +1314,34 @@ async function apiGet(sess, ep, params) {
   const r = await fetch(u, { headers, credentials: "include" });
   return { status: r.status, data: await r.json().catch(() => null) };
 }
+// Read the whole curriculum via API: program + all subjects (recursing subject groups) + the
+// completed free electives. Returns { program, required:[...], free:[...] } or null.
+async function apiReadCurriculum(sess) {
+  const tpl = await apiGet(sess, "Advancement/GetStudentCurriculumTemplates");
+  const row = tpl && tpl.data && tpl.data.data && tpl.data.data[0];
+  if (!row || !row.advancementRowId) return null;
+  const program = row.curriculumTemplateName || "";
+  const required = [], seen = {};
+  async function walk(parentRowId, depth) {
+    if (!parentRowId || depth > 6) return;
+    const r = await apiGet(sess, "Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { parentAdvancementRowId: parentRowId });
+    const dd = r && r.data && r.data.data; if (!dd) return;
+    (dd.mandatorySubjects || []).forEach((s) => {
+      const key = s.code || s.subjectId; if (key && seen[key]) return; if (key) seen[key] = 1;
+      const st = s.curriculumStatuses || {};
+      required.push({ code: s.code || "", name: s.name || "", credits: parseInt(s.credit, 10) || 0, completed: !!st.isSuccessful, type: s.requirementType || "", term: s.recommendedTerm || 0 });
+    });
+    for (const g of (dd.subjectGroups || [])) { const gid = g.advancementRowId || g.parentAdvancementRowId || g.childAdvancementRowId; if (gid) await walk(gid, depth + 1); }
+  }
+  await walk(row.advancementRowId, 0);
+  let free = [];
+  try {
+    const o = await apiGet(sess, "Curriculum/GetOptionalSubjectsWithoutCurriculum", { advancementRowId: row.advancementRowId });
+    const list = o && o.data && o.data.data;
+    if (Array.isArray(list)) free = list.map((x) => ({ code: x.subjectCode || "", name: x.subjectName || "", credits: (+x.credit) || 0, completed: true, type: x.subjectRequirement || "" }));
+  } catch (e) { /* free electives optional */ }
+  return { program, required, free };
+}
 
 async function grabProgress() {
   if (!isNative) { toast("A kredit beolvasása a telefonos alkalmazásban működik."); return; }
@@ -1449,20 +1477,36 @@ async function scrapeCurriculum() {
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
-  let ok = false, rawOut = "", cancelled = false;
+  let ok = false, rawOut = "", cancelled = false, viaApi = false;
   try {
-    const res = await neptunReadCurriculum();
-    rawOut = (res && res.raw) || "";
-    if (res && res.log) courseLog = res.log.split("\n");
-    const req = (res && res.required) || [], fr = (res && res.free) || [];
-    if (req.length || fr.length) {
-      state.curriculum = { fetchedAt: new Date().toISOString(), program: (res && res.program) || "", required: req, free: fr };
-      saveState(); renderCourses(); ok = true; dbg("Siker: " + (req.length + fr.length) + " tárgy");
-    } else { dbg("Betöltött, de 0 tárgyat ismertem fel a mintatantervben."); }
+    // Preferred: direct API.
+    const sess = await getApiSession();
+    if (sess && sess.token) {
+      $("busy-text").textContent = "Mintatanterv lekérése…";
+      try {
+        const cur = await apiReadCurriculum(sess);
+        if (cur && (cur.required.length || cur.free.length)) {
+          state.curriculum = { fetchedAt: new Date().toISOString(), program: cur.program || "", required: cur.required, free: cur.free };
+          saveState(); renderCourses(); ok = true; viaApi = true;
+        }
+      } catch (e) { dbg("API hiba: " + (e && e.message ? e.message : e)); }
+    }
+    // Fallback: DOM scraping.
+    if (!ok) {
+      $("busy-text").textContent = "Beolvasás…";
+      const res = await neptunReadCurriculum();
+      rawOut = (res && res.raw) || "";
+      if (res && res.log) courseLog = res.log.split("\n");
+      const req = (res && res.required) || [], fr = (res && res.free) || [];
+      if (req.length || fr.length) {
+        state.curriculum = { fetchedAt: new Date().toISOString(), program: (res && res.program) || "", required: req, free: fr };
+        saveState(); renderCourses(); ok = true; dbg("Siker: " + (req.length + fr.length) + " tárgy");
+      } else { dbg("Betöltött, de 0 tárgyat ismertem fel a mintatantervben."); }
+    }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
   if (cancelled) { toast("Megszakítva"); return; }
-  if (ok) { toast((state.curriculum.required.length + state.curriculum.free.length) + " tárgy beolvasva."); return; }
+  if (ok) { toast((state.curriculum.required.length + state.curriculum.free.length) + " tárgy beolvasva" + (viaApi ? " (API)" : "") + "."); return; }
   try { if (rawOut) await navigator.clipboard.writeText(rawOut); } catch (e) { /* ignore */ }
   await ask({ title: "Mintatanterv napló", okText: "OK",
     body: courseLog.map((l) => esc(l)).join("<br>") + (rawOut ? "<br><br><b>A nyers oldalt a vágólapra másoltam</b> — illeszd be a beszélgetésbe." : "") });
@@ -1668,12 +1712,18 @@ async function syncCourses() {
   return { ok: true, detail: list.length + " tárgy" };
 }
 async function syncCurriculum() {
-  const res = await neptunReadCurriculum();
-  const req = (res && res.required) || [], fr = (res && res.free) || [];
+  let program = "", req = [], fr = [];
+  // Preferred: direct API.
+  try {
+    const sess = await getApiSession();
+    if (sess && sess.token) { const cur = await apiReadCurriculum(sess); if (cur && (cur.required.length || cur.free.length)) { program = cur.program; req = cur.required; fr = cur.free; } }
+  } catch (e) { /* fall back */ }
+  // Fallback: DOM scraping.
+  if (!req.length && !fr.length) { const res = await neptunReadCurriculum(); req = (res && res.required) || []; fr = (res && res.free) || []; program = (res && res.program) || ""; }
   if (!req.length && !fr.length) return { ok: false, detail: "nem ismertem fel tárgyat" };
-  state.curriculum = { fetchedAt: new Date().toISOString(), program: (res && res.program) || "", required: req, free: fr };
+  state.curriculum = { fetchedAt: new Date().toISOString(), program, required: req, free: fr };
   saveState(); renderCourses();
-  return { ok: true, detail: (req.length + fr.length) + " tárgy" + ((res && res.program) ? " · " + res.program : "") };
+  return { ok: true, detail: (req.length + fr.length) + " tárgy" + (program ? " · " + program : "") };
 }
 
 // --- orchestrator: run the selected tasks in sequence with an overall progress bar ---
