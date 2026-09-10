@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.113";
+const APP_VERSION = "v0.114";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -114,7 +114,22 @@ function migrate(s) {
   ["classes", "zh", "vizsga"].forEach((c) => { if (!s.notify[c]) s.notify[c] = d.notify[c]; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
   // Multi-profile migration: wrap the existing single identity as profile #1.
   ensureProfiles(s);
+  // Keep catalog universities' server URLs in sync with the app's list (so fixes to
+  // universities.js reach existing profiles). Custom/unknown universities are left alone.
+  syncProfileServersToCatalog(s);
+  const ap = s.profiles.find((p) => p.id === s.activeProfileId);
+  if (ap) PROFILE_FIELDS.forEach((k) => { s[k] = ap[k]; }); // top level mirrors the active profile
   return s;
+}
+function syncProfileServersToCatalog(s) {
+  (s.profiles || []).forEach((p) => {
+    if (!p.university) return;
+    const uni = UNIVERSITIES.find((u) => u.name === p.university);
+    if (!uni) return; // custom / not in catalog → leave the user's URLs
+    const want = uni.servers.map((sv, i) => ({ id: "u" + i, label: sv.label, url: sv.url }));
+    const same = JSON.stringify((p.servers || []).map((x) => x.url)) === JSON.stringify(want.map((x) => x.url));
+    if (!same) { p.servers = want; if (!want.some((x) => x.id === p.activeServerId)) p.activeServerId = "u0"; }
+  });
 }
 function activeProfile() { return (state.profiles || []).find((p) => p.id === state.activeProfileId) || null; }
 function syncActiveToProfiles() { const p = activeProfile(); if (p) PROFILE_FIELDS.forEach((k) => { p[k] = state[k]; }); }
