@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.105";
+const APP_VERSION = "v0.106";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2051,16 +2051,29 @@ function openExamEdit(e) {
   $("exam-sheet").classList.remove("hidden");
 }
 function openSubjectPicker() {
-  const sems = availableSemesters(classEvents().concat(examEvents()));
-  if (exSubjSem === null) { exSubjSem = currentSemesterKey(); if (!sems.some((s) => s.key === exSubjSem)) exSubjSem = sems.length ? sems[sems.length - 1].key : "all"; }
+  const courses = (state.courses && state.courses.list) || [];
+  const sems = allSemesters(); // [{key,start,end}], oldest→newest
+  if (exSubjSem === null || (exSubjSem !== "all" && !sems.some((s) => s.key === exSubjSem))) {
+    exSubjSem = sems.some((s) => s.key === currentSemesterKey()) ? currentSemesterKey() : (sems.length ? sems[sems.length - 1].key : "all");
+  }
   const build = () => {
-    let evs = classEvents();
-    if (exSubjSem !== "all") { const s = sems.find((x) => x.key === exSubjSem); if (s) evs = evs.filter((e) => e.S >= s.start && e.S < s.end); }
-    const subs = Array.from(new Set(evs.map((e) => e.summary).filter(Boolean))).sort((a, b) => a.localeCompare(b, "hu"));
+    let subs;
+    if (courses.length) {
+      // Prefer the enrolled subjects (per semester), so the picker matches what you actually took.
+      let list = courses;
+      if (exSubjSem !== "all") list = list.filter((c) => c.semester === exSubjSem);
+      subs = Array.from(new Set(list.map((c) => c.name).filter(Boolean)));
+    } else {
+      // Fallback: timetable events, filtered by the semester's date range.
+      let evs = classEvents();
+      if (exSubjSem !== "all") { const s = sems.find((x) => x.key === exSubjSem); if (s) evs = evs.filter((e) => e.S >= s.start && e.S < s.end); }
+      subs = Array.from(new Set(evs.map((e) => e.summary).filter(Boolean)));
+    }
+    subs.sort((a, b) => a.localeCompare(b, "hu"));
     openList({
       title: "Tárgy választása", selected: exSubject, searchable: true, allowCustom: true,
       items: subs.map((s) => ({ value: s, label: s })),
-      chips: [{ key: "all", label: "Összes" }].concat(sems.map((s) => ({ key: s.key, label: s.key }))),
+      chips: [{ key: "all", label: "Összes" }].concat(sems.slice().reverse().map((s) => ({ key: s.key, label: s.key }))),
       chipCurrent: exSubjSem, onChip: (k) => { exSubjSem = k; build(); },
       onPick: (v) => { exSubject = v; $("ex-subject-lbl").textContent = v; },
     });
