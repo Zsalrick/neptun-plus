@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.090";
+const APP_VERSION = "v0.091";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1404,11 +1404,13 @@ function buildApiSniffScript(username, password, code) {
   // Keep the payload small enough for the InAppBrowser executeScript bridge to return in one shot.
   function deliver(o){ o=o||{};
     function build(obj){ try{ return JSON.stringify(Object.assign({done:true,log:LOG.slice(-40).join("\\n")},obj)); }catch(e){ return ""; } }
-    var LIM=15000, s=build(o);
-    if(s.length>LIM && o.calls){ o.calls.forEach(function(c){ if(c.resp) c.resp=c.resp.slice(0,700); }); s=build(o); }
-    if(s.length>LIM && o.calls){ o.calls.forEach(function(c){ if(c.resp) c.resp=c.resp.slice(0,300); }); s=build(o); }
-    if(s.length>LIM){ o.storage=[]; s=build(o); }
+    var LIM=20000, s=build(o);
+    // Secondary data first: drop the captured-call response samples, then storage.
     if(s.length>LIM && o.calls){ o.calls.forEach(function(c){ c.resp=''; }); s=build(o); }
+    if(s.length>LIM){ o.storage=[]; s=build(o); }
+    // Then, if still too big, trim the direct-fetch bodies (the primary payload) progressively.
+    if(s.length>LIM && o.direct){ o.direct.forEach(function(d){ if(d.body) d.body=d.body.slice(0,2000); }); s=build(o); }
+    if(s.length>LIM && o.direct){ o.direct.forEach(function(d){ if(d.body) d.body=d.body.slice(0,1000); }); s=build(o); }
     if(!s) s=JSON.stringify({done:true,error:"serialize",log:LOG.slice(-20).join("\\n")});
     window.__apidiag=s; }
   function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
@@ -1421,7 +1423,7 @@ function buildApiSniffScript(username, password, code) {
   function loggedIn(){ return !document.querySelector('#userName') && !anyCode() && /Men[üu]/i.test(T()); }
   // ---- install the network hook once, as early as possible ----
   function redact(v){ v=String(v||''); if(v.length<=10) return '['+v.length+' kar.]'; return v.slice(0,10)+'…['+v.length+' kar.]'; }
-  function redH(h){ var o={}; try{ if(h&&h.forEach){ h.forEach(function(v,k){ o[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }); } else if(h&&typeof h==='object'){ Object.keys(h).forEach(function(k){ o[k]=/authorization|cookie|token/i.test(k)?redact(h[k]):h[k]; }); } }catch(e){} return o; }
+  function redH(h){ var o={}; try{ if(h&&h.forEach){ h.forEach(function(v,k){ if(/^authorization$/i.test(k)) window.__bearer=v; o[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }); } else if(h&&typeof h==='object'){ Object.keys(h).forEach(function(k){ if(/^authorization$/i.test(k)) window.__bearer=h[k]; o[k]=/authorization|cookie|token/i.test(k)?redact(h[k]):h[k]; }); } }catch(e){} return o; }
   if(!window.__apiHook){ window.__apiHook=true; window.__apiCalls=[]; window.__lastApi=Date.now();
     function rec(e){ try{ if(/\\/api\\//.test(e.url||'')) window.__lastApi=Date.now(); if(window.__apiCalls.length<120) window.__apiCalls.push(e); }catch(_){} }
     var of=window.fetch;
@@ -1429,7 +1431,7 @@ function buildApiSniffScript(username, password, code) {
       return of.apply(this,arguments).then(function(res){ try{ var c=res.clone(); c.text().then(function(t){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status,ct:(res.headers&&res.headers.get('content-type'))||'',resp:(t||'').slice(0,2500)}); },function(){}); }catch(e){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status}); } return res; }); }; }
     var oOpen=XMLHttpRequest.prototype.open, oSend=XMLHttpRequest.prototype.send, oSet=XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.open=function(m,u){ this.__m=m; this.__u=u; this.__h={}; return oOpen.apply(this,arguments); };
-    XMLHttpRequest.prototype.setRequestHeader=function(k,v){ try{ this.__h[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }catch(e){} return oSet.apply(this,arguments); };
+    XMLHttpRequest.prototype.setRequestHeader=function(k,v){ try{ if(/^authorization$/i.test(k)) window.__bearer=v; this.__h[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }catch(e){} return oSet.apply(this,arguments); };
     XMLHttpRequest.prototype.send=function(b){ var self=this; try{ this.addEventListener('load',function(){ try{ var e={t:'xhr',url:self.__u,method:self.__m,headers:self.__h,body:b?String(b).slice(0,500):'',status:self.status,ct:self.getResponseHeader('content-type')||'',resp:(self.responseText||'').slice(0,2500)}; rec(e); if(/\\/api\\//.test(self.__u||'')) log("API: "+self.__m+" "+String(self.__u).split('/api/')[1]); }catch(_){} }); }catch(e){} return oSend.apply(this,arguments); };
     log("Hálózat-figyelő telepítve");
   }
@@ -1445,20 +1447,16 @@ function buildApiSniffScript(username, password, code) {
       log("Várakozás a bejelentkezésre…");
       var inOk=await waitFor(loggedIn, 60000); log(inOk?"Bejelentkezve":"Nem sikerült bejelentkezni");
       if(!inOk){ deliver({calls:collect(),storage:tokenKeys()}); return; }
-      log("Alap URL: "+location.origin);
-      // Just open Tanulmányok → Előrehaladás and see what it loads. Do NOT expand anything.
-      log("Tanulmányok → Előrehaladás"); var m=await waitFor(function(){return pick("Menü");},8000); if(m){m.click(); await sleep(250);}
-      var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){t.click(); await sleep(250);}
-      var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){e.click();}
-      await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000);
-      log("Előrehaladás betöltve — API-figyelés (8 mp tétlenség után kész)");
-      // Finish once the page has been quiet (no api/ call) for 10s, or after a 45s hard cap.
-      window.__lastApi=Date.now(); var startW=Date.now();
-      while(true){ await sleep(1000); var idle=Date.now()-(window.__lastApi||startW); var total=Date.now()-startW;
-        if(idle>8000){ log("8 mp tétlenség — befejezés"); break; }
-        if(total>30000){ log("Időkorlát (30 mp) — befejezés"); break; } }
-      var calls=collect(); log("Rögzített API-hívások: "+calls.length);
-      deliver({origin:location.origin, path:location.pathname, calls:calls, storage:tokenKeys()});
+      log("Token elkapása (az app saját hívásából)…");
+      await waitFor(function(){ return window.__bearer; }, 30000);
+      log(window.__bearer ? "Bearer token megvan" : "Nincs token — cookie-val próbálom");
+      // Directly call the study endpoints (seen in the network log). Active period, no idle-timer wait.
+      var base=document.baseURI; // e.g. https://neptun-ws01.uni-pannon.hu/hallgato/
+      async function hit(ep){ try{ var url=new URL('api/'+ep, base).href; var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include'}); var t=await r.text(); log("Direct "+ep+" → "+r.status); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,4000)}; }catch(err){ log("Direct "+ep+" HIBA: "+err); return {ep:ep,error:String(err)}; } }
+      var eps=["advancement/creditprogress","Advancement/GetStudentCurriculumTemplates","Curriculum/GetOptionalSubjectsSummary","Advancement/GetTermAveragesByTraining","Dashboard/GetAverageTypesDescription"];
+      var direct=[]; for(var i=0;i<eps.length;i++){ direct.push(await hit(eps[i])); }
+      var calls=collect(); log("Kész — közvetlen: "+direct.length+", rögzített: "+calls.length);
+      deliver({origin:location.origin, base:base, bearer: window.__bearer?("["+String(window.__bearer).length+" kar.]"):"nincs", direct:direct, calls:calls, storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
   })();
   return "started";
@@ -1469,7 +1467,7 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "API diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, megnyitja a <b>Tanulmányok → Előrehaladás</b> oldalt (nem nyit ki semmit), és rögzíti, milyen API‑hívásokat csinál a Neptun. A tokeneket kitakarom. 10 mp tétlenség után magától befejezi. A végén a teljes riportot <b>fájlba menti</b> (Dokumentumok/neptunplus) és a vágólapra is másolja." });
+    body: "Bejelentkezik, majd közvetlenül lekéri a tanulmányi végpontokat (kredit, mintatanterv, szabadon választhatók) és rögzíti a válaszaikat. A tokent kitakarom. A riportot <b>fájlba menti</b> (Dokumentumok/neptunplus) és a vágólapra is másolja. Fél percen belül végez." });
   if (!ok) return;
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
@@ -1492,11 +1490,15 @@ async function runApiDiagnostics() {
       fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(name) + "</b>"; }
   } catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) { /* ignore */ }
+  const direct = (report && report.direct) || [];
+  const dSummary = direct.length
+    ? "<b>Közvetlen lekérések:</b><br>" + direct.map((d) => `${esc(d.ep || "")} → ${d.error ? "HIBA" : d.status}`).join("<br>") + "<br><br>"
+    : "";
   const summary = calls.length
-    ? calls.slice(0, 40).map((c) => `${esc(c.method || "")} ${esc((c.url || "").replace(report.origin || "", ""))}${c.ct ? ` <span style="opacity:.6">(${esc((c.ct || "").split(";")[0])})</span>` : ""}`).join("<br>")
-    : "Nem rögzült API‑hívás. A napló:<br>" + courseLog.map((l) => esc(l)).join("<br>");
-  await ask({ title: `API diagnosztika — ${calls.length} hívás`, okText: "OK", cancelText: "Bezárás",
-    body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
+    ? "<b>Rögzített hívások:</b><br>" + calls.slice(0, 40).map((c) => `${esc(c.method || "")} ${esc((c.url || "").replace(report.origin || "", ""))}`).join("<br>")
+    : (direct.length ? "" : "Nem rögzült API‑hívás. A napló:<br>" + courseLog.map((l) => esc(l)).join("<br>"));
+  await ask({ title: `API diagnosztika`, okText: "OK", cancelText: "Bezárás",
+    body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${dSummary}${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
