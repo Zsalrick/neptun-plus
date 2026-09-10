@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.091";
+const APP_VERSION = "v0.092";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1452,8 +1452,12 @@ function buildApiSniffScript(username, password, code) {
       log(window.__bearer ? "Bearer token megvan" : "Nincs token — cookie-val próbálom");
       // Directly call the study endpoints (seen in the network log). Active period, no idle-timer wait.
       var base=document.baseURI; // e.g. https://neptun-ws01.uni-pannon.hu/hallgato/
-      async function hit(ep){ try{ var url=new URL('api/'+ep, base).href; var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include'}); var t=await r.text(); log("Direct "+ep+" → "+r.status); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,4000)}; }catch(err){ log("Direct "+ep+" HIBA: "+err); return {ep:ep,error:String(err)}; } }
-      var eps=["advancement/creditprogress","Advancement/GetStudentCurriculumTemplates","Curriculum/GetOptionalSubjectsSummary","Advancement/GetTermAveragesByTraining","Dashboard/GetAverageTypesDescription"];
+      // Each fetch is capped at 12s so a hanging endpoint can't stall the whole run.
+      function hit(ep){ var url=new URL('api/'+ep, base).href; var ctrl=window.AbortController?new AbortController():null; var timer;
+        var run=(async function(){ try{ var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include', signal:ctrl?ctrl.signal:undefined}); var t=await r.text(); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,4000)}; }catch(e){ return {ep:ep,url:url,error:String(e)}; } })();
+        var to=new Promise(function(res){ timer=setTimeout(function(){ if(ctrl){try{ctrl.abort();}catch(_){}} res({ep:ep,url:url,error:"timeout(12s)"}); },12000); });
+        return Promise.race([run,to]).then(function(out){ try{clearTimeout(timer);}catch(_){}; log("Direct "+ep+" → "+(out.status||out.error)); return out; }); }
+      var eps=["advancement/creditprogress","Advancement/GetStudentCurriculumTemplates","Curriculum/GetOptionalSubjectsSummary"];
       var direct=[]; for(var i=0;i<eps.length;i++){ direct.push(await hit(eps[i])); }
       var calls=collect(); log("Kész — közvetlen: "+direct.length+", rögzített: "+calls.length);
       deliver({origin:location.origin, base:base, bearer: window.__bearer?("["+String(window.__bearer).length+" kar.]"):"nincs", direct:direct, calls:calls, storage:tokenKeys()});
