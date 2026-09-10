@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Neptun+</title>
+  <title>Kredit+</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -12,17 +15,17 @@
     <div class="boot-mark" aria-hidden="true">
       <svg viewBox="0 0 1024 1024" width="88" height="88">
         <g fill="none" stroke="currentColor" stroke-width="66" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M376 656 L376 392"/>
-          <path d="M376 400 L600 648"/>
-          <path d="M600 656 L600 392"/>
+          <path d="M372 344 L372 680"/>
+          <path d="M372 516 L588 344"/>
+          <path d="M372 516 L588 680"/>
         </g>
-        <g fill="currentColor">
-          <rect x="640" y="372" width="88" height="26" rx="13"/>
-          <rect x="672" y="340" width="26" height="88" rx="13"/>
+        <g fill="#f5b221">
+          <rect x="636" y="380" width="92" height="28" rx="14"/>
+          <rect x="668" y="348" width="28" height="92" rx="14"/>
         </g>
       </svg>
     </div>
-    <div class="boot-name">Neptun+</div>
+    <div class="boot-name">Kredit<span class="plus">+</span></div>
     <div class="boot-bar"><span></span></div>
     <div class="boot-text" id="boot-text">Indítás</div>
   </div>
@@ -43,7 +46,7 @@
             <!-- Step 0: welcome + legal -->
             <div class="ob-step active" data-step="0">
               <div class="ob-hero"><span data-icon="key"></span></div>
-              <h1 class="ob-title">Neptun<span class="plus">+</span></h1>
+              <h1 class="ob-title">Kredit<span class="plus">+</span></h1>
               <p class="ob-sub">Belépés a Neptunba egyetlen érintéssel. Az azonosítót, a jelszót és a 2FA kódot az alkalmazás kitölti helyetted, itt az eszközödön.</p>
               <div class="ob-content">
                 <p class="legal-note">Mielőtt belevágunk, kérlek olvasd el és fogadd el az alábbi dokumentumokat. Az adataid csak ezen az eszközön maradnak, semmit nem küldünk külső szerverre.</p>
@@ -175,7 +178,7 @@
 
             <section class="tabscreen active" id="tab-home">
               <header class="topbar">
-                <div style="flex:1"><div class="wordmark">Neptun<span class="plus">+</span></div><div class="topbar-sub" id="home-sub">Készen áll a belépésre</div></div>
+                <div style="flex:1"><div class="wordmark">Kredit<span class="plus">+</span></div><div class="topbar-sub" id="home-sub">Készen áll a belépésre</div></div>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
@@ -423,7 +426,7 @@
                     <span class="row-main"><span class="row-title">Minden adat törlése</span><span class="row-sub">Visszaáll a kezdő beállításra</span></span>
                   </button>
                 </div>
-                <div class="hint center" style="margin:16px 0 6px">Neptun+, minden adat csak ezen az eszközön</div>
+                <div class="hint center" style="margin:16px 0 6px">Kredit+, minden adat csak ezen az eszközön</div>
               </div>
             </section>
 
@@ -441,7 +444,7 @@
         <!-- App lock overlay -->
         <div class="lock hidden" id="lock">
           <div class="lock-badge"><span data-icon="lock"></span></div>
-          <div class="lock-title">Neptun+</div>
+          <div class="lock-title">Kredit<span class="plus">+</span></div>
           <div class="lock-hint" id="lock-hint">Add meg a kódot a folytatáshoz.</div>
           <div class="pin-dots" id="lock-dots"></div>
           <div class="keypad" id="lock-keypad"></div>
@@ -450,7 +453,7 @@
 
       </div>
     </div>
-    <div class="stage-note" data-preview-only><b>Neptun+ előnézet.</b> Így néz ki az app a telefonon. A valódi belépés az alkalmazásban történik.</div>
+    <div class="stage-note" data-preview-only><b>Kredit+ előnézet.</b> Így néz ki az app a telefonon. A valódi belépés az alkalmazásban történik.</div>
   </div>
 
   <!-- University picker sheet -->
@@ -651,7 +654,7 @@
         </div>
         <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 9.</div>
         <h3>1. A tájékoztató tárgya</h3>
-        <p>Ez a tájékoztató a Neptun+ alkalmazás adatkezelését ismerteti, a GDPR szabályaival összhangban. A weboldal adatkezeléséről külön tájékoztató szól a kissadamev.hu címen.</p>
+        <p>Ez a tájékoztató a Kredit+ alkalmazás adatkezelését ismerteti, a GDPR szabályaival összhangban. A weboldal adatkezeléséről külön tájékoztató szól a kissadamev.hu címen.</p>
         <h3>2. Milyen adatokat kezel az alkalmazás</h3>
         <p>Az alkalmazás a működéshez a következőket tárolja az eszközödön:</p>
         <ul>
@@ -700,7 +703,7 @@
         </div>
         <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 9.</div>
         <h3>1. Az alkalmazás</h3>
-        <p>A Neptun+ egy segédalkalmazás, amely a felhasználó eszközén tárolt adatokkal megkönnyíti a Neptun használatát: belépés, órarend, vizsgák és ZH‑k, emlékeztetők, félév‑ és kredit‑áttekintés, valamint letölthető kiegészítők (pl. számlatükör).</p>
+        <p>A Kredit+ egy segédalkalmazás, amely a felhasználó eszközén tárolt adatokkal megkönnyíti a Neptun használatát: belépés, órarend, vizsgák és ZH‑k, emlékeztetők, félév‑ és kredit‑áttekintés, valamint letölthető kiegészítők (pl. számlatükör).</p>
         <h3>2. Díj</h3>
         <p>Az alkalmazás használata ingyenes.</p>
         <h3>3. Használat</h3>

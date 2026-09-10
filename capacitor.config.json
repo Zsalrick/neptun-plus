@@ -1,6 +1,6 @@
 {
   "appId": "hu.neptun.autologin",
-  "appName": "Neptun+",
+  "appName": "Kredit+",
   "webDir": "www",
   "plugins": {
     "CapacitorHttp": { "enabled": true },

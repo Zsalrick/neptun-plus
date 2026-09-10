@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.115";
+const APP_VERSION = "v0.116";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -160,7 +160,7 @@ async function sha256hex(s) {
 let bioOK = false;
 function bioPlugin() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NativeBiometric; }
 async function bioAvailable() { try { const NB = bioPlugin(); if (!NB) return false; const r = await NB.isAvailable(); return !!(r && r.isAvailable); } catch { return false; } }
-async function bioVerify() { const NB = bioPlugin(); await NB.verifyIdentity({ reason: "Neptun+ feloldása", title: "Neptun+", subtitle: "", description: "Igazold a személyazonosságod" }); return true; }
+async function bioVerify() { const NB = bioPlugin(); await NB.verifyIdentity({ reason: "Kredit+ feloldása", title: "Kredit+", subtitle: "", description: "Igazold a személyazonosságod" }); return true; }
 
 // shared PIN pad + dots
 function renderDots(el, count, total = 4) { el.innerHTML = ""; for (let i = 0; i < total; i++) { const d = document.createElement("div"); d.className = "pin-dot" + (i < count ? " filled" : ""); el.appendChild(d); } }

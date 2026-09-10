@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Neptun+</string>
-    <string name="title_activity_main">Neptun+</string>
+    <string name="app_name">Kredit+</string>
+    <string name="title_activity_main">Kredit+</string>
     <string name="package_name">hu.neptun.autologin</string>
     <string name="custom_url_scheme">hu.neptun.autologin</string>
 </resources>
