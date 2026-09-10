@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.096";
+const APP_VERSION = "v0.097";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1545,21 +1545,28 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "API diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, majd közvetlenül lekéri a tanulmányi végpontokat (kredit, mintatanterv, szabadon választhatók) és rögzíti a válaszaikat. A tokent kitakarom. A riportot <b>fájlba menti</b> (Dokumentumok/neptunplus) és a vágólapra is másolja. Fél percen belül végez." });
+    body: "Bejelentkezik, majd <b>natív HTTP-vel</b> lekéri a tanulmányi végpontokat és a <b>teljes JSON választ</b> fájlba menti (Dokumentumok/neptunplus). Ez a felderítő eszköz új/változott végpontokhoz." });
   if (!ok) return;
   await totpTick();
-  courseLog = []; showBusy("Bejelentkezés…", true);
-  let report = null, cancelled = false;
+  showBusy("Bejelentkezés…", true);
+  let cancelled = false; const results = [];
   try {
-    const res = await neptunSniffApi();
-    if (res && res.log) courseLog = res.log.split("\n");
-    report = res || null;
+    const sess = await getApiSession(true); // fresh token
+    if (!sess || !sess.token) { hideBusy(); await ask({ title: "API diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
+    $("busy-text").textContent = "Végpontok lekérése…";
+    // Read the training/curriculum ids first, then the subject list that needs them.
+    const eps = ["advancement/creditprogress", "Advancement/GetStudentCurriculumTemplates", "Curriculum/GetOptionalSubjectsSummary", "MyTrainings"];
+    for (const ep of eps) { try { const r = await apiGet(sess, ep); results.push({ ep, status: r.status, data: r.data }); } catch (e) { results.push({ ep, error: String(e && e.message || e) }); } }
+    const tpl = results.find((r) => r.ep.indexOf("CurriculumTemplates") >= 0);
+    const row = tpl && tpl.data && tpl.data.data && tpl.data.data[0];
+    if (row && row.curriculumTemplateId) {
+      const q = "Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate?curriculumTemplateId=" + row.curriculumTemplateId + "&needSubjectGroups=true" + (row.advancementRowId ? "&advancementRowId=" + row.advancementRowId : "");
+      try { const r = await apiGet(sess, q); results.push({ ep: q, status: r.status, data: r.data }); } catch (e) { results.push({ ep: q, error: String(e && e.message || e) }); }
+    }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
   if (cancelled) { toast("Megszakítva"); return; }
-  const calls = (report && report.calls) || [];
-  const json = JSON.stringify(report || { calls: [], log: courseLog }, null, 2);
-  // Write the full report to a file (no clipboard size limit), and copy to clipboard as a fallback.
+  const json = JSON.stringify({ base: apiSession && apiSession.base, results }, null, 2);
   let fileMsg = "";
   try {
     const fs = FSP();
@@ -1568,15 +1575,8 @@ async function runApiDiagnostics() {
       fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(name) + "</b>"; }
   } catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) { /* ignore */ }
-  const direct = (report && report.direct) || [];
-  const dSummary = direct.length
-    ? "<b>Közvetlen lekérések:</b><br>" + direct.map((d) => `${esc(d.ep || "")} → ${d.error ? "HIBA" : d.status}`).join("<br>") + "<br><br>"
-    : "";
-  const summary = calls.length
-    ? "<b>Rögzített hívások:</b><br>" + calls.slice(0, 40).map((c) => `${esc(c.method || "")} ${esc((c.url || "").replace(report.origin || "", ""))}`).join("<br>")
-    : (direct.length ? "" : "Nem rögzült API‑hívás. A napló:<br>" + courseLog.map((l) => esc(l)).join("<br>"));
-  await ask({ title: `API diagnosztika`, okText: "OK", cancelText: "Bezárás",
-    body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${dSummary}${summary}` });
+  const summary = results.map((r) => `${esc(r.ep.split("?")[0])} → ${r.error ? "HIBA" : r.status}`).join("<br>");
+  await ask({ title: "API diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
