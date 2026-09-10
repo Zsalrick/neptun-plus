@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.086";
+const APP_VERSION = "v0.087";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1413,15 +1413,15 @@ function buildApiSniffScript(username, password, code) {
   // ---- install the network hook once, as early as possible ----
   function redact(v){ v=String(v||''); if(v.length<=10) return '['+v.length+' kar.]'; return v.slice(0,10)+'…['+v.length+' kar.]'; }
   function redH(h){ var o={}; try{ if(h&&h.forEach){ h.forEach(function(v,k){ o[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }); } else if(h&&typeof h==='object'){ Object.keys(h).forEach(function(k){ o[k]=/authorization|cookie|token/i.test(k)?redact(h[k]):h[k]; }); } }catch(e){} return o; }
-  if(!window.__apiHook){ window.__apiHook=true; window.__apiCalls=[];
-    function rec(e){ try{ if(window.__apiCalls.length<80) window.__apiCalls.push(e); }catch(_){} }
+  if(!window.__apiHook){ window.__apiHook=true; window.__apiCalls=[]; window.__lastApi=Date.now();
+    function rec(e){ try{ if(/\\/api\\//.test(e.url||'')) window.__lastApi=Date.now(); if(window.__apiCalls.length<120) window.__apiCalls.push(e); }catch(_){} }
     var of=window.fetch;
     if(of){ window.fetch=function(input,init){ init=init||{}; var url=(typeof input==='string')?input:((input&&input.url)||''); var method=(init.method||(input&&input.method)||'GET'); var reqH=redH(init.headers||(input&&input.headers)); var body=init.body?String(init.body).slice(0,500):'';
-      return of.apply(this,arguments).then(function(res){ try{ var c=res.clone(); c.text().then(function(t){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status,ct:(res.headers&&res.headers.get('content-type'))||'',resp:(t||'').slice(0,6000)}); },function(){}); }catch(e){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status}); } return res; }); }; }
+      return of.apply(this,arguments).then(function(res){ try{ var c=res.clone(); c.text().then(function(t){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status,ct:(res.headers&&res.headers.get('content-type'))||'',resp:(t||'').slice(0,2500)}); },function(){}); }catch(e){ rec({t:'fetch',url:url,method:method,headers:reqH,body:body,status:res.status}); } return res; }); }; }
     var oOpen=XMLHttpRequest.prototype.open, oSend=XMLHttpRequest.prototype.send, oSet=XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.open=function(m,u){ this.__m=m; this.__u=u; this.__h={}; return oOpen.apply(this,arguments); };
     XMLHttpRequest.prototype.setRequestHeader=function(k,v){ try{ this.__h[k]=/authorization|cookie|token/i.test(k)?redact(v):v; }catch(e){} return oSet.apply(this,arguments); };
-    XMLHttpRequest.prototype.send=function(b){ var self=this; try{ this.addEventListener('load',function(){ try{ var e={t:'xhr',url:self.__u,method:self.__m,headers:self.__h,body:b?String(b).slice(0,500):'',status:self.status,ct:self.getResponseHeader('content-type')||'',resp:(self.responseText||'').slice(0,6000)}; rec(e); if(/\\/api\\//.test(self.__u||'')) log("API: "+self.__m+" "+String(self.__u).split('/api/')[1]); }catch(_){} }); }catch(e){} return oSend.apply(this,arguments); };
+    XMLHttpRequest.prototype.send=function(b){ var self=this; try{ this.addEventListener('load',function(){ try{ var e={t:'xhr',url:self.__u,method:self.__m,headers:self.__h,body:b?String(b).slice(0,500):'',status:self.status,ct:self.getResponseHeader('content-type')||'',resp:(self.responseText||'').slice(0,2500)}; rec(e); if(/\\/api\\//.test(self.__u||'')) log("API: "+self.__m+" "+String(self.__u).split('/api/')[1]); }catch(_){} }); }catch(e){} return oSend.apply(this,arguments); };
     log("Hálózat-figyelő telepítve");
   }
   function tokenKeys(){ var out=[]; [['local',window.localStorage],['session',window.sessionStorage]].forEach(function(pair){ try{ var st=pair[1]; for(var i=0;i<st.length;i++){ var k=st.key(i); var v=st.getItem(k)||''; var looksTok=/token|auth|oidc|msal|bearer|jwt|access/i.test(k) || (/^ey[A-Za-z0-9_-]+\\./.test(v)); if(looksTok) out.push({store:pair[0],key:k,len:v.length,preview:redact(v)}); } }catch(e){} }); return out; }
@@ -1438,7 +1438,12 @@ function buildApiSniffScript(username, password, code) {
       var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){t.click(); await sleep(250);}
       var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){e.click();}
       await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000);
-      log("Oldal betöltve, várakozás a hívásokra…"); await sleep(4000);
+      log("Előrehaladás betöltve — API-figyelés (10 mp tétlenség után kész)");
+      // Finish once the page has been quiet (no api/ call) for 10s, or after a 45s hard cap.
+      window.__lastApi=Date.now(); var startW=Date.now();
+      while(true){ await sleep(1000); var idle=Date.now()-(window.__lastApi||startW); var total=Date.now()-startW;
+        if(idle>10000){ log("10 mp tétlenség — befejezés"); break; }
+        if(total>45000){ log("Időkorlát (45 mp) — befejezés"); break; } }
       var calls=collect(); log("Rögzített API-hívások: "+calls.length);
       deliver({origin:location.origin, path:location.pathname, calls:calls, storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
