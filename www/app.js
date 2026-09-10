@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.087";
+const APP_VERSION = "v0.088";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1426,7 +1426,8 @@ function buildApiSniffScript(username, password, code) {
   }
   function tokenKeys(){ var out=[]; [['local',window.localStorage],['session',window.sessionStorage]].forEach(function(pair){ try{ var st=pair[1]; for(var i=0;i<st.length;i++){ var k=st.key(i); var v=st.getItem(k)||''; var looksTok=/token|auth|oidc|msal|bearer|jwt|access/i.test(k) || (/^ey[A-Za-z0-9_-]+\\./.test(v)); if(looksTok) out.push({store:pair[0],key:k,len:v.length,preview:redact(v)}); } }catch(e){} }); return out; }
   function interesting(c){ var u=(c.url||''); if(/\\.(js|css|png|jpe?g|svg|woff2?|ttf|ico|gif|map)(\\?|$)/i.test(u)) return false; var ct=(c.ct||''); return /json/i.test(ct) || /\\/api\\/|hallgato|kreptn|neptun|advancement|curriculum|subject|targ/i.test(u); }
-  function collect(){ var seen={}, out=[]; (window.__apiCalls||[]).forEach(function(c){ if(!interesting(c)) return; var key=c.method+' '+c.url; if(seen[key]) return; seen[key]=1; out.push(c); }); return out; }
+  function collect(){ var seen={}, out=[]; (window.__apiCalls||[]).forEach(function(c){ if(!interesting(c)) return; var key=c.method+' '+c.url; if(seen[key]) return; seen[key]=1;
+    out.push({method:c.method,url:c.url,status:c.status,ct:c.ct,headers:c.headers,body:c.body,resp:(c.resp||'').slice(0,1500)}); }); return out.slice(0,50); }
   (async function(){
     try{
       log("Várakozás a bejelentkezésre…");
@@ -1456,7 +1457,7 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "API diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, megnyitja a <b>Tanulmányok → Előrehaladás</b> oldalt (nem nyit ki semmit), és rögzíti, milyen API‑hívásokat csinál a Neptun. A tokeneket kitakarom. A végén a teljes riportot a vágólapra másolom — illeszd be a beszélgetésbe.<br><br>Eltarthat fél‑egy percig." });
+    body: "Bejelentkezik, megnyitja a <b>Tanulmányok → Előrehaladás</b> oldalt (nem nyit ki semmit), és rögzíti, milyen API‑hívásokat csinál a Neptun. A tokeneket kitakarom. 10 mp tétlenség után magától befejezi. A végén a teljes riportot <b>fájlba menti</b> (Dokumentumok/neptunplus) és a vágólapra is másolja." });
   if (!ok) return;
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
@@ -1470,12 +1471,20 @@ async function runApiDiagnostics() {
   if (cancelled) { toast("Megszakítva"); return; }
   const calls = (report && report.calls) || [];
   const json = JSON.stringify(report || { calls: [], log: courseLog }, null, 2);
+  // Write the full report to a file (no clipboard size limit), and copy to clipboard as a fallback.
+  let fileMsg = "";
+  try {
+    const fs = FSP();
+    if (fs) { const name = BACKUP_DIR + "/apidiag-" + backupTs() + ".json";
+      await fs.writeFile({ path: name, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
+      fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(name) + "</b>"; }
+  } catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) { /* ignore */ }
   const summary = calls.length
-    ? calls.slice(0, 30).map((c) => `${esc(c.method || "")} ${esc((c.url || "").replace(report.origin || "", ""))}${c.ct ? ` <span style="opacity:.6">(${esc((c.ct || "").split(";")[0])})</span>` : ""}`).join("<br>")
-    : "Nem rögzültem API‑hívást. A napló:<br>" + courseLog.map((l) => esc(l)).join("<br>");
+    ? calls.slice(0, 40).map((c) => `${esc(c.method || "")} ${esc((c.url || "").replace(report.origin || "", ""))}${c.ct ? ` <span style="opacity:.6">(${esc((c.ct || "").split(";")[0])})</span>` : ""}`).join("<br>")
+    : "Nem rögzült API‑hívás. A napló:<br>" + courseLog.map((l) => esc(l)).join("<br>");
   await ask({ title: `API diagnosztika — ${calls.length} hívás`, okText: "OK", cancelText: "Bezárás",
-    body: `<b>A teljes riportot a vágólapra másoltam</b> — illeszd be a beszélgetésbe.<br><br>${summary}` });
+    body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
