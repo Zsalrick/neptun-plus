@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.106";
+const APP_VERSION = "v0.107";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -814,8 +814,12 @@ function openList({ title, items, selected, onPick, searchable, allowCustom, chi
   const chipsEl = $("pk-chips");
   if (chips && chips.length) {
     chipsEl.hidden = false;
-    chipsEl.innerHTML = chips.map((c) => `<button class="chip-sel${c.key === chipCurrent ? " on" : ""}" data-k="${esc(c.key)}">${esc(c.label)}</button>`).join("");
-    chipsEl.querySelectorAll(".chip-sel").forEach((el) => el.onclick = () => onChip(el.dataset.k));
+    const cur = chips.find((c) => c.key === chipCurrent) || chips[0];
+    chipsEl.innerHTML = `<button class="period-btn" id="pk-dd-btn" type="button"><span>${esc(cur ? cur.label : "")}</span>${icon("down")}</button>`
+      + `<div class="pk-dd-menu hidden" id="pk-dd-menu">` + chips.map((c) => `<button class="pk-dd-item${c.key === chipCurrent ? " on" : ""}" data-k="${esc(c.key)}" type="button">${esc(c.label)}${c.key === chipCurrent ? icon("check") : ""}</button>`).join("") + `</div>`;
+    const btn = chipsEl.querySelector("#pk-dd-btn"), menu = chipsEl.querySelector("#pk-dd-menu");
+    btn.onclick = (e) => { e.stopPropagation(); menu.classList.toggle("hidden"); };
+    menu.querySelectorAll(".pk-dd-item").forEach((el) => el.onclick = () => { menu.classList.add("hidden"); onChip(el.dataset.k); });
   } else { chipsEl.hidden = true; chipsEl.innerHTML = ""; }
   const sw = $("pk-search-wrap");
   const draw = (q) => {
