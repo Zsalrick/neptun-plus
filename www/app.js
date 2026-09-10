@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.107";
+const APP_VERSION = "v0.108";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -675,8 +675,11 @@ function nextIsland(el, e, headText, tab, now) {
   if (!e) { el.classList.add("hidden"); return; }
   el.classList.remove("hidden");
   const time = now ? `${hm(e.S)}–${hm(e.E)}` : hm(e.S);
+  const p = e.manual ? null : parseClassSummary(e.summary);
+  const title = p ? p.name : (e.summary || "");
+  const meta = p ? [p.type, p.teacher].filter(Boolean).join(" · ") : "";
   el.innerHTML = `<div class="nc-head">${icon("clock")} ${headText} · ${esc(dayHeading(e.S))}</div>
-    <div class="nc-row"><span class="nc-time">${time}</span><div class="nc-body"><div class="nc-title">${esc(e.summary || "")}</div>${e.location ? `<div class="nc-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}</div></div>`;
+    <div class="nc-row"><span class="nc-time">${time}</span><div class="nc-body"><div class="nc-title">${esc(title)}</div>${meta ? `<div class="nc-loc">${icon("user")} ${esc(meta)}</div>` : ""}${e.location ? `<div class="nc-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}</div></div>`;
   el.onclick = () => showTab(tab);
 }
 function renderNextClass() {
@@ -915,6 +918,36 @@ let ttFilter = "upcoming", exFilter = "upcoming";
 function periodBtn(cur) {
   return `<button class="period-btn" type="button"><span>${esc(cur === "upcoming" ? "Közelgő" : cur)}</span>${icon("down")}</button>`;
 }
+// Defensive parse of a Neptun class summary like "Tárgy ( - KÓD) - Oktató - Típus".
+// Returns null unless it clearly matches, so a differently-formatted feed just shows the raw text.
+function parseClassSummary(summary) {
+  const s = String(summary || "").trim();
+  const m = s.match(/^(.+?)\s*\(([^)]*)\)\s*(.*)$/);
+  if (!m) return null;
+  const name = m[1].trim();
+  const code = m[2].replace(/^[\s-]+/, "").trim();          // "ONVH_00"
+  const rest = m[3].replace(/^[\s-]+/, "").trim();           // "dr. X - Tanóra"
+  let teacher = "", type = "";
+  if (rest) { const parts = rest.split(/\s+[-–—]\s+/); if (parts.length >= 2) { type = parts[parts.length - 1].trim(); teacher = parts.slice(0, -1).join(" - ").trim(); } else { teacher = rest; } }
+  // Only treat as parsed if we actually gained structure (name + at least one of code/teacher/type).
+  if (!name || (!code && !teacher && !type)) return null;
+  return { name, code, teacher, type };
+}
+// Structured inner HTML for a class event (falls back to raw summary for non-matching feeds).
+function classInfoHtml(e, examMode) {
+  const p = (!examMode && !e.manual) ? parseClassSummary(e.summary) : null;
+  if (!p) {
+    return `<div class="tt-title">${esc(e.summary || (examMode ? "Számonkérés" : "Óra"))}</div>`
+      + (e.manual && e.note ? `<div class="tt-loc">${icon("note")} ${esc(e.note)}</div>` : "")
+      + (e.location ? `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>` : "");
+  }
+  let h = `<div class="tt-title">${esc(p.name)}</div>`;
+  const meta = [p.code ? `<span class="tt-code">${esc(p.code)}</span>` : "", p.type ? `<span>${esc(p.type)}</span>` : ""].filter(Boolean).join("");
+  if (meta) h += `<div class="tt-meta">${meta}</div>`;
+  if (p.teacher) h += `<div class="tt-loc">${icon("user")} ${esc(p.teacher)}</div>`;
+  if (e.location) h += `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>`;
+  return h;
+}
 function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
   if (!scroll) return;
   const hasFeed = !!state.icsUrl;
@@ -991,9 +1024,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
         <div class="tt-time"><span>${hm(e.S)}</span>${examMode ? "" : `<span class="tt-time-e">${hm(e.E)}</span>`}</div>
         <div class="tt-info">
           ${e.subject && e.subject !== e.summary ? `<div class="tt-subj">${esc(e.subject)}</div>` : ""}
-          <div class="tt-title">${esc(e.summary || (examMode ? "Számonkérés" : "Óra"))}</div>
-          ${e.manual && e.note ? `<div class="tt-loc">${icon("note")} ${esc(e.note)}</div>` : ""}
-          ${e.location ? `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}
+          ${classInfoHtml(e, examMode)}
           <div class="tt-tags">${e.manual ? `<span class="tag">saját</span>` : ""}${!e.manual && noteCount ? `<span class="tag note">${icon("note")} ${noteCount}</span>` : ""}</div>
         </div>
         ${flagText ? `<span class="tt-flag">${flagText}</span>` : ""}</div>`;

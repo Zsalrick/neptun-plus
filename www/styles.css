@@ -379,7 +379,10 @@ button.row:active { background: var(--surface-2); }
 .tt-subj { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 2px; }
 .tt-title { font-size: 15px; font-weight: 600; }
 .tt-loc { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); margin-top: 5px; }
-.tt-loc svg.ic { width: 14px; height: 14px; }
+.tt-loc svg.ic { width: 14px; height: 14px; flex: none; }
+.tt-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--ink-3); }
+.tt-meta .tt-code { font-family: ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 600; color: var(--ink-2);
+  background: var(--surface-3); border-radius: 5px; padding: 1px 7px; }
 /* A break inside a day: a full dashed-border card — like a class, but thinner and wider so it reads
    as free time. Negative side margins make it a touch longer than the solid class cards. */
 .tt-gap { display: flex; align-items: center; justify-content: center; text-align: center;
