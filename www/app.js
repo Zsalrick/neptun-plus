@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.098";
+const APP_VERSION = "v0.099";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1565,11 +1565,25 @@ async function runApiDiagnostics() {
     for (const ep of eps) { try { const r = await apiGet(sess, ep); results.push({ ep, status: r.status, data: r.data }); } catch (e) { results.push({ ep, error: String(e && e.message || e) }); } }
     const tpl = results.find((r) => r.ep.indexOf("CurriculumTemplates") >= 0);
     const row = tpl && tpl.data && tpl.data.data && tpl.data.data[0];
-    if (row && row.curriculumTemplateId) {
-      const ep = "Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate";
-      const params = { curriculumTemplateId: row.curriculumTemplateId, needSubjectGroups: true };
-      if (row.advancementRowId) params.advancementRowId = row.advancementRowId;
-      try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); } catch (e) { results.push({ ep, error: String(e && e.message || e) }); }
+    const tr = results.find((r) => r.ep === "MyTrainings");
+    const trainRow = tr && tr.data && tr.data.data && tr.data.data[0];
+    if (row) {
+      const ct = row.curriculumTemplateId, ar = row.advancementRowId;
+      const sid = trainRow && trainRow.studentTrainingId, term = trainRow && trainRow.actualTermId;
+      // advancementRowId provably binds (the 400 only rejected curriculumTemplateId) → probe rowId-keyed endpoints.
+      const candidates = [
+        ["Advancement/GetSubjectGroupData", { advancementRowId: ar }],
+        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { advancementRowId: ar }],
+        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { advancementRowId: ar, needSubjectGroups: true }],
+        ["Advancement/GetStudentHierarchicalAdvancements", { advancementRowId: ar }],
+        ["Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate", { CurriculumTemplateId: ct, needSubjectGroups: true, advancementRowId: ar }],
+        ["Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate", { curriculumTemplateId: ct, needSubjectGroups: true, advancementRowId: ar, studentTrainingId: sid }],
+      ];
+      for (const [ep, params] of candidates) {
+        if (Object.values(params).some((v) => v === undefined || v === null)) continue;
+        $("busy-text").textContent = ep.split("/")[1] + "…";
+        try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); } catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
+      }
     }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
