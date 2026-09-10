@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.103";
+const APP_VERSION = "v0.104";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1088,20 +1088,40 @@ async function scrapeCourses() {
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
-  let ok = false, rawOut = "", cancelled = false;
+  let ok = false, rawOut = "", cancelled = false, viaApi = false;
   try {
-    const res = await neptunReadCourses(); // { courses, semesters, semester, raw }
-    rawOut = (res && res.raw) || "";
-    if (res && res.courses && res.courses.length) {
-      state.courses = { fetchedAt: new Date().toISOString(), list: res.courses, semesters: res.semesters || [] };
-      coFilter = res.semester || null;
-      saveState(); renderCourses(); renderTimetable(); ok = true;
-      dbg("Siker: " + res.courses.length + " tárgy");
-    } else { dbg("Az oldal betöltött, de 0 tárgyat ismertem fel."); }
+    // Preferred: direct API.
+    const sess = await getApiSession();
+    if (sess && sess.token) {
+      $("busy-text").textContent = "Felvett tárgyak lekérése…";
+      try {
+        const terms = await apiReadTerms(sess);
+        if (terms && terms.length) {
+          state.semesters = { fetchedAt: new Date().toISOString(), list: terms.map((t) => t.label), terms };
+          const list = await apiReadTakenAll(sess, terms);
+          if (list && list.length) {
+            state.courses = { fetchedAt: new Date().toISOString(), list, semesters: [...new Set(list.map((c) => c.semester))] };
+            saveState(); syncSemStatus(); renderCourses(); renderTimetable(); ok = true; viaApi = true;
+          }
+        }
+      } catch (e) { dbg("API hiba: " + (e && e.message ? e.message : e)); }
+    }
+    // Fallback: DOM scraping.
+    if (!ok) {
+      $("busy-text").textContent = "Beolvasás…";
+      const res = await neptunReadCourses(); // { courses, semesters, semester, raw }
+      rawOut = (res && res.raw) || "";
+      if (res && res.courses && res.courses.length) {
+        state.courses = { fetchedAt: new Date().toISOString(), list: res.courses, semesters: res.semesters || [] };
+        coFilter = res.semester || null;
+        saveState(); renderCourses(); renderTimetable(); ok = true;
+        dbg("Siker: " + res.courses.length + " tárgy");
+      } else { dbg("Az oldal betöltött, de 0 tárgyat ismertem fel."); }
+    }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
   if (cancelled) { toast("Megszakítva"); return; }
-  if (ok) { toast(state.courses.list.length + " tárgy beolvasva."); return; }
+  if (ok) { toast(state.courses.list.length + " tárgy beolvasva" + (viaApi ? " (API)" : "") + "."); return; }
   // failure: copy raw to clipboard and show the debug log so it can be shared
   try { if (rawOut) await navigator.clipboard.writeText(rawOut); } catch (e) { /* ignore */ }
   await ask({ title: "Beolvasás napló", okText: "OK",
@@ -1206,18 +1226,20 @@ async function grabSemesters() {
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
-  let sems = [], cancelled = false;
+  let sems = [], terms = null, cancelled = false, viaApi = false;
   try {
-    const res = await neptunReadSemesters();
-    if (res && res.log) courseLog = res.log.split("\n");
-    sems = (res && res.sems) || [];
+    // Preferred: direct API.
+    const sess = await getApiSession();
+    if (sess && sess.token) { $("busy-text").textContent = "Félévek lekérése…"; try { terms = await apiReadTerms(sess); if (terms && terms.length) { sems = terms.map((t) => t.label); viaApi = true; } } catch (e) { dbg("API hiba: " + (e && e.message ? e.message : e)); } }
+    // Fallback: DOM scraping.
+    if (!sems.length) { const res = await neptunReadSemesters(); if (res && res.log) courseLog = res.log.split("\n"); sems = (res && res.sems) || []; }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
   if (cancelled) { toast("Megszakítva"); return; }
   if (sems.length) {
-    state.semesters = { fetchedAt: new Date().toISOString(), list: sems };
+    state.semesters = terms ? { fetchedAt: new Date().toISOString(), list: sems, terms } : { fetchedAt: new Date().toISOString(), list: sems };
     saveState(); syncSemStatus(); renderTimetable(); renderExams(); renderCourses();
-    toast(sems.length + " félév beolvasva."); return;
+    toast(sems.length + " félév beolvasva" + (viaApi ? " (API)" : "") + "."); return;
   }
   await ask({ title: "Félév lekérés napló", okText: "OK", body: courseLog.map((l) => esc(l)).join("<br>") });
 }
@@ -1341,6 +1363,32 @@ async function apiReadCurriculum(sess) {
     if (Array.isArray(list)) free = list.map((x) => ({ code: x.subjectCode || "", name: x.subjectName || "", credits: (+x.credit) || 0, completed: true, type: x.subjectRequirement || "" }));
   } catch (e) { /* free electives optional */ }
   return { program, required, free };
+}
+// Terms/semesters via API → [{id, label}] newest-first (as Neptun returns).
+async function apiReadTerms(sess) {
+  const r = await apiGet(sess, "RegistrySheet/GetStudentTrainingTerms");
+  const list = r && r.data && r.data.data;
+  if (!Array.isArray(list)) return null;
+  return list.map((t) => ({ id: t.value, label: t.text })).filter((t) => t.id && t.label);
+}
+// Enrolled ("felvett") subjects across the given terms → flat course list with semester labels.
+async function apiReadTakenAll(sess, terms) {
+  const done = {};
+  if (state.curriculum && state.curriculum.required) state.curriculum.required.forEach((c) => { if (c.completed && c.code) done[c.code] = 1; });
+  const out = [];
+  for (const t of terms) {
+    let r; try { r = await apiGet(sess, "TakenSubjects/GetTakenSubjects", { termId: t.id }); } catch (e) { continue; }
+    const arr = r && r.data && r.data.data; if (!Array.isArray(arr)) continue;
+    arr.forEach((s) => { out.push({ code: s.subjectCode || "", name: s.subjectName || "", credits: +s.subjectCredit || 0, completed: !!done[s.subjectCode], semester: t.label, teacher: "", type: s.requirementType || "" }); });
+  }
+  return out;
+}
+// iCal subscription link via API (replaces the calendar page scrape).
+async function apiReadIcsUrl(sess) {
+  const r = await apiGet(sess, "Calendar/GetLinksForCalendarExport");
+  const d = r && r.data && r.data.data;
+  const u = d && (d.urlForWebCalendars || d.url);
+  return u ? u.replace(/^webcal:\/\//i, "https://") : "";
 }
 
 async function grabProgress() {
@@ -1678,8 +1726,9 @@ function missingTaskIds() { return DATA_TASKS.filter((t) => !t.has()).map((t) =>
 
 // --- low-level readers: run one flow, save state, return {ok, detail}. No busy/ask of their own. ---
 async function syncIcs() {
-  const res = await neptunReadIcsLink();
-  const url = (res && res.url) ? res.url.replace(/^webcal:\/\//i, "https://") : "";
+  let url = "";
+  try { const sess = await getApiSession(); if (sess && sess.token) url = await apiReadIcsUrl(sess); } catch (e) { /* fall back */ }
+  if (!url) { const res = await neptunReadIcsLink(); url = (res && res.url) ? res.url.replace(/^webcal:\/\//i, "https://") : ""; }
   if (!url) return { ok: false, detail: "nem találtam feliratkozási linket" };
   state.icsUrl = url; saveState(); updateIcsStatus();
   await fetchTimetable(); // downloads + saves the events
@@ -1687,6 +1736,11 @@ async function syncIcs() {
   return { ok: n > 0, detail: n ? (n + " esemény") : "a link mentve, de nem jött esemény" };
 }
 async function syncSemesters() {
+  // Preferred: direct API.
+  try {
+    const sess = await getApiSession();
+    if (sess && sess.token) { const terms = await apiReadTerms(sess); if (terms && terms.length) { state.semesters = { fetchedAt: new Date().toISOString(), list: terms.map((t) => t.label), terms }; saveState(); syncSemStatus(); return { ok: true, detail: terms.length + " félév" }; } }
+  } catch (e) { /* fall back */ }
   const res = await neptunReadSemesters();
   const sems = (res && res.sems) || [];
   if (!sems.length) return { ok: false, detail: "nem találtam félévet" };
@@ -1712,6 +1766,22 @@ async function syncCredit() {
   return { ok: true, detail: p.done + "/" + p.total + " kredit" };
 }
 async function syncCourses() {
+  // Preferred: direct API — terms, then enrolled subjects per term.
+  try {
+    const sess = await getApiSession();
+    if (sess && sess.token) {
+      const terms = await apiReadTerms(sess);
+      if (terms && terms.length) {
+        state.semesters = { fetchedAt: new Date().toISOString(), list: terms.map((t) => t.label), terms }; // refresh semesters too
+        const list = await apiReadTakenAll(sess, terms);
+        if (list && list.length) {
+          state.courses = { fetchedAt: new Date().toISOString(), list, semesters: [...new Set(list.map((c) => c.semester))] };
+          saveState(); syncSemStatus(); renderCourses();
+          return { ok: true, detail: list.length + " tárgy" };
+        }
+      }
+    }
+  } catch (e) { /* fall back */ }
   const res = await neptunReadCourses();
   const list = (res && res.courses) || [];
   if (!list.length) return { ok: false, detail: "nem ismertem fel tárgyat" };
@@ -1818,18 +1888,23 @@ async function grabIcsLink() {
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
-  let url = "", raw = "", cancelled = false;
+  let url = "", raw = "", cancelled = false, viaApi = false;
   try {
-    const res = await neptunReadIcsLink();
-    raw = (res && res.raw) || "";
-    if (res && res.log) courseLog = res.log.split("\n");
-    if (res && res.url) { url = res.url; dbg("Link: " + url); } else dbg("Nem találtam feliratkozási linket.");
+    // Preferred: direct API — returns the subscription link straight away.
+    const sess = await getApiSession();
+    if (sess && sess.token) { $("busy-text").textContent = "Naptár link lekérése…"; try { url = await apiReadIcsUrl(sess); if (url) viaApi = true; } catch (e) { dbg("API hiba: " + (e && e.message ? e.message : e)); } }
+    // Fallback: DOM scraping.
+    if (!url) { const res = await neptunReadIcsLink(); raw = (res && res.raw) || ""; if (res && res.log) courseLog = res.log.split("\n"); if (res && res.url) { url = res.url; dbg("Link: " + url); } else dbg("Nem találtam feliratkozási linket."); }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
   if (cancelled) { toast("Megszakítva"); return; }
   if (url) {
-    // Only fill the field — the user presses Mentés manually.
     const clean = url.replace(/^webcal:\/\//i, "https://");
+    if (viaApi) { // API link is trustworthy → save + fetch automatically.
+      state.icsUrl = clean; saveState(); updateIcsStatus(); $("ics-sheet").classList.add("hidden");
+      renderTimetable(); renderExams(); await fetchTimetable(); return;
+    }
+    // Scraped link: fill the field, user presses Mentés.
     if ($("ics-input")) $("ics-input").value = clean;
     $("ics-sheet").classList.remove("hidden");
     toast("Link beírva. Nyomd meg a Mentést."); return;
