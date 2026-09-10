@@ -10,7 +10,7 @@ export const UNIVERSITIES = [
     { label: "SZERVER3", url: "https://neptun-ws03.uni-pannon.hu/hallgato/login" },
   ] },
   { name: "Eötvös Loránd Tudományegyetem", city: "Budapest", alias: "elte eotvos lorand", servers: [
-    { label: "Neptun", url: "https://neptun.elte.hu/hallgato/login" } ] },
+    { label: "Neptun", url: "https://neptun.elte.hu/Account/Login" } ] },
   { name: "Budapesti Műszaki és Gazdaságtudományi Egyetem", city: "Budapest", alias: "bme muegyetem muszaki", servers: [
     { label: "Neptun", url: "https://neptun.bme.hu/hallgato/login" } ] },
   { name: "Szegedi Tudományegyetem", city: "Szeged", alias: "szte szeged", servers: [

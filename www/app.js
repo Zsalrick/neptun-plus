@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.112";
+const APP_VERSION = "v0.113";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2860,8 +2860,13 @@ function buildLoginScript(username, password, code) {
   function waitFor(sel,timeout){ return new Promise(function(res){ var t0=Date.now(); (function poll(){ var el=(typeof sel==='function')?sel():document.querySelector(sel); if(el&&visible(el)) return res(el); if(Date.now()-t0>timeout) return res(null); setTimeout(poll,250); })(); }); }
   function findCodeField(){ return Array.prototype.slice.call(document.querySelectorAll('input')).find(function(el){ if(!visible(el)||el.value) return false; var t=(el.type||'').toLowerCase(); if(['text','tel','number','password'].indexOf(t)===-1) return false; var hay=((el.id||'')+' '+(el.name||'')+' '+(el.getAttribute('formcontrolname')||'')+' '+(el.getAttribute('aria-label')||'')+' '+(el.getAttribute('autocomplete')||'')+' '+(el.placeholder||'')).toLowerCase(); if(/code|otp|token|kod|kód|hitelesít|authent|2fa|mfa|one-time/.test(hay)) return true; var ml=parseInt(el.getAttribute('maxlength')||'0',10); return ml>0&&ml<=8; }); }
   function findSubmit(){ return Array.prototype.slice.call(document.querySelectorAll('button, input[type=submit]')).find(function(b){ if(!visible(b)) return false; var hay=((b.id||'')+' '+(b.innerText||b.value||'')+' '+(b.getAttribute('aria-label')||'')).toLowerCase(); return /bejelentkez|bel[eé]p|tov[aá]bb|meger[oő]s|hiteles[ií]t|ellen[oő]r|verify|confirm|submit|login/.test(hay); }); }
+  // Username / password / submit — work on both the new Angular (#userName …) and classic MVC (#LoginName …) pages.
+  function findUser(){ var el=document.querySelector('#userName, #LoginName, input[name=LoginName], input[name=UserName], input[name=userName]'); if(el&&visible(el)) return el;
+    return Array.prototype.slice.call(document.querySelectorAll('input')).find(function(i){ if(!visible(i)) return false; var t=(i.type||'text').toLowerCase(); if(['text','email','tel'].indexOf(t)===-1) return false; var h=((i.id||'')+' '+(i.name||'')+' '+(i.placeholder||'')+' '+(i.getAttribute('aria-label')||'')).toLowerCase(); if(/keres|search/.test(h)) return false; var ml=parseInt(i.getAttribute('maxlength')||'0',10); if(ml>0&&ml<=8) return false; return true; }); }
+  function findPass(){ return document.querySelector('#password-form-password, #Password, input[name=Password], input[type=password]'); }
+  function findLoginBtn(){ return document.querySelector('#login-button') || findSubmit(); }
   function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
-  async function domLogin(){ click(document.querySelector('#notification-bar-0-notification-button-accept')); var user=await waitFor('#userName',8000); if(user){ setVal(user, ${u}); setVal(document.querySelector('#password-form-password'), ${p}); await sleep(150); click(document.querySelector('#login-button')); } var CODE=${c}; if(CODE){ var codeEl=await waitFor(findCodeField,12000); if(codeEl){ setVal(codeEl,CODE); await sleep(250); setVal(codeEl,CODE); await sleep(1000); var btn=await waitFor(findSubmit,8000); if(btn){ btn.click(); await sleep(700); if(visible(btn)) btn.click(); } } } }
+  async function domLogin(){ click(document.querySelector('#notification-bar-0-notification-button-accept')); var user=await waitFor(findUser,10000); if(user){ setVal(user, ${u}); var pw=findPass(); if(pw) setVal(pw, ${p}); await sleep(200); var sb=findLoginBtn(); if(sb) click(sb); } var CODE=${c}; if(CODE){ var codeEl=await waitFor(findCodeField,12000); if(codeEl){ setVal(codeEl,CODE); await sleep(250); setVal(codeEl,CODE); await sleep(1000); var btn=await waitFor(findSubmit,8000); if(btn){ btn.click(); await sleep(700); if(visible(btn)) btn.click(); } } } }
   (async function(){
     try{
       if(sessionStorage.getItem('__npLogged')){ return; } // already logged in via API on a previous load
