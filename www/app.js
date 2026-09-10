@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.117";
+const APP_VERSION = "v0.118";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -734,24 +734,14 @@ function renderHome() {
   $("home-sub").textContent = semLoading ? "Félévek beolvasása…" : (ready ? "Készen áll" : "Állítsd be a belépést");
   $("login-hint").textContent = isNative ? "Egy érintés, a többit az alkalmazás elvégzi." : "Előnézet. Az alkalmazásban ez automatikusan belép.";
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
-  const pbtn = $("profile-btn");
-  if (pbtn) {
-    const multi = (state.profiles || []).length > 1;
-    const ap = activeProfile();
-    const label = ap ? profileLabel(ap) : "Profil";
-    $("profile-name").textContent = label;
-    const badge = $("profile-badge"); if (badge) badge.textContent = (label.trim()[0] || "K").toUpperCase();
-    pbtn.querySelector(".pr-sub").textContent = multi ? "Profil váltása vagy hozzáadása" : "Profil hozzáadása (másik egyetem)";
-    pbtn.onclick = openProfilePicker;
-  }
+  const hp = $("home-profile");
+  if (hp) { hp.onclick = openProfilePicker; hp.classList.toggle("has-multi", (state.profiles || []).length > 1); }
   renderNextClass();
   renderNextExam();
-  renderProgress();
   renderSyncCard();
-  const hasCredit = !!(state.progress && state.progress.total);
   const noUpcoming = ["current-class", "next-class", "next-exam"].every((id) => $(id).classList.contains("hidden"));
-  const emptyEl = $("upcoming-empty"); if (emptyEl) emptyEl.hidden = !(noUpcoming && !hasCredit);
-  const lbl = $("dash-overview-lbl"); if (lbl) lbl.hidden = noUpcoming && !hasCredit;
+  const emptyEl = $("upcoming-empty"); if (emptyEl) emptyEl.hidden = !noUpcoming;
+  const lbl = $("dash-overview-lbl"); if (lbl) lbl.hidden = noUpcoming;
 }
 // Hub card that opens the unified data read. Prominent when data is missing; a quiet
 // "refresh" entry once everything is in.
@@ -779,10 +769,9 @@ function renderSyncCard() {
 // =====================================================================
 const MORE_SERVICES = [
   { id: "courses", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => showTab("tab-courses") },
-  { id: "credit", label: "Kredit", sub: "Előrehaladás", icon: "chart", go: () => { if (state.progress && state.progress.total) openCreditPopup(); else grabProgress(); } },
+  { id: "credit", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => { if (state.progress && state.progress.total) openCreditPopup(); else grabProgress(); } },
   { id: "dlc", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
-  { id: "settings", label: "Beállítások", sub: "Fiók és biztonság", icon: "gear", go: () => showTab("tab-settings") },
   { id: "finance", label: "Pénzügyek", sub: "Egyenleg és számlák", icon: "wallet", soon: true },
   { id: "messages", label: "Üzenetek", sub: "Neptun üzenetek", icon: "mail", soon: true },
   { id: "reg-course", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
@@ -793,7 +782,7 @@ function renderMore() {
   const tile = (s) => `<button class="svc${s.soon ? " soon" : ""}" data-svc="${s.id}"${s.soon ? " disabled" : ""} type="button">`
     + `<span class="svc-ic">${icon(s.icon)}</span>`
     + `<span class="svc-t">${esc(s.label)}</span>`
-    + `<span class="svc-b">${esc(s.sub)}</span>`
+    + `<span class="svc-b">${esc(typeof s.sub === "function" ? s.sub() : s.sub)}</span>`
     + (s.soon ? `<span class="svc-badge">Hamarosan</span>` : "")
     + `</button>`;
   const avail = MORE_SERVICES.filter((s) => !s.soon);

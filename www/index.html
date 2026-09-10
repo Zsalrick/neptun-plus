@@ -179,15 +179,10 @@
             <section class="tabscreen active" id="tab-home">
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Kredit<span class="plus">+</span></div><div class="topbar-sub" id="home-sub">Készen áll a belépésre</div></div>
+                <button class="iconbtn plain" id="home-profile" title="Profil"><span data-icon="user"></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
-                <button class="profile-row" id="profile-btn" type="button">
-                  <span class="pr-badge" id="profile-badge">K</span>
-                  <span class="pr-main"><span class="pr-name" id="profile-name">Profil</span><span class="pr-sub">Profil váltása vagy hozzáadása</span></span>
-                  <span class="pr-chev" data-icon="chev"></span>
-                </button>
-
                 <div class="card hero">
                   <div class="hero-top">
                     <div style="min-width:0">
@@ -209,8 +204,7 @@
 
                 <button class="card next-card hidden" id="btn-sync" type="button"></button>
 
-                <div class="dash-label" id="dash-overview-lbl">Áttekintés</div>
-                <div class="card cred hidden" id="hub-credit"></div>
+                <div class="dash-label" id="dash-overview-lbl" hidden>Közelgő</div>
                 <button class="card next-card hidden" id="current-class" type="button"></button>
                 <button class="card next-card hidden" id="next-class" type="button"></button>
                 <button class="card next-card hidden" id="next-exam" type="button"></button>
