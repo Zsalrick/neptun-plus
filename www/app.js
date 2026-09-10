@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.108";
+const APP_VERSION = "v0.109";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2324,9 +2324,11 @@ async function rescheduleNotifications() {
     if (!catCfg || !catCfg.enabled || !catCfg.leads || !catCfg.leads.length) return;
     events.forEach((e) => catCfg.leads.forEach((lead) => {
       const at = e.S.getTime() - lead * 60000;
+      const p = (kind === "class") ? parseClassSummary(e.summary) : null;
+      const short = p ? (p.name + (p.type ? " · " + p.type : "")) : (e.summary || "");
       if (at > now + 15000 && e.S.getTime() < horizon) out.push({
         id: notifId(e, lead), title,
-        body: fmtLead(lead) + " múlva: " + (e.summary || "") + (e.location ? " · " + e.location : ""),
+        body: fmtLead(lead) + " múlva: " + short + (e.location ? " · " + e.location : ""),
         schedule: { at: new Date(at), allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
         // carried back on tap so the app can show a detailed alert
         extra: { kind, head: title, lead, summary: e.summary || "", location: e.location || "", s: e.S.toISOString(), e: e.E ? e.E.toISOString() : "" },
@@ -2345,9 +2347,13 @@ async function rescheduleNotifications() {
 function showNotifAlert(x) {
   if (!x) return;
   const S = x.s ? new Date(x.s) : null, E = x.e ? new Date(x.e) : null;
+  const p = (x.kind === "class") ? parseClassSummary(x.summary) : null;
   $("notif-head").textContent = x.head || "Emlékeztető";
-  $("notif-subj").textContent = x.summary || "Esemény";
+  $("notif-subj").textContent = p ? p.name : (x.summary || "Esemény");
   $("notif-meta").innerHTML = S ? `${icon("clock")} ${esc(dayHeading(S))} · ${hm(S)}${E && E > S ? "–" + hm(E) : ""}` : "";
+  const teach = $("notif-teacher");
+  const tline = p ? [p.type, p.teacher].filter(Boolean).join(" · ") : "";
+  if (tline) { teach.hidden = false; teach.innerHTML = `${icon("user")} ${esc(tline)}`; } else teach.hidden = true;
   const loc = $("notif-loc"); if (x.location) { loc.hidden = false; loc.innerHTML = `${icon("pin")} ${esc(x.location)}`; } else loc.hidden = true;
   const lead = $("notif-lead"); if (x.lead) { lead.hidden = false; lead.innerHTML = `${icon("clock")} Emlékeztető ${esc(fmtLead(x.lead))} korábban`; } else lead.hidden = true;
   $("notif-sheet").classList.remove("hidden");
