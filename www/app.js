@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.116";
+const APP_VERSION = "v0.117";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -38,6 +38,10 @@ const P = {
   down: '<path d="m6 9 6 6 6-6"/>',
   note: '<path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M9 9h6M9 13h4"/>',
   book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 0-2 2z"/><path d="M5 4v16M18 20a2 2 0 0 1 2 2"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>',
+  chart: '<path d="M4 20V4M4 20h16"/><path d="M8 20v-6M12.5 20V9M17 20v-9"/>',
+  wallet: '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16 14.5h1.5"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ""}</svg>`; }
 function renderIcons(root = document) {
@@ -445,12 +449,13 @@ function initOnboarding() {
 // =====================================================================
 //  TABS
 // =====================================================================
-const MAIN_TABS = ["tab-home", "tab-timetable", "tab-exams", "tab-courses"];
+const MAIN_TABS = ["tab-home", "tab-timetable", "tab-exams", "tab-more"];
 let lastMainTab = "tab-home";
 function renderForTab(id) {
   if (id === "tab-home") renderHome();
   else if (id === "tab-timetable") renderTimetable();
   else if (id === "tab-exams") renderExams();
+  else if (id === "tab-more") renderMore();
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-settings") syncSettings();
 }
@@ -557,8 +562,8 @@ function cancelAddProfile() {
 }
 function openProfilePicker() {
   const items = (state.profiles || []).map((p) => ({ value: p.id, label: profileLabel(p), sub: p.username || "" }));
-  items.push({ value: "__add__", label: "➕ Új profil hozzáadása" });
-  if ((state.profiles || []).length > 1) items.push({ value: "__del__", label: "🗑️ Profil törlése" });
+  items.push({ value: "__add__", label: "Új profil hozzáadása" });
+  if ((state.profiles || []).length > 1) items.push({ value: "__del__", label: "Profil törlése" });
   openList({ title: "Profil", items, selected: state.activeProfileId, onPick: (v) => { if (v === "__add__") startAddProfile(); else if (v === "__del__") openDeleteProfilePicker(); else switchProfile(v); } });
 }
 function openDeleteProfilePicker() {
@@ -594,6 +599,7 @@ function updateScrollPad() {
 document.querySelectorAll(".nav-btn").forEach((b) => b.onclick = () => navTo(b.dataset.tab));
 document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => showTab("tab-settings"));
 $("settings-back").onclick = () => showTab(lastMainTab);
+{ const cb = $("courses-back"); if (cb) cb.onclick = () => showTab(lastMainTab); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
@@ -607,7 +613,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
   const cacheNavRects = () => { navRects = {}; document.querySelectorAll(".nav-btn").forEach((b) => { navRects[b.dataset.tab] = { left: b.offsetLeft, w: b.offsetWidth }; }); };
   window.addEventListener("resize", cacheNavRects);
   let active = false, startX = 0, startY = 0, decided = 0, curEl = null, nbrEl = null, dir = 0, w = 0, curIdx = 0, lastDx = 0;
-  let raf = 0, pendingDx = 0, pendingSeg = 0; // pendingSeg: in-hub segment change instead of a tab change
+  let raf = 0, pendingDx = 0;
   // A settle animation runs for 300ms after release. If a new gesture starts during it, snap that
   // animation to its end first — otherwise two panes hold `.active` and the next drag grabs the wrong one.
   let pendingFin = null, pendingTimer = 0;
@@ -632,7 +638,7 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     const cur = document.querySelector(".tabscreen.active"); curIdx = MAIN_TABS.indexOf(cur ? cur.id : "");
     if (curIdx < 0) { active = false; return; }
     startX = e.touches[0].clientX; startY = e.touches[0].clientY; w = host.offsetWidth || 360;
-    curEl = cur; nbrEl = null; dir = 0; decided = 0; lastDx = 0; pendingDx = 0; pendingSeg = 0; active = true;
+    curEl = cur; nbrEl = null; dir = 0; decided = 0; lastDx = 0; pendingDx = 0; active = true;
     cacheNavRects();
   }, { passive: true });
 
@@ -654,12 +660,6 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
       dir = ndir;
       const ni = curIdx + dir;
       nbrEl = (ni >= 0 && ni < MAIN_TABS.length) ? document.getElementById(MAIN_TABS[ni]) : null;
-      // On the hub, a swipe first moves between the inner segments; only cross to the next tab at the edge.
-      pendingSeg = 0;
-      if (curEl.id === "tab-home") {
-        if (dir === 1 && hubSeg < HUB_SEGS.length - 1) { pendingSeg = 1; nbrEl = null; }
-        else if (dir === -1 && hubSeg > 0) { pendingSeg = -1; nbrEl = null; }
-      }
       if (nbrEl) { prepTab(nbrEl.id); nbrEl.classList.add("active", "dragging"); nbrEl.style.transition = "none"; nbrEl.style.transform = "translate3d(" + (dir * w) + "px,0,0)"; }
       moveNavIndicator((nbrEl || curEl).id); // glide the pill toward the destination tab (CSS transition)
     }
@@ -672,8 +672,6 @@ window.addEventListener("resize", () => { const a = document.querySelector(".tab
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     const ind = $("nav-ind"); if (ind) ind.style.transition = "";
     if (!decided) { if (curEl) curEl.classList.remove("dragging"); return; }
-    // In-hub segment swipe: move Belépés ↔ Áttekintés ↔ Közelgő (pane rubber-bands back below).
-    if (pendingSeg !== 0 && Math.abs(lastDx) > w * 0.22) showHubSeg(HUB_SEGS[hubSeg + pendingSeg] || HUB_SEGS[hubSeg]);
     const commit = nbrEl && Math.abs(lastDx) > w * 0.25;
     curEl.style.transition = ""; curEl.classList.add("sliding");
     if (nbrEl) { nbrEl.style.transition = ""; nbrEl.classList.add("sliding"); }
@@ -740,16 +738,20 @@ function renderHome() {
   if (pbtn) {
     const multi = (state.profiles || []).length > 1;
     const ap = activeProfile();
-    $("profile-name").textContent = ap ? profileLabel(ap) : "Profil";
-    pbtn.querySelector(".row-sub").textContent = multi ? "Profil váltása vagy hozzáadása" : "Profil hozzáadása (másik egyetem)";
+    const label = ap ? profileLabel(ap) : "Profil";
+    $("profile-name").textContent = label;
+    const badge = $("profile-badge"); if (badge) badge.textContent = (label.trim()[0] || "K").toUpperCase();
+    pbtn.querySelector(".pr-sub").textContent = multi ? "Profil váltása vagy hozzáadása" : "Profil hozzáadása (másik egyetem)";
     pbtn.onclick = openProfilePicker;
   }
   renderNextClass();
   renderNextExam();
   renderProgress();
   renderSyncCard();
+  const hasCredit = !!(state.progress && state.progress.total);
   const noUpcoming = ["current-class", "next-class", "next-exam"].every((id) => $(id).classList.contains("hidden"));
-  $("upcoming-empty").hidden = !noUpcoming;
+  const emptyEl = $("upcoming-empty"); if (emptyEl) emptyEl.hidden = !(noUpcoming && !hasCredit);
+  const lbl = $("dash-overview-lbl"); if (lbl) lbl.hidden = noUpcoming && !hasCredit;
 }
 // Hub card that opens the unified data read. Prominent when data is missing; a quiet
 // "refresh" entry once everything is in.
@@ -762,7 +764,7 @@ function renderSyncCard() {
     el.classList.add("sync-cta");
     el.innerHTML = `<div class="nc-head">${icon("down")} Szükséges adatok beolvasása</div>`
       + `<div class="nc-title" style="margin-top:8px">Hiányzik: ${esc(missing.map((t) => t.label).join(", "))}</div>`
-      + `<div class="nc-loc">Olvasd be egyben a Neptunból — pár perc.</div>`;
+      + `<div class="nc-loc">Beolvasás egyben a Neptunból, pár perc alatt.</div>`;
     el.onclick = () => openDataSync(missing.map((t) => t.id));
   } else {
     el.classList.remove("sync-cta");
@@ -772,27 +774,39 @@ function renderSyncCard() {
     el.onclick = () => openDataSync(null);
   }
 }
-const HUB_SEGS = ["login", "overview", "upcoming"]; // ordered for the in-hub swipe
-let hubSeg = 0; // index into HUB_SEGS (used by the pager for in-hub swipe)
-function showHubSeg(seg) {
-  hubSeg = Math.max(0, HUB_SEGS.indexOf(seg));
-  document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.seg === seg));
-  $("hub-login").hidden = seg !== "login";
-  $("hub-overview").hidden = seg !== "overview";
-  $("hub-upcoming").hidden = seg !== "upcoming";
+// =====================================================================
+//  MORE (services grid) — scales to the features coming later
+// =====================================================================
+const MORE_SERVICES = [
+  { id: "courses", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => showTab("tab-courses") },
+  { id: "credit", label: "Kredit", sub: "Előrehaladás", icon: "chart", go: () => { if (state.progress && state.progress.total) openCreditPopup(); else grabProgress(); } },
+  { id: "dlc", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
+  { id: "sync", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
+  { id: "settings", label: "Beállítások", sub: "Fiók és biztonság", icon: "gear", go: () => showTab("tab-settings") },
+  { id: "finance", label: "Pénzügyek", sub: "Egyenleg és számlák", icon: "wallet", soon: true },
+  { id: "messages", label: "Üzenetek", sub: "Neptun üzenetek", icon: "mail", soon: true },
+  { id: "reg-course", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
+  { id: "reg-exam", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
+];
+function renderMore() {
+  const host = $("more-scroll"); if (!host) return;
+  const tile = (s) => `<button class="svc${s.soon ? " soon" : ""}" data-svc="${s.id}"${s.soon ? " disabled" : ""} type="button">`
+    + `<span class="svc-ic">${icon(s.icon)}</span>`
+    + `<span class="svc-t">${esc(s.label)}</span>`
+    + `<span class="svc-b">${esc(s.sub)}</span>`
+    + (s.soon ? `<span class="svc-badge">Hamarosan</span>` : "")
+    + `</button>`;
+  const avail = MORE_SERVICES.filter((s) => !s.soon);
+  const soon = MORE_SERVICES.filter((s) => s.soon);
+  host.innerHTML = `<div class="svc-grid">${avail.map(tile).join("")}</div>`
+    + `<div class="dash-label">Hamarosan</div><div class="svc-grid">${soon.map(tile).join("")}</div>`;
+  host.querySelectorAll("[data-svc]").forEach((b) => { const s = MORE_SERVICES.find((x) => x.id === b.dataset.svc); if (s && s.go) b.onclick = s.go; });
 }
-document.querySelectorAll("#hub-seg .seg-btn").forEach((b) => b.onclick = () => showHubSeg(b.dataset.seg));
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
-  el.classList.remove("hidden"); // always shown; empty state carries a read button
   const p = state.progress;
-  if (!p || !p.total) {
-    el.classList.remove("clickable"); el.onclick = null;
-    el.innerHTML = `<div class="cred-empty"><div><div class="cred-lbl">Kredit előrehaladás</div><div class="cred-emptysub">Még nincs beolvasva.</div></div>`
-      + `<button class="btn tonal narrow" id="cred-read">${icon("book")} Kredit beolvasása</button></div>`;
-    const b = el.querySelector("#cred-read"); if (b) b.onclick = (e) => { e.stopPropagation(); grabProgress(); };
-    return;
-  }
+  if (!p || !p.total) { el.classList.add("hidden"); el.classList.remove("clickable"); el.onclick = null; return; }
+  el.classList.remove("hidden");
   const pct = Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
   el.classList.add("clickable"); el.onclick = openCreditPopup;
   el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div>`
@@ -1903,7 +1917,7 @@ let semLoading = false;
 const DATA_TASKS = [
   { id: "ics",     label: "Órarend (naptár)", sub: "Feliratkozási link és a naptár eseményei",
     has: () => !!state.icsUrl && !!(state.ics && state.ics.events && state.ics.events.length), run: syncIcs },
-  { id: "sems",    label: "Félévek",          sub: "Aktív féléveid — a naptár szűréséhez, új tanévhez",
+  { id: "sems",    label: "Félévek",          sub: "Aktív féléveid a naptár szűréséhez",
     has: hasSemesters, run: syncSemesters },
   { id: "credit",  label: "Kredit",           sub: "Kredit‑előrehaladás (teljesített / összes)",
     has: () => !!(state.progress && state.progress.total), run: syncCredit },
@@ -2020,9 +2034,9 @@ async function runDataSync(ids) {
   setBusyProgress(ids.length, ids.length); hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
   const okN = results.filter((r) => r.ok).length;
-  const rows = results.map((r) => `${r.ok ? "✅" : "⚠️"} <b>${esc(r.label)}</b> — ${esc(r.detail)}`).join("<br>");
+  const rows = results.map((r) => `<div class="sync-res${r.ok ? "" : " bad"}"><span class="sr-ic">${icon(r.ok ? "check" : "x")}</span><span><b>${esc(r.label)}</b><span class="sr-d">${esc(r.detail)}</span></span></div>`).join("");
   refreshAgendas();
-  await ask({ title: cancelled ? "Beolvasás megszakítva" : (okN === results.length ? "Beolvasás kész" : "Beolvasás — részben kész"),
+  await ask({ title: cancelled ? "Beolvasás megszakítva" : (okN === results.length ? "Beolvasás kész" : "Beolvasás részben kész"),
     okText: "OK", cancelText: "Bezárás",
     body: rows + (cancelled ? "<br><br>A többi részt megszakítottad." : "") });
 }
@@ -2340,7 +2354,6 @@ function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); resc
 // =====================================================================
 const DLC_INDEX_URL = "https://raw.githubusercontent.com/Zsalrick/neptun-plus/main/dlc/index.json";
 let dlcIndex = null;
-$("btn-dlc").onclick = openDlc;
 $("dlc-close").onclick = () => $("dlc-sheet").classList.add("hidden");
 $("acc-close").onclick = () => $("accounts-sheet").classList.add("hidden");
 async function openDlc() {
@@ -2529,13 +2542,6 @@ function syncProgStatus() {
   el.textContent = (p && p.total) ? (p.done + "/" + p.total + " kredit · " + fmtWhen(p.fetchedAt)) : "Nincs beolvasva";
 }
 $("btn-prog").onclick = grabProgress;
-$("btn-sems").onclick = grabSemesters;
-$("btn-sems-del").onclick = async () => {
-  if (!state.semesters) { toast("Nincs elmentett félév adat."); return; }
-  if (!(await ask({ title: "Félév adatok törlése", okText: "Törlés", body: "Törlöd a beolvasott félév listát? Bármikor újra beolvasható." }))) return;
-  state.semesters = null; saveState(); syncSemStatus(); renderTimetable(); renderExams(); renderCourses();
-  toast("Félév adatok törölve.");
-};
 // Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
 const NOTIFY_CATS = [["classes", "Órák"], ["zh", "ZH"], ["vizsga", "Vizsgák"]];
 const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
@@ -2606,7 +2612,7 @@ function renderBioSetting() {
     if (sub) sub.textContent = "Az eszközöd most nem támogatja, vagy nincs beállítva.";
   } else {
     btn.classList.remove("disabled");
-    if (sub) sub.textContent = state.biometric ? "Bekapcsolva — a kód tartalékként végig működik." : "Ujjlenyomat vagy arc a kód helyett.";
+    if (sub) sub.textContent = state.biometric ? "Bekapcsolva. A kód tartalékként végig működik." : "Ujjlenyomat vagy arc a kód helyett.";
   }
 }
 $("set-bio").onclick = async () => {

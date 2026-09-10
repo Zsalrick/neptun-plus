@@ -17,6 +17,7 @@
   --danger: #cf6b6b;
   --radius: 12px;
   --shadow: 0 12px 34px rgba(0,0,0,.45);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.2);
   --nav-h: 72px;
   --brand-plus: #f5b221;     /* the gold "+" in the Kredit+ wordmark — the only colour accent */
   --font-brand: "Bricolage Grotesque", Georgia, "Times New Roman", serif;
@@ -161,6 +162,54 @@ button.row:active { background: var(--surface-2); }
   letter-spacing: 3px; color: var(--ink); line-height: 1.25; }
 .chip-muted { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2);
   background: var(--surface-2); border: 1px solid var(--line); padding: 9px 12px; border-radius: 9px; margin-top: 13px; }
+
+/* ---------- Profile row (dashboard header) ---------- */
+.profile-row { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; font: inherit; color: inherit;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 11px 13px; cursor: pointer;
+  margin-bottom: 14px; box-shadow: var(--shadow-sm); }
+.profile-row:active { background: var(--surface-2); }
+.pr-badge { width: 40px; height: 40px; border-radius: 11px; flex: none; display: grid; place-items: center;
+  font-family: var(--font-brand); font-weight: 800; font-size: 18px; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line-2); }
+.pr-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pr-name { font-size: 15.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-sub { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-chev { color: var(--ink-3); display: flex; }
+
+/* premium: lift the hero and stat cards a touch off the ground */
+.card.hero { box-shadow: var(--shadow-sm); }
+
+/* ---------- Dashboard section label + empty ---------- */
+.dash-label { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-3); margin: 24px 4px 11px; }
+.dash-empty { text-align: center; color: var(--ink-3); font-size: 13px; padding: 28px 20px 8px; }
+
+/* ---------- Services grid (Több) ---------- */
+.svc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.svc { position: relative; display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px 15px 15px; min-height: 116px;
+  cursor: pointer; font: inherit; color: inherit; box-shadow: var(--shadow-sm); transition: transform .12s, background .15s; }
+.svc:active { transform: scale(.98); background: var(--surface-2); }
+.svc-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line-2); margin-bottom: 12px; }
+.svc-ic svg.ic { width: 22px; height: 22px; }
+.svc-t { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+.svc-b { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.svc.soon { cursor: default; box-shadow: none; }
+.svc.soon .svc-ic, .svc.soon .svc-t, .svc.soon .svc-b { opacity: .5; }
+.svc.soon:active { transform: none; background: var(--surface); }
+.svc-badge { position: absolute; top: 12px; right: 12px; font-size: 9px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--brand-plus); border: 1px solid rgba(245,178,33,.4);
+  border-radius: 999px; padding: 3px 7px; }
+
+/* ---------- Data-sync result rows ---------- */
+.sync-res { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; }
+.sync-res + .sync-res { border-top: 1px solid var(--line); }
+.sync-res .sr-ic { width: 22px; height: 22px; border-radius: 7px; flex: none; display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink); margin-top: 1px; }
+.sync-res .sr-ic svg.ic { width: 14px; height: 14px; }
+.sync-res.bad .sr-ic { color: var(--danger); border-color: rgba(207,107,107,.4); }
+.sync-res .sr-d { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
 
 /* ---------- Next class island (home) ---------- */
 .next-card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface);
