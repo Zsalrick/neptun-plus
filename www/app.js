@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.097";
+const APP_VERSION = "v0.098";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1295,17 +1295,23 @@ async function getApiSession(force) {
   return null;
 }
 // GET a Neptun API endpoint (native HTTP → no CORS). Returns { status, data } with data parsed.
-async function apiGet(sess, ep) {
+// Pass query params via `params` (object) — CapacitorHttp doesn't reliably forward a query
+// string embedded in the URL, so let it build the query itself.
+async function apiGet(sess, ep, params) {
   const url = (sess.base || "") + ep;
   const headers = sess.token ? { Authorization: "Bearer " + sess.token } : {};
   const CH = CHTTP();
   if (CH) {
-    const res = await CH.get({ url, headers });
+    const opts = { url, headers };
+    if (params) { opts.params = {}; Object.keys(params).forEach((k) => { opts.params[k] = String(params[k]); }); }
+    const res = await CH.get(opts);
     let data = res && res.data;
     if (typeof data === "string") { try { data = JSON.parse(data); } catch (e) { /* leave string */ } }
     return { status: res ? res.status : 0, data };
   }
-  const r = await fetch(url, { headers, credentials: "include" });
+  let u = url;
+  if (params) { const qs = Object.keys(params).map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(params[k])).join("&"); u += (u.indexOf("?") < 0 ? "?" : "&") + qs; }
+  const r = await fetch(u, { headers, credentials: "include" });
   return { status: r.status, data: await r.json().catch(() => null) };
 }
 
@@ -1560,8 +1566,10 @@ async function runApiDiagnostics() {
     const tpl = results.find((r) => r.ep.indexOf("CurriculumTemplates") >= 0);
     const row = tpl && tpl.data && tpl.data.data && tpl.data.data[0];
     if (row && row.curriculumTemplateId) {
-      const q = "Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate?curriculumTemplateId=" + row.curriculumTemplateId + "&needSubjectGroups=true" + (row.advancementRowId ? "&advancementRowId=" + row.advancementRowId : "");
-      try { const r = await apiGet(sess, q); results.push({ ep: q, status: r.status, data: r.data }); } catch (e) { results.push({ ep: q, error: String(e && e.message || e) }); }
+      const ep = "Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate";
+      const params = { curriculumTemplateId: row.curriculumTemplateId, needSubjectGroups: true };
+      if (row.advancementRowId) params.advancementRowId = row.advancementRowId;
+      try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); } catch (e) { results.push({ ep, error: String(e && e.message || e) }); }
     }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
