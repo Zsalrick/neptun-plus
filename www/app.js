@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.083";
+const APP_VERSION = "v0.084";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1432,22 +1432,22 @@ function buildApiSniffScript(username, password, code) {
       log("Várakozás a bejelentkezésre…");
       var inOk=await waitFor(loggedIn, 60000); log(inOk?"Bejelentkezve":"Nem sikerült bejelentkezni");
       if(!inOk){ deliver({calls:collect(),storage:tokenKeys()}); return; }
-      var base=location.origin+location.pathname.split('/').slice(0,3).join('/');
       log("Alap URL: "+location.origin);
-      // Visit Előrehaladás (credit + curriculum endpoints).
-      log("Tanulmányok → Előrehaladás"); var m=await waitFor(function(){return pick("Menü");},8000); if(m){m.click(); await sleep(200);}
-      var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){t.click(); await sleep(200);}
+      // Visit Előrehaladás only (credit + curriculum: all subjects + free electives).
+      log("Tanulmányok → Előrehaladás"); var m=await waitFor(function(){return pick("Menü");},8000); if(m){m.click(); await sleep(250);}
+      var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){t.click(); await sleep(250);}
       var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){e.click();}
-      await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000); await sleep(1500);
-      // Expand a group to trigger the lazy subject API call.
-      var tog=Array.prototype.slice.call(document.querySelectorAll('button[id*="toggle-header-btn"]')).filter(vis)[0]; if(tog){ log("Csoport kinyitása"); try{tog.click();}catch(_){} await sleep(2500); }
-      // Visit Felvett tárgyak (enrolled-subjects endpoint).
-      log("Tárgyak → Felvett tárgyak"); var m2=await waitFor(function(){return pick("Menü");},8000); if(m2){m2.click(); await sleep(200);}
-      var t2=await waitFor(function(){return pick("Tárgyak");},8000); if(t2){t2.click(); await sleep(200);}
-      var f=await waitFor(function(){return pick("Felvett tárgyak");},8000); if(f){f.click();}
-      await sleep(2500);
+      await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000); await sleep(1800);
+      // Expand every group to trigger each lazy subject-list API call.
+      for(var pass=0; pass<8; pass++){
+        try{ window.scrollTo(0, document.body.scrollHeight); }catch(_){} await sleep(400);
+        var togs=Array.prototype.slice.call(document.querySelectorAll('button[id*="toggle-header-btn"]')).filter(function(b){ return vis(b) && b.getAttribute('aria-expanded')==='false'; });
+        if(!togs.length) break;
+        log("Csoportok kinyitása: "+togs.length);
+        for(var i=0;i<togs.length;i++){ try{ togs[i].scrollIntoView({block:'center'}); togs[i].click(); }catch(_){} await sleep(2200); }
+      }
       var calls=collect(); log("Rögzített API-hívások: "+calls.length);
-      deliver({base:base, origin:location.origin, calls:calls, storage:tokenKeys()});
+      deliver({origin:location.origin, path:location.pathname, calls:calls, storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
   })();
   return "started";
@@ -1458,7 +1458,7 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "API diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, megnyitja az Előrehaladás és a Felvett tárgyak oldalt, és rögzíti, milyen API‑hívásokat csinál a Neptun. A tokeneket kitakarom. A végén a teljes riportot a vágólapra másolom — illeszd be a beszélgetésbe.<br><br>Eltarthat egy percig." });
+    body: "Bejelentkezik, megnyitja a <b>Tanulmányok → Előrehaladás</b> oldalt, kinyitja a csoportokat, és rögzíti, milyen API‑hívásokat csinál a Neptun (kredit, összes tárgy, szabadon választhatók). A tokeneket kitakarom. A végén a teljes riportot a vágólapra másolom — illeszd be a beszélgetésbe.<br><br>Eltarthat egy percig." });
   if (!ok) return;
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
