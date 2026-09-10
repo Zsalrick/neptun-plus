@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.089";
+const APP_VERSION = "v0.090";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1404,10 +1404,11 @@ function buildApiSniffScript(username, password, code) {
   // Keep the payload small enough for the InAppBrowser executeScript bridge to return in one shot.
   function deliver(o){ o=o||{};
     function build(obj){ try{ return JSON.stringify(Object.assign({done:true,log:LOG.slice(-40).join("\\n")},obj)); }catch(e){ return ""; } }
-    var s=build(o);
-    if(s.length>45000 && o.calls){ o.calls.forEach(function(c){ if(c.resp) c.resp=c.resp.slice(0,500); }); s=build(o); }
-    if(s.length>45000 && o.calls){ o.calls.forEach(function(c){ c.resp=''; }); s=build(o); }
-    if(s.length>45000){ o.storage=[]; s=build(o); }
+    var LIM=15000, s=build(o);
+    if(s.length>LIM && o.calls){ o.calls.forEach(function(c){ if(c.resp) c.resp=c.resp.slice(0,700); }); s=build(o); }
+    if(s.length>LIM && o.calls){ o.calls.forEach(function(c){ if(c.resp) c.resp=c.resp.slice(0,300); }); s=build(o); }
+    if(s.length>LIM){ o.storage=[]; s=build(o); }
+    if(s.length>LIM && o.calls){ o.calls.forEach(function(c){ c.resp=''; }); s=build(o); }
     if(!s) s=JSON.stringify({done:true,error:"serialize",log:LOG.slice(-20).join("\\n")});
     window.__apidiag=s; }
   function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
@@ -1450,12 +1451,12 @@ function buildApiSniffScript(username, password, code) {
       var t=await waitFor(function(){return pick("Tanulmányok");},8000); if(t){t.click(); await sleep(250);}
       var e=await waitFor(function(){return pick("Előrehaladás");},8000); if(e){e.click();}
       await waitFor(function(){ return /El[oő]rehalad[aá]s/i.test(T()); }, 12000);
-      log("Előrehaladás betöltve — API-figyelés (10 mp tétlenség után kész)");
+      log("Előrehaladás betöltve — API-figyelés (8 mp tétlenség után kész)");
       // Finish once the page has been quiet (no api/ call) for 10s, or after a 45s hard cap.
       window.__lastApi=Date.now(); var startW=Date.now();
       while(true){ await sleep(1000); var idle=Date.now()-(window.__lastApi||startW); var total=Date.now()-startW;
-        if(idle>10000){ log("10 mp tétlenség — befejezés"); break; }
-        if(total>45000){ log("Időkorlát (45 mp) — befejezés"); break; } }
+        if(idle>8000){ log("8 mp tétlenség — befejezés"); break; }
+        if(total>30000){ log("Időkorlát (30 mp) — befejezés"); break; } }
       var calls=collect(); log("Rögzített API-hívások: "+calls.length);
       deliver({origin:location.origin, path:location.pathname, calls:calls, storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
