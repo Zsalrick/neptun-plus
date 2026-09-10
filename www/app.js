@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.102";
+const APP_VERSION = "v0.103";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1604,28 +1604,37 @@ async function runApiDiagnostics() {
     const sess = await getApiSession(true); // fresh token
     if (!sess || !sess.token) { hideBusy(); await ask({ title: "API diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
     $("busy-text").textContent = "Végpontok lekérése…";
-    // Read the training/curriculum ids first, then the subject list that needs them.
-    const eps = ["advancement/creditprogress", "Advancement/GetStudentCurriculumTemplates", "Curriculum/GetOptionalSubjectsSummary", "MyTrainings"];
-    for (const ep of eps) { try { const r = await apiGet(sess, ep); results.push({ ep, status: r.status, data: r.data }); } catch (e) { results.push({ ep, error: String(e && e.message || e) }); } }
+    // No-param endpoints: credit, curriculum templates, free-subjects summary, trainings, terms, calendar links.
+    const eps = ["advancement/creditprogress", "Advancement/GetStudentCurriculumTemplates", "Curriculum/GetOptionalSubjectsSummary", "MyTrainings", "RegistrySheet/GetStudentTrainingTerms", "Calendar/GetLinksForCalendarExport"];
+    for (const ep of eps) { $("busy-text").textContent = ep.split("/").pop() + "…"; try { const r = await apiGet(sess, ep); results.push({ ep, status: r.status, data: r.data }); } catch (e) { results.push({ ep, error: String(e && e.message || e) }); } }
     const tpl = results.find((r) => r.ep.indexOf("CurriculumTemplates") >= 0);
     const row = tpl && tpl.data && tpl.data.data && tpl.data.data[0];
-    const tr = results.find((r) => r.ep === "MyTrainings");
-    const trainRow = tr && tr.data && tr.data.data && tr.data.data[0];
-    if (row) {
+    // Extract a term id from the terms list (field name unknown yet — try common ones, else first guid).
+    const termsRes = results.find((r) => r.ep.indexOf("GetStudentTrainingTerms") >= 0);
+    const terms = termsRes && termsRes.data && termsRes.data.data;
+    let termId = null;
+    if (Array.isArray(terms) && terms.length) {
+      const t0 = terms[0];
+      termId = t0.termId || t0.id || t0.studentTrainingTermId || t0.trainingTermId || t0.termGuid ||
+        Object.values(t0).find((v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(v)) || null;
+    }
+    const candidates = [];
+    if (row && row.advancementRowId) {
       const ar = row.advancementRowId;
-      // advancementRowId provably binds (the 400 only rejected curriculumTemplateId) → probe rowId-keyed endpoints.
-      // The drill-down endpoint wants parentAdvancementRowId: pass the root row id to get its
-      // children (subgroups + subjects), then recurse into subgroups by their own rowId.
-      const candidates = [
-        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { parentAdvancementRowId: ar }],
-        ["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { parentAdvancementRowId: ar, needSubjectGroups: true }],
-        ["Curriculum/GetOptionalSubjectsWithoutCurriculum", { advancementRowId: ar }],
-      ];
-      for (const [ep, params] of candidates) {
-        if (Object.values(params).some((v) => v === undefined || v === null)) continue;
-        $("busy-text").textContent = ep.split("/")[1] + "…";
-        try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); } catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
-      }
+      candidates.push(["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { parentAdvancementRowId: ar }]);
+      candidates.push(["Curriculum/GetOptionalSubjectsWithoutCurriculum", { advancementRowId: ar }]);
+    }
+    if (termId) {
+      // enrolled ("felvett") subjects for a term — probe a few param shapes to see which binds.
+      candidates.push(["TakenSubjects/GetTakenSubjects", { termId }]);
+      candidates.push(["TakenSubjects/GetTakenSubjects", { "request.termId": termId }]);
+      candidates.push(["RegistrySheet/GetStudentTakenSubjectsByTerm", { termId }]);
+      candidates.push(["RegistrySheet/GetStudentTakenSubjectsByTerm", { "request.termId": termId }]);
+    }
+    for (const [ep, params] of candidates) {
+      if (Object.values(params).some((v) => v === undefined || v === null)) continue;
+      $("busy-text").textContent = ep.split("/")[1] + "…";
+      try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); } catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
     }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
   finally { hideBusy(); }
