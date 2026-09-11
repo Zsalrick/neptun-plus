@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.155";
+const APP_VERSION = "v0.156";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -693,7 +693,7 @@ document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => pu
 document.querySelectorAll("[data-back]").forEach((b) => b.onclick = popScreen);
 // Settings hub rows that open a settings sub-page.
 document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pushScreen(b.dataset.setpage));
-{ const cr = $("credit-refresh"); if (cr) cr.onclick = () => grabProgress(); }
+{ const cr = $("credit-refresh"); if (cr) cr.onclick = () => refreshCredit(true); }
 { const fr = $("finance-refresh"); if (fr) fr.onclick = () => refreshFinance(true); }
 { const mr = $("messages-refresh"); if (mr) mr.onclick = () => refreshMessages(true); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
@@ -1154,6 +1154,17 @@ async function refreshMessages(viaButton) {
   finally { refreshingMsg = false; if (viaButton) hideBusy(); }
   renderMessages();
   toast(r && r.ok ? "Üzenetek frissítve." : "Nem sikerült frissíteni.");
+}
+// Credit refresh (topic-scoped): silent direct API via syncCredit, no "Bejelentkezés" overlay.
+let refreshingCredit = false;
+async function refreshCredit(viaButton) {
+  if (refreshingCredit) return;
+  refreshingCredit = true;
+  if (viaButton) showBusy("Kredit frissítése…", true);
+  let r; try { await totpTick(); r = await syncCredit(); } catch (e) { r = { ok: false }; }
+  finally { refreshingCredit = false; if (viaButton) hideBusy(); }
+  renderCreditPage(); renderProgress();
+  toast(r && r.ok ? "Kredit frissítve." : "Nem sikerült frissíteni.");
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
@@ -1858,6 +1869,31 @@ function tokenNeptunCode(tok) {
     return k ? String(p[k]).toUpperCase() : "";
   } catch (e) { return ""; }
 }
+// The Neptun API base for a server: `<origin>/hallgato/api/`. Prefer a base already captured from a
+// real browser session (stable across token refreshes); else derive it from the server login URL.
+function apiBaseFor(srv) {
+  if (apiSession && apiSession.base) return apiSession.base;
+  try { const u = new URL((srv && srv.url) || ""); const m = u.pathname.match(/^(.*?\/hallgato)(\/|$)/i); return u.origin + (m ? m[1] : "/hallgato") + "/api/"; }
+  catch (e) { return ""; }
+}
+// Silent, direct (no browser) re-auth: POST Account/Authenticate via native HTTP — the response body
+// carries the access token, so we get a fresh token instantly without opening the InAppBrowser.
+// Returns { base, token, code } or null. This is the fast path that keeps a token always ready.
+async function apiAuthenticate() {
+  if (!isNative || !state.username || !state.password) return null;
+  const CH = CHTTP(); if (!CH) return null;
+  const base = apiBaseFor(activeServer()); if (!base) return null;
+  await totpTick();
+  const body = { userName: state.username, password: state.password, captcha: "", captchaIdentifier: "", token: state.no2fa ? "" : lastCode, LCID: 1038 };
+  try {
+    const res = await CH.post({ url: base + "Account/Authenticate", headers: { "Content-Type": "application/json", Accept: "application/json" }, data: body });
+    if (!res || res.status < 200 || res.status >= 300) return null;
+    let d = res.data; if (typeof d === "string") { try { d = JSON.parse(d); } catch (e) {} }
+    const tok = d && (d.accessToken || (d.data && d.data.accessToken));
+    if (!tok) return null;
+    return { base, token: tok, code: tokenNeptunCode(tok) };
+  } catch (e) { return null; }
+}
 // Grab { token, base } by logging in (browser) and reading sessionStorage.access_token.
 function neptunGetSession() { return runNeptunFlow(buildTokenGrabScript, "__tok"); }
 function buildTokenGrabScript(username, password, code) {
@@ -1901,7 +1937,9 @@ async function getApiSession(force) {
   if (sessionInFlight) return sessionInFlight; // a fetch is already running → await the same one
   sessionInFlight = (async () => {
     let res = null;
-    try { res = await neptunGetSession(); } catch (e) { return null; } // e.g. another IAB flow busy → no session now
+    // Fast path: silent direct HTTP auth (no browser). Fall back to the InAppBrowser grab only if it fails.
+    try { res = await apiAuthenticate(); } catch (e) { res = null; }
+    if (!(res && res.token)) { try { res = await neptunGetSession(); } catch (e) { return null; } }
     if (res && res.token) {
       apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
       const nc = (res.code && /^[A-Za-z0-9]{6}$/.test(res.code)) ? res.code.toUpperCase() : tokenNeptunCode(res.token);
@@ -1934,6 +1972,16 @@ async function warmSession(reason) {
   catch (e) { dbg("warmSession: " + (e && e.message ? e.message : e)); }
   finally { warming = false; }
 }
+// Proactive keep-alive: silently re-auth (fast direct HTTP) ~90s before the token expires, so a token
+// is always ready and refreshes never wait on a login. Cheap (a single POST), skips when a browser
+// flow is running. Runs while the app is foregrounded; resume re-warms after any background throttle.
+async function keepAlive() {
+  if (!isNative || !canAutoLogin()) return;
+  if (warming || flowActive) return;             // don't collide with an IAB flow
+  if (apiSessionValid(90000)) return;            // still comfortably valid (>90s left)
+  try { await getApiSession(true); } catch (e) { /* try again next tick */ }
+}
+setInterval(keepAlive, 30000);
 // GET a Neptun API endpoint (native HTTP → no CORS). Returns { status, data } with data parsed.
 // Pass query params via `params` (object) — CapacitorHttp doesn't reliably forward a query
 // string embedded in the URL, so let it build the query itself.
@@ -3725,7 +3773,7 @@ renderIcons(document);
 $("version-tag").textContent = APP_VERSION;
 attachPTR($("tt-scroll"), $("tt-ptr"), fetchTimetable);
 attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
-attachPTR($("credit-scroll"), $("credit-ptr"), grabProgress);       // credit-only refresh
+attachPTR($("credit-scroll"), $("credit-ptr"), () => refreshCredit(false));       // credit-only refresh
 attachPTR($("finance-scroll"), $("finance-ptr"), () => refreshFinance(false)); // finance-only
 attachPTR($("messages-scroll"), $("messages-ptr"), () => refreshMessages(false)); // messages-only
 if (isNative) { document.body.classList.add("native"); document.querySelectorAll("[data-preview-only]").forEach((el) => el.remove()); }
