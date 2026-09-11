@@ -733,12 +733,17 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
   animation: boot-plus .6s cubic-bezier(.34,1.56,.64,1) .60s forwards,
              boot-plus-glow 2.6s ease-in-out 1.3s infinite;
 }
-/* gold hairline sweeps out under the logo */
-.boot-rule { width: 132px; height: 2px; margin-top: 4px; display: flex; justify-content: center; }
+/* gold loading bar: the track draws in under the logo, then a light shuttles left↔right while loading */
+.boot-rule {
+  width: 140px; height: 3px; margin-top: 6px; border-radius: 3px; overflow: hidden;
+  background: color-mix(in srgb, var(--brand-plus) 26%, transparent);
+  transform: scaleX(0); opacity: 0; animation: boot-track-in .5s ease .78s forwards;
+}
 .boot-rule i {
-  display: block; height: 100%; width: 0; border-radius: 2px;
-  background: linear-gradient(90deg, transparent, var(--brand-plus), transparent);
-  animation: boot-sweep .6s ease .78s forwards;
+  display: block; height: 100%; width: 46%; border-radius: 3px;
+  background: linear-gradient(90deg, transparent 0%, var(--brand-plus) 35%, #ffe6a8 50%, var(--brand-plus) 65%, transparent 100%);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--brand-plus) 60%, transparent));
+  transform: translateX(-120%); animation: boot-shimmer 1.5s ease-in-out 1.1s infinite alternate;
 }
 .boot-byline {
   font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: .22em;
@@ -752,5 +757,6 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 @keyframes boot-letter { to { opacity: 1; transform: none; } }
 @keyframes boot-plus { 0% { transform: scale(0); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
 @keyframes boot-plus-glow { 0%,100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--brand-plus) 70%, transparent)); } }
-@keyframes boot-sweep { to { width: 132px; } }
+@keyframes boot-track-in { to { transform: scaleX(1); opacity: 1; } }
+@keyframes boot-shimmer  { from { transform: translateX(-120%); } to { transform: translateX(260%); } }
 @keyframes boot-rise  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.124";
+const APP_VERSION = "v0.125";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -381,6 +381,7 @@ function renderObUni() {
   $("ob-uni-custom").classList.toggle("selected", obSel === "custom");
 }
 let ob2faChoice = null; // 'no' | 'yes' | null
+let obDevSkipAuth = false; // DEV: skip the live Neptun login check on the 2FA step
 function renderObStatus() {
   $("ob-2fa-status").innerHTML = hasTotp() ? `<div class="status-pill ok">${icon("check")} Beállítva: ${esc(state.totp.name)}</div>` : "";
 }
@@ -414,8 +415,18 @@ function finishOnboarding() {
   setTimeout(maybeOfferDataSync, 700); // right after setup, offer to read the missing data
 }
 function initOnboarding() {
-  $("ob-next").onclick = () => {
+  $("ob-next").onclick = async () => {
     if (!obStepValid()) return;
+    // After the 2FA step we have the full credentials — try a real Neptun login before proceeding.
+    // Success also fetches + stores the immutable Neptun code (getApiSession). DEV checkbox skips it.
+    if (obStep === 5 && !obDevSkipAuth && isNative) {
+      showBusy("Belépés ellenőrzése…", true);
+      let ok = false;
+      try { await totpTick(); const sess = await getApiSession(true); ok = !!(sess && sess.token); }
+      catch (e) { ok = false; }
+      finally { hideBusy(); }
+      if (!ok) { toast("A belépés nem sikerült. Ellenőrizd az azonosítót, a jelszót és a 2FA kódot."); return; }
+    }
     if (obStep === 1) commitObStep1();
     if (obPos === obSeq.length - 1) return finishOnboarding();
     obPos++; obStep = obSeq[obPos]; renderOb();
@@ -425,6 +436,7 @@ function initOnboarding() {
     else if (obMode === "add") cancelAddProfile();
   };
   $("ob-legal").onclick = () => { state.legalAccepted = !state.legalAccepted; saveState(); $("ob-legal").classList.toggle("on", state.legalAccepted); updateObFooter(); };
+  { const d = $("ob-dev-skip"); if (d) d.onclick = () => { obDevSkipAuth = !obDevSkipAuth; d.classList.toggle("on", obDevSkipAuth); }; }
   $("open-privacy").onclick = () => $("privacy-sheet").classList.remove("hidden");
   $("open-terms").onclick = () => $("terms-sheet").classList.remove("hidden");
   $("ob-uni-search").addEventListener("input", renderObUni);
