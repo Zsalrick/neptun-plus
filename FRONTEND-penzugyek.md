@@ -1,64 +1,64 @@
-# Frontend brief — Pénzügyek oldal (v1)
+# Frontend brief — Pénzügyek oldal
 
-A backend (MAIN) kész: van adatolvasó + data-sync task + állapot. A frontend feladata
-az UI: a „Több" rács **Pénzügyek** csempéjét élővé tenni, és egy teljes képernyős
-oldalt építeni. Prémium fekete-fehér, egy arany akcentus (mint a többi oldal).
+A backend (MAIN) kész: `syncFinance()` beolvassa az összes pénzügyi adatot és
+`state.finance`-be menti, normalizált (stabil) alakban. A frontend feladata az UI:
+a „Több" rács **Pénzügyek** csempéjét élővé tenni + egy teljes képernyős oldal.
+Prémium fekete-fehér, egy arany akcentus.
 
-## Adatforrás (kész, backend tölti)
-`state.finance` (data-sync `finance` task tölti, `syncFinance()`):
+## Adatforrás — `state.finance` (kész)
 ```js
 state.finance = {
   fetchedAt: ISO,
-  accounts: [{ id, account, desc, balance, currency, autoPay }],  // gyűjtőszámla + egyenleg
-  impositions: [ ... ], // kiírt/befizetendő tételek NYERS tömbje (teszt-fióknál üres [], mezőnevek
-                        //  még nem ismertek — defenzíven renderelj)
-  bonuses: [ ... ]      // Ösztöndíjak és kifizetések NYERS tömbje (teszt-fióknál üres [] — defenzív)
+  accounts: [{ id, account, balance, currency, autoPay, autoPayText, label }],
+      // gyűjtőszámlák. balance lehet null (pl. EUR-nál). label pl. "HUF Pannon gyűjtőszámla".
+  toPay: [{ id, name, value, currency, dueDate, term, subjectName, subjectCode }],
+      // AMIT MÉG BE KELL FIZETNI (nyitott tételek). Üres = nincs tartozás.
+  impositions: [{ id, name, value, currency, dueDate, paidAt, term, subjectName, subjectCode, invoiceNo }],
+      // összes kiírt tétel (fizetett is): paidAt=null ha még nincs fizetve. pl. "Vizsga díj" 1000 Ft.
+  transactions: [{ id, type, status, value, currency, direction, date, note, sign }],
+      // tranzakció-history. sign "+"/"-". direction pl. "Befizetés"/"Kifizetés"/"Gyűjtőszámla egyenleg feltöltés".
+  invoices: [{ id, number, value, currency, date, name, payer }],
+      // számlák. number = számlaszám (pl. "2026/62/6559").
+  scholarships: [{ id, name, amount, currency, term, date, status }],
+      // ösztöndíjak/kifizetések. pl. "Jegyzetvásárlási ösztöndíj" 3600 Ft, status "Teljesített".
 }
 ```
-Példa `accounts[0]`: `{ account:"103000021080215300024903", desc:"HUF Pannon gyűjtőszámla", balance:2000, currency:"HUF", autoPay:false }`.
+Ha `state.finance` null → üres állapot + gomb, ami `openDataSync(["finance"])`-et hív; utána `renderFinance()`.
 
-Ha `state.finance` null → üres állapot: „Még nincs beolvasva" + gomb, ami
-`openDataSync(["finance"])`-et hív (vagy a meglévő data-sync). Beolvasás után
-`renderFinance()` fusson újra (ahogy a kredit-oldalnál `grabProgress` után).
-
-## Csempe (MORE_SERVICES, app.js render-réteg)
-Jelenleg: `{ id:"finance", ..., soon:true }`. Tedd élővé:
-`{ id:"finance", label:"Pénzügyek", sub: () => { const f=state.finance; return f&&f.accounts&&f.accounts.length ? (f.accounts.reduce((s,a)=>s+(a.balance||0),0).toLocaleString("hu")+" "+(f.accounts[0].currency||"HUF")) : "Egyenleg és tételek"; }, icon:"wallet", go:()=>showTab("tab-finance") }`
-(a `wallet` ikon már létezik a `P` készletben.)
+## Csempe (MORE_SERVICES)
+`{ id:"finance", ..., soon:false, icon:"wallet", go:()=>showTab("tab-finance"),
+   sub: () => { const f=state.finance, a=f&&f.accounts&&f.accounts.find(x=>x.currency==="HUF")||(f&&f.accounts&&f.accounts[0]);
+     return a&&a.balance!=null ? a.balance.toLocaleString("hu")+" Ft" : "Egyenleg, tételek, tranzakciók"; } }`
 
 ## Oldal (`#tab-finance`, teljes képernyős sub-screen)
-- Vedd fel a `SUB_SCREENS`-be (`"tab-finance"`) → navbar elrejtve, back gomb visz vissza.
-- `renderForTab`: `else if (id==="tab-finance") renderFinance();`
-- Markup mint a Kredit-oldal: topbar `data-back` vissza gomb + „Pénzügyek" wordmark +
-  jobb felül frissítés ikon (→ `openDataSync(["finance"])`), alatta `<div class="scroll" id="finance-scroll">`.
+- Vedd fel `SUB_SCREENS`-be (`"tab-finance"`); `renderForTab`: `else if(id==="tab-finance") renderFinance();`
+- Markup mint a Kredit-oldal: topbar `data-back` + „Pénzügyek" + jobb felül frissítés (→ `openDataSync(["finance"])`); `<div class="scroll" id="finance-scroll">`.
+- Formázás: összeg `érték.toLocaleString("hu")+" "+(currency==="HUF"?"Ft":currency)`; dátum `fmtWhen`/rövid dátum.
 
-### Tartalom (renderFinance → #finance-scroll)
-1. **Egyenleg hero-kártya** (a Kredit-oldal `cred-hero` mintájára):
-   - Nagy szám: `accounts` egyenlegek összege + pénznem (pl. „2 000 Ft" — HUF-nál „Ft" utótag szép).
-   - Alatta a számla leírása (`desc`, pl. „HUF Pannon gyűjtőszámla").
-   - **Gyűjtőszámla-szám** monospace, külön sorban, **koppintásra vágólapra másol** (toast: „Számlaszám másolva") — ezt utalják a diákok, ez a leghasznosabb.
-   - Ha több `accounts` van, mindegyik külön kártya.
-   - `autoPay` igaz esetén egy halk chip: „Automatikus befizetés bekapcsolva".
-2. **Befizetendő / kiírt tételek** szekció (`impositions`):
-   - Ha üres → halk sor: „Nincs kiírt, befizetendő tétel." (ez a jó hír).
-   - Ha van elem: **defenzív** render — a mezőnevek még nincsenek megerősítve (ez a diák
-     fiókjában most üres volt). Amíg nem tudjuk a pontos szerkezetet, jeleníts meg minden
-     elemből egy címet (első string mező) + összeget (első number mező, `... Ft`), és ne
-     feltételezz konkrét kulcsneveket. Amint egy fizetős diák adata megvan, pontosítjuk.
-3. **Ösztöndíjak és kifizetések** szekció (`bonuses`): ha üres → „Nincs ösztöndíj vagy kifizetés.";
-   ha van elem → defenzív render (cím = első string mező, összeg = első number mező `... Ft`),
-   amíg egy adatokkal rendelkező fiókból meg nem erősítjük a mezőneveket.
-4. **Hamarosan** szekció (halkan, letiltva): Számlák · Tranzakciók. Ezek végpontjai **még nincsenek
-   felderítve** (a lusta-betöltésű finance chunkban vannak; backend feladat kideríteni) — ne köss rájuk semmit.
-4. Lábléc: „Frissítve: {fmtWhen(state.finance.fetchedAt)}".
+### renderFinance() szekciók (fentről le)
+1. **Egyenleg (hero)** — az elsődleges (HUF) `accounts` egyenlege nagyban (`cred-hero` stílus).
+   - Alatta a `label` („HUF Pannon gyűjtőszámla") és a **számlaszám** monospace, **koppintásra másol** (toast) — ide utalnak.
+   - Ha több `accounts` (pl. EUR is), a többit külön kártyaként (a null egyenleg „—").
+   - `autoPay` chip: `autoPayText` („Nem aktív"/„Aktív").
+2. **Befizetendő** (`toPay`) — ha üres: „Nincs befizetendő tételed." (jó hír). Ha van:
+   tételenként kártya: `name` (pl. „Vizsga díj"), `value` Ft nagyban, `subjectName` + `term`,
+   határidő `dueDate` (ha lejárt, piros/hangsúlyos). Ez a legfontosabb blokk.
+3. **Tranzakciók** (`transactions`) — lista, újtól régiig (`date` szerint). Soronként:
+   bal: `direction`/`type` + `date`; jobb: `sign==="+"` → zöldes/hangsúlyos `+érték Ft`, `"-"` → sima `−érték Ft`.
+   `note` halkan alá (ha van, pl. „NK-BLU89P"). `status` chip ha nem „Pénzügyileg igazolt".
+4. **Ösztöndíjak és kifizetések** (`scholarships`) — soronként `name`, `amount` Ft, `term`, `status`, `date`.
+   Üres → „Nincs ösztöndíj vagy kifizetés."
+5. **Számlák** (`invoices`) — soronként `name` + `number` (számlaszám) + `value` Ft + `date`.
+   Üres → „Nincs számla." (Ha később PDF-letöltés kell, van `Invoices/GetInvoiceDetailsForStudent?invoiceId=…`.)
+6. Lábléc: „Frissítve: {fmtWhen(state.finance.fetchedAt)}".
+
+Javaslat: az egyenleg + befizetendő legyen legfelül (ez érdekli a diákot), a tranzakció/ösztöndíj/számla
+lehet lejjebb, akár összecsukható szekciókként, ha hosszú.
 
 ## Amit NE csinálj
-- Ne írj saját Neptun-hívást a render-rétegbe; az adat a `state.finance`-ből jön (backend).
-- Ne tegyél fel Számlák/Tranzakciók/Ösztöndíjak listát — nincs még hozzá végpont.
+- Ne írj saját Neptun-hívást a render-rétegbe; minden a `state.finance`-ből jön.
+- Ne feltételezz mezőt a fentin túl; a lista-elemek pontosan a fenti kulcsokat tartalmazzák.
 
-## Státusz (mi ismert)
-- ✅ Egyenleg + gyűjtőszámla: `FinancialDataDashboard/GetCollectiveInvoices` (kész).
-- ✅ Befizetendő blokk: `FinancialDataDashboard/GetDashboardImpostionBlockLeft` (kész; tesztfióknál üres → item-szerkezet még nyitott).
-- ✅ Ösztöndíjak/kifizetések: `FinancialBonuses/GetStudentFinancialBonuses` (term param NÉLKÜL!; tesztfióknál üres).
-- ⏳ Számlák / Tranzakciók: végpont ismeretlen (lusta finance chunkban; backend feladat felderíteni).
-Lásd a `neptun-hallgato-api` memóriát a részletekért.
+## Státusz — MIND kész (Pannon, valós adaton ellenőrizve)
+Egyenleg/számlák, befizetendő, összes kiírt tétel, tranzakció-history, számlák, ösztöndíjak.
+Endpoint-részletek: `neptun-hallgato-api` memória.

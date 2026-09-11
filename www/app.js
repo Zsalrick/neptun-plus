@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.143";
+const APP_VERSION = "v0.144";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -64,7 +64,7 @@ function defaultState() {
     activeServerId: "u0",
     username: "", password: "",
     neptunCode: "", // immutable Neptun code (read-only); the login name (username) can differ / be custom
-    finance: null, // { fetchedAt, accounts:[{id,account,desc,balance,currency,autoPay}], impositions:[...raw], bonuses:[...raw] }
+    finance: null, // { fetchedAt, accounts, toPay, impositions, transactions, invoices, scholarships } — see FRONTEND-penzugyek.md
     no2fa: false,
     totp: null,
     pinHash: null,
@@ -2163,7 +2163,7 @@ const DATA_TASKS = [
     has: () => !!(state.courses && state.courses.list && state.courses.list.length), run: syncCourses },
   { id: "curriculum", label: "Mintatanterv (összes)", sub: "Képzésed összes tárgya és a szabadon választhatók",
     has: hasCurriculum, run: syncCurriculum },
-  { id: "finance", label: "Pénzügyek", sub: "Gyűjtőszámla egyenleg és kiírt tételek",
+  { id: "finance", label: "Pénzügyek", sub: "Egyenleg, befizetendő, tranzakciók, számlák, ösztöndíjak",
     has: () => !!(state.finance && state.finance.fetchedAt), run: syncFinance },
 ];
 function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
@@ -2210,35 +2210,52 @@ async function syncCredit() {
   saveState(); syncProgStatus();
   return { ok: true, detail: p.done + "/" + p.total + " kredit" };
 }
-// Finances: collective-account balance (egyenleg) + the overview to-pay/imposition block. Direct API
-// only (FinancialDataDashboard controller). Imposition item shape isn't confirmed yet (empty for a
-// student with no fees) → stored raw; the frontend renders it defensively.
+// Finances (all discovered v0.143, direct API). Reads: collective accounts + balance, items to pay,
+// all impositions (fees), transaction history, invoices, scholarship payments. Each is normalized to
+// a stable shape for the frontend (see FRONTEND-penzugyek.md).
 async function syncFinance() {
   const sess = await getApiSession();
   if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
-  let accounts = [], impositions = [];
-  try {
-    const r = await apiGet(sess, "FinancialDataDashboard/GetCollectiveInvoices");
-    const d = r && r.data && r.data.data;
-    if (Array.isArray(d)) accounts = d.map((a) => ({ id: a.collectiveInvoiceId, account: a.collectiveInvoiceBankAccount || "", desc: a.collectiveInvoiceDescription || "", balance: +a.collectiveInvoiceBalance || 0, currency: a.collectiveInvoiceCurrency || "HUF", autoPay: !!a.isCollectiveInvoiceAutomaticPayIn }));
-  } catch (e) { /* ignore */ }
-  try {
-    const r = await apiGet(sess, "FinancialDataDashboard/GetDashboardImpostionBlockLeft");
-    const d = r && r.data && r.data.data;
-    if (Array.isArray(d)) impositions = d;
-  } catch (e) { /* ignore */ }
-  let bonuses = [];
-  try {
-    // FinancialBonuses (Ösztöndíjak és kifizetések). No `term` param — the GUID/text values are rejected; omitting returns all.
-    const r = await apiGet(sess, "FinancialBonuses/GetStudentFinancialBonuses", { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 200 });
-    const d = r && r.data && r.data.data;
-    if (Array.isArray(d)) bonuses = d;
-  } catch (e) { /* ignore */ }
-  if (!accounts.length && !impositions.length && !bonuses.length) return { ok: false, detail: "nem találtam pénzügyi adatot" };
-  state.finance = { fetchedAt: new Date().toISOString(), accounts, impositions, bonuses };
+  const page = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 };
+  const arr = async (ep, params) => { try { const r = await apiGet(sess, ep, params); const d = r && r.data && r.data.data; return Array.isArray(d) ? d : []; } catch (e) { return []; } };
+  const reason0 = (x) => (x && x.uiDisplayState && x.uiDisplayState.reasons && x.uiDisplayState.reasons[0]) || "";
+
+  const accounts = (await arr("CollectiveInvoices/GetCollectiveInvoicesList")).map((a) => ({
+    id: a.collectiveInvoiceId, account: a.bankAccount || "", balance: a.balance == null ? null : +a.balance,
+    currency: a.currency || "HUF", autoPay: !!a.automaticPayIn, autoPayText: a.automaticPayInText || "",
+    label: reason0(a) || (a.currency ? a.currency + " gyűjtőszámla" : "Gyűjtőszámla"),
+  }));
+  const toPay = (await arr("FinancialItem/GetItemsToBePayed")).map((i) => ({
+    id: i.impositionId, name: i.name || "", value: +i.value || 0, currency: i.currency || "HUF",
+    dueDate: i.latestExecutionDate || null, term: i.term || "", subjectName: i.subjectName || "", subjectCode: i.subjectCode || "",
+  }));
+  const impositions = (await arr("FinancialItem/GetStudentImpositions")).map((i) => ({
+    id: i.impositionId, name: i.name || "", value: +i.value || 0, currency: i.currency || "HUF",
+    dueDate: i.latestExecutionDate || null, paidAt: i.timeOfPayment || null, term: i.term || "",
+    subjectName: i.subjectName || "", subjectCode: i.subjectCode || "", invoiceNo: i.invoiceSerialnumber || "",
+  }));
+  const transactions = (await arr("Transactions/GetStudentPreviousTransactions", page)).map((t) => ({
+    id: t.transactionId, type: t.transactionPayingType || "", status: t.transactionStatus || "",
+    value: +t.transactionValue || 0, currency: t.transactionCurrency || "HUF", direction: t.transactionDirection || "",
+    date: t.transferDate || null, note: t.transactionNote || "", sign: t.sign || "",
+  }));
+  const invoices = (await arr("Invoices/GetInvoicesForStudent", page)).map((v) => ({
+    id: v.invoiceId, number: v.certificationNumber || "", value: +v.value || 0, currency: v.currency || "HUF",
+    date: v.creationDate || null, name: v.impositionName || "", payer: v.payerName || "",
+  }));
+  const scholarships = (await arr("Scholarship/GetScholarshipPayments")).map((s) => ({
+    id: s.id, name: s.name || "", amount: +s.amount || 0, currency: s.currencyName || "HUF",
+    term: s.termName || "", date: s.bankDate || s.latestExecutionDate || null, status: reason0(s),
+  }));
+
+  if (!accounts.length && !toPay.length && !impositions.length && !transactions.length && !invoices.length && !scholarships.length) {
+    return { ok: false, detail: "nem találtam pénzügyi adatot" };
+  }
+  state.finance = { fetchedAt: new Date().toISOString(), accounts, toPay, impositions, transactions, invoices, scholarships };
   saveState();
-  const bal = accounts.reduce((s, a) => s + (a.balance || 0), 0);
-  return { ok: true, detail: accounts.length ? (bal.toLocaleString("hu") + " " + (accounts[0].currency || "HUF") + " egyenleg") : (impositions.length + " tétel") };
+  const huf = accounts.find((a) => a.currency === "HUF");
+  const bal = huf && huf.balance != null ? huf.balance : (accounts[0] && accounts[0].balance) || 0;
+  return { ok: true, detail: Number(bal).toLocaleString("hu") + " Ft egyenleg · " + toPay.length + " befizetendő" };
 }
 async function syncCourses() {
   // Preferred: direct API — terms, then enrolled subjects per term.
