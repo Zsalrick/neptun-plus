@@ -480,6 +480,13 @@
                     <span class="row-chev" data-icon="chev"></span>
                   </button>
                 </div>
+                <div class="section-label">Élmény</div>
+                <div class="card"><div class="card-pad">
+                  <button class="check" id="app-bootsound" type="button">
+                    <span class="box"><span data-icon="check"></span></span>
+                    <span><span class="c-t">Indító hang</span><span class="c-b">Kis dallam a Kredit+ logó animációjához induláskor.</span></span>
+                  </button>
+                </div></div>
               </div>
             </section>
 
@@ -622,6 +629,15 @@
               <div id="msg-view-compose"></div>
             </section>
 
+            <section class="tabscreen" id="tab-event">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark" id="event-title">Óra</div><div class="topbar-sub">Részletek</div></div>
+              </header>
+              <div class="scroll" id="detail-body"></div>
+              <div id="event-footer"></div>
+            </section>
+
           </div>
 
           <nav class="nav-island">
@@ -758,14 +774,6 @@
         <button class="btn outline" id="ics-cancel">Mégse</button>
         <button class="btn primary" id="ics-save">Mentés és frissítés</button>
       </div>
-    </div>
-  </div>
-
-  <!-- Event detail sheet (notes, delete) -->
-  <div class="backdrop hidden" id="detail-sheet">
-    <div class="sheet">
-      <div id="detail-body"></div>
-      <div class="sheet-actions"><button class="btn outline" id="detail-close">Bezárás</button></div>
     </div>
   </div>
 

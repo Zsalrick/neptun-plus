@@ -362,13 +362,25 @@ button.row:active { background: var(--surface-2); }
 .detail-subj { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 3px; }
 .detail-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); margin: 10px 0 14px; }
 .detail-meta svg.ic { width: 15px; height: 15px; }
-.detail-notes { display: flex; flex-direction: column; gap: 8px; }
-.note-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface-2);
-  border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; font-size: 13.5px; }
-.note-x { background: transparent; border: 0; color: var(--ink-3); cursor: pointer; display: flex; padding: 2px; }
+.detail-notes { display: flex; flex-direction: column; gap: 10px; }
+.note-row { display: flex; align-items: flex-start; gap: 11px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 13px 14px; }
+.note-ic { flex: none; color: var(--brand-plus); display: flex; margin-top: 1px; }
+.note-ic svg.ic { width: 16px; height: 16px; }
+.note-t { flex: 1; min-width: 0; font-size: 14px; line-height: 1.45; color: var(--ink); word-break: break-word; }
+.note-x { flex: none; background: transparent; border: 0; color: var(--ink-3); cursor: pointer; display: flex; padding: 2px; }
 .note-x svg.ic { width: 16px; height: 16px; }
 .detail-add { display: flex; gap: 8px; margin-top: 8px; }
 .detail-add .btn { font-size: 12.5px; padding: 11px 8px; }
+/* Event page: scroll fills above a fixed footer with the actions (Bezárás always visible) */
+#detail-body { padding-bottom: 12px; }
+#event-footer { display: flex; flex-direction: column; gap: 10px; background: var(--bg); border-top: 1px solid var(--line);
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); }
+#event-footer:empty { display: none; }
+#event-footer .btn { margin: 0; }
+#event-footer .event-actions { display: flex; gap: 10px; }
+#event-footer .event-actions .btn { flex: 1; }
+#event-footer .event-hint { margin: -4px 2px -2px; text-align: center; }
 .kv { padding: 4px 14px; }
 .kv-row { display: flex; gap: 12px; justify-content: space-between; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
 .kv-row:first-child { border-top: 0; }

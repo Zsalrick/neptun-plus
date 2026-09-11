@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.172";
+const APP_VERSION = "v0.173";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -518,6 +518,7 @@ function renderForTab(id) {
   else if (id === "tab-fin-invoices") renderFinInvoices();
   else if (id === "tab-messages") renderMessages();
   else if (id === "tab-msg-view") renderMsgView();
+  else if (id === "tab-event") renderDetail();
   else if (id === "tab-profile") renderProfilePage();
   else if (id === "tab-settings" || id.indexOf("tab-set-") === 0) syncSettings();
 }
@@ -3248,11 +3249,12 @@ let detailEvent = null, detailExamMode = false, detailSeg = "info", detailCourse
 function openDetail(e, examMode) {
   if (!e) return;
   detailEvent = e; detailExamMode = examMode; detailSeg = "info"; detailCourse = null; detailCourseErr = false;
-  renderDetail();
-  $("detail-sheet").classList.remove("hidden");
+  const t = $("event-title"); if (t) t.textContent = e.manual ? "Esemény" : (examMode ? "Vizsga" : "Óra");
+  pushScreen("tab-event"); // full-screen page — renderForTab runs renderDetail
   // Classes get the API drilldown (oktatók/diákok/tárgy adatai); exams/manual keep the simple view.
   if (!e.manual && !examMode && isNative) loadDetailCourse(e);
 }
+function detailActive() { const a = document.querySelector(".tabscreen.active"); return !!(a && a.id === "tab-event"); }
 async function loadDetailCourse(e) {
   try {
     const list = await apiCalendarEvents();
@@ -3260,7 +3262,7 @@ async function loadDetailCourse(e) {
     detailCourse = ev ? await apiCourseBundle(ev) : null;
     if (!detailCourse) detailCourseErr = true;
   } catch (err) { detailCourseErr = true; }
-  if (detailEvent === e && !$("detail-sheet").classList.contains("hidden")) renderDetail();
+  if (detailEvent === e && detailActive()) renderDetail();
 }
 function noteAdd(e, kind) {
   const v = $("dn-input").value.trim(); if (!v) return toast("Írj be megjegyzést.");
@@ -3270,34 +3272,41 @@ function noteAdd(e, kind) {
 }
 function renderDetail() {
   const e = detailEvent; if (!e) return;
+  const body = $("detail-body"), footer = $("event-footer"); if (!body) return;
   let html = `${e.subject ? `<div class="detail-subj">${esc(e.subject)}</div>` : ""}<div class="sheet-title">${esc(e.summary || "Esemény")}</div>
     <div class="detail-meta">${icon("clock")} ${esc(dayHeading(e.S))} · ${hm(e.S)}${e.E > e.S ? "–" + hm(e.E) : ""}${e.location ? ` &nbsp;·&nbsp; ${icon("pin")} ${esc(e.location)}` : ""}</div>`;
   if (e.manual) {
     const notes = e.note ? [{ text: e.note }] : [];
-    html += `<div class="detail-notes">${notes.length ? notes.map((n) => `<div class="note-row"><span>${esc(n.text)}</span></div>`).join("") : `<div class="hint" style="margin:0">Nincs megjegyzés.</div>`}</div>`;
-    html += `<div class="detail-add" style="margin-top:14px"><button class="btn outline" id="dn-edit">Szerkesztés</button><button class="btn danger" id="dn-del">Törlés</button></div>`;
-    $("detail-body").innerHTML = html;
-    $("dn-edit").onclick = () => { $("detail-sheet").classList.add("hidden"); openExamEdit(e); };
-    $("dn-del").onclick = () => { state.manualExams = (state.manualExams || []).filter((m) => m.id !== e.id); saveState(); $("detail-sheet").classList.add("hidden"); renderExams(); renderHome(); toast("Törölve."); };
+    html += `<div class="detail-notes">${notes.length ? notes.map((n) => `<div class="note-row"><span class="note-ic">${icon("note")}</span><span class="note-t">${esc(n.text)}</span></div>`).join("") : `<div class="dash-empty" style="padding:18px 2px">Nincs megjegyzés.</div>`}</div>`;
+    body.innerHTML = html;
+    if (footer) footer.innerHTML = `<div class="event-actions"><button class="btn outline" id="dn-edit">Szerkesztés</button><button class="btn danger" id="dn-del">Törlés</button></div><button class="btn tonal" id="detail-close">Bezárás</button>`;
+    if ($("dn-edit")) $("dn-edit").onclick = () => { popScreen(); openExamEdit(e); };
+    if ($("dn-del")) $("dn-del").onclick = () => { state.manualExams = (state.manualExams || []).filter((m) => m.id !== e.id); saveState(); popScreen(); renderExams(); renderHome(); toast("Törölve."); };
+    if ($("detail-close")) $("detail-close").onclick = popScreen;
     return;
   }
   // Segmented sections for a class/exam occurrence.
   const segs = [["info", "Tárgy"], ["tutors", "Oktatók"], ["students", "Diákok"], ["notes", "Megjegyzések"]];
   html += `<div class="seg" style="margin-bottom:12px">` + segs.map(([id, l]) => `<button class="seg-btn${detailSeg === id ? " active" : ""}" data-cseg="${id}" type="button">${l}</button>`).join("") + `</div>`;
   html += `<div id="course-sec"></div>`;
+  body.innerHTML = html;
+  body.querySelectorAll("[data-cseg]").forEach((b) => b.onclick = () => { detailSeg = b.dataset.cseg; renderDetail(); });
+  // Fixed footer (always visible): skip/attend toggle for classes, then Bezárás.
+  let f = "";
   if (!detailExamMode) {
     const hidden = isHiddenOcc(e);
-    html += `<div class="detail-add" style="margin-top:14px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Mégis járok erre az órára" : "Erre az órára nem járok be"}</button></div>
-      <div class="hint" style="margin:8px 2px 0">A félév összes ilyen órájára érvényes (${esc(TT_DAYS[e.S.getDay()])} ${esc(hm(e.S))}).</div>`;
+    f += `<button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Mégis járok erre az órára" : "Erre az órára nem járok be"}</button>`
+      + `<div class="hint event-hint">A félév összes ilyen órájára érvényes (${esc(TT_DAYS[e.S.getDay()])} ${esc(hm(e.S))}).</div>`;
   }
-  $("detail-body").innerHTML = html;
-  $("detail-body").querySelectorAll("[data-cseg]").forEach((b) => b.onclick = () => { detailSeg = b.dataset.cseg; renderDetail(); });
+  f += `<button class="btn tonal" id="detail-close">Bezárás</button>`;
+  if (footer) footer.innerHTML = f;
   if ($("dn-hide")) $("dn-hide").onclick = () => {
     const k = hideKey(e); state.hiddenOcc = state.hiddenOcc || [];
     const was = state.hiddenOcc.indexOf(k) >= 0;
     state.hiddenOcc = was ? state.hiddenOcc.filter((x) => x !== k) : state.hiddenOcc.concat(k);
     saveState(); renderDetail(); refreshAgendas(); toast(was ? "Újra látható." : "Elrejtve a félév ilyen óráira.");
   };
+  if ($("detail-close")) $("detail-close").onclick = popScreen;
   renderCourseSeg(e);
 }
 function renderCourseSeg(e) {
@@ -3306,10 +3315,12 @@ function renderCourseSeg(e) {
   const c = detailCourse || {};
   if (detailSeg === "notes") {
     const notes = notesForEvent(e);
-    let h = `<div class="detail-notes">`;
-    h += notes.length ? notes.map((n) => `<div class="note-row"><span>${esc(n.text)}</span><button class="note-x" data-nid="${n.id}">${icon("x")}</button></div>`).join("") : `<div class="hint" style="margin:0">Nincs megjegyzés.</div>`;
-    h += `</div><div class="field" style="margin-top:14px"><input class="input" id="dn-input" placeholder="Új megjegyzés, például hozz papírt" autocomplete="off" /></div>`
-      + `<div class="detail-add"><button class="btn outline" id="dn-occ">Csak erre az alkalomra</button><button class="btn outline" id="dn-sub">Minden ilyen órára</button></div>`;
+    let h = notes.length
+      ? `<div class="detail-notes">` + notes.map((n) => `<div class="note-row"><span class="note-ic">${icon("note")}</span><span class="note-t">${esc(n.text)}</span><button class="note-x" data-nid="${n.id}" title="Törlés">${icon("x")}</button></div>`).join("") + `</div>`
+      : `<div class="dash-empty" style="padding:24px 2px">Még nincs megjegyzés ehhez az órához.</div>`;
+    h += `<div class="dash-label">Új megjegyzés</div>`
+      + `<div class="field"><input class="input" id="dn-input" placeholder="Például: hozz papírt, terem csere" autocomplete="off" /></div>`
+      + `<div class="detail-add"><button class="btn outline" id="dn-occ">Csak erre az alkalomra</button><button class="btn tonal" id="dn-sub">Minden ilyen órára</button></div>`;
     host.innerHTML = h;
     host.querySelectorAll(".note-x").forEach((b) => b.onclick = () => { state.notes = (state.notes || []).filter((n) => n.id !== b.dataset.nid); saveState(); renderDetail(); refreshAgendas(); });
     $("dn-occ").onclick = () => noteAdd(e, "occurrence");
@@ -3515,7 +3526,6 @@ function showNotifAlert(x) {
   $("notif-sheet").classList.remove("hidden");
 }
 $("notif-ok").onclick = () => $("notif-sheet").classList.add("hidden");
-$("detail-close").onclick = () => $("detail-sheet").classList.add("hidden");
 
 // =====================================================================
 //  SETTINGS
@@ -3533,6 +3543,7 @@ function syncSettings() {
   updateUpdateStatus();
   updateBreakMinStatus();
   syncSecurityToggles();
+  { const b = $("app-bootsound"); if (b) b.classList.toggle("on", bootSoundOn()); }
   renderBioSetting();
   syncNotifySettings();
   syncSemStatus();
@@ -3667,6 +3678,7 @@ async function updateUpdateStatus() {
     if (el) el.textContent = "Verzió " + APP_VERSION + " · Naprakész";
   }
 }
+{ const b = $("app-bootsound"); if (b) b.onclick = () => { state.bootSound = !bootSoundOn(); saveState(); b.classList.toggle("on", bootSoundOn()); if (bootSoundOn()) playBootChime(); }; }
 $("btn-check-update").onclick = async () => {
   if (!isNative) { toast("A frissítés a telefonos alkalmazásban működik."); return; }
   if (!window.OTA) { toast("A frissítő nem elérhető."); return; }
@@ -4166,11 +4178,33 @@ function onBackNav() {
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") warmSession("resume"); });
 })();
 
+// A tiny synthesized chime for the boot logo — one soft pluck per letter (ascending pentatonic),
+// then a bright triad "sparkle" on the +. Web Audio only (no asset), best-effort under autoplay policy.
+function playBootChime() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const ctx = new AC(); if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    const t0 = ctx.currentTime + 0.03;
+    const pluck = (freq, at, dur, peak, type) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(); const s = t0 + at;
+      o.type = type || "triangle"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, s); g.gain.linearRampToValueAtTime(peak, s + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + dur);
+      o.connect(g); g.connect(ctx.destination); o.start(s); o.stop(s + dur + 0.03);
+    };
+    // letters K r e d i t at the CSS animation-delays (.10–.45s): C5 D5 E5 G5 A5 C6
+    const notes = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5], times = [0.10, 0.17, 0.24, 0.31, 0.38, 0.45];
+    notes.forEach((f, i) => pluck(f, times[i], 0.22, 0.13, "triangle"));
+    [1046.5, 1318.51, 1567.98].forEach((f, i) => pluck(f, 0.60 + i * 0.006, 0.55, 0.09, "sine")); // "+" sparkle
+  } catch (e) {}
+}
+function bootSoundOn() { return state.bootSound !== false; } // default on
 function setBootText(t) { const b = $("boot-text"); if (b) b.textContent = t; }
 function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot--hide"); setTimeout(() => { b.hidden = true; }, 420); }
 
 (async () => {
   const bootTs = Date.now();
+  if (bootSoundOn()) playBootChime(); // little satisfying chime synced to the logo letters
   bioOK = await bioAvailable(); // resolve BEFORE the first lock so biometrics is offered on cold start
   // Cold start: behind the loading screen, check for an OTA update and apply it before login.
   if (isNative && window.OTA && window.OTA.configured()) {
