@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.125";
+const APP_VERSION = "v0.126";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -809,7 +809,9 @@ $("busy-cancel").onclick = () => { if (flowCancel) flowCancel(); };
 // =====================================================================
 function renderHome() {
   const srv = activeServer();
-  $("disp-username").textContent = state.username || "Nincs adat";
+  // Show the Neptun code (immutable, tidy) rather than the login name, which can be a long custom string.
+  $("disp-username").textContent = state.neptunCode || state.username || "Nincs adat";
+  { const cap = document.querySelector("#tab-home .hero-cap"); if (cap) cap.textContent = state.neptunCode ? "Neptun kód" : "Azonosító"; }
   $("disp-server").textContent = (state.university || "") + (srv && state.servers.length > 1 ? " · " + srv.label : "");
   const showTotp = hasTotp() && !state.no2fa;
   $("totp-tile").classList.toggle("hidden", !showTotp);
@@ -1625,15 +1627,32 @@ function buildTokenGrabScript(username, password, code) {
   return `(function(){
   if(window.__tokRunning) return "running"; window.__tokRunning=true; window.__tok=""; window.__ncLog="";
   var LOG=[]; function log(m){ LOG.push(m); window.__ncLog=LOG.join("\\n"); }
-  function deliver(o){ o=o||{}; try{ window.__tok=JSON.stringify(Object.assign({done:true,log:LOG.slice(-20).join("\\n")},o)); }catch(e){} try{ window.location.href="https://neptunplus.done/?d="+encodeURIComponent(JSON.stringify({token:o.token||"",base:o.base||"",log:LOG.slice(-12).join("\\n")})); }catch(e){} }
+  function deliver(o){ o=o||{}; try{ window.__tok=JSON.stringify(Object.assign({done:true,log:LOG.slice(-20).join("\\n")},o)); }catch(e){} try{ window.location.href="https://neptunplus.done/?d="+encodeURIComponent(JSON.stringify({token:o.token||"",base:o.base||"",code:o.code||"",log:LOG.slice(-12).join("\\n")})); }catch(e){} }
   function waitFor(fn,ms){ return new Promise(function(res){ var t0=Date.now(); (function p(){ var v; try{v=fn();}catch(e){v=null;} if(v) return res(v); if(Date.now()-t0>ms) return res(null); setTimeout(p,300); })(); }); }
+  // Find the immutable Neptun code from the logged-in page: JWT claims first, then a scan of
+  // session/localStorage (the SDA app stashes user data there). Returns "" if nothing code-shaped.
+  function findCode(tok){
+    try{ var b=tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'); var p=JSON.parse(decodeURIComponent(escape(atob(b))));
+      var prefer=['neptunCode','NeptunCode','neptun_code','NeptunKod','code','Login','login','preferred_username','unique_name','nameid','sub','name'];
+      for(var i=0;i<prefer.length;i++){ var v=p[prefer[i]]; if(v && /^[A-Za-z0-9]{6}$/.test(String(v))) return String(v).toUpperCase(); }
+      for(var k in p){ if(/^[A-Za-z0-9]{6}$/.test(String(p[k]))) return String(p[k]).toUpperCase(); }
+    }catch(e){}
+    try{ var stores=[window.sessionStorage,window.localStorage];
+      for(var s=0;s<stores.length;s++){ var st=stores[s]; for(var j=0;j<st.length;j++){ var kk=st.key(j)||''; var val=st.getItem(kk)||'';
+        if(/neptun|code|kod|login/i.test(kk) && /^[A-Za-z0-9]{6}$/.test(val)) return val.toUpperCase();
+        if(val.length<8000){ var m=val.match(/"(?:neptunCode|NeptunCode|neptun_code|NeptunKod|code|login)"\\s*:\\s*"([A-Za-z0-9]{6})"/i); if(m) return m[1].toUpperCase(); }
+      }}
+    }catch(e){}
+    return "";
+  }
   (async function(){
     try{
       log("Bejelentkezés…");
       var tok=await waitFor(function(){ try{ return window.sessionStorage.getItem('access_token'); }catch(e){ return null; } }, 60000);
       var base=""; try{ base=new URL('api/', document.baseURI).href; }catch(e){ base=location.origin+'/hallgato/api/'; }
       log(tok?("Token megvan ("+tok.length+" kar.)"):"Nincs token a sessionStorage-ban");
-      deliver({token:tok||"", base:base});
+      var nc=tok?findCode(tok):""; log(nc?("Neptun kód: "+nc):"Neptun kód nem található");
+      deliver({token:tok||"", base:base, code:nc});
     }catch(err){ log("HIBA: "+String(err)); deliver({}); }
   })();
   return "started";
@@ -1644,7 +1663,8 @@ async function getApiSession(force) {
   const res = await neptunGetSession();
   if (res && res.token) {
     apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
-    const nc = tokenNeptunCode(res.token); if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
+    const nc = (res.code && /^[A-Za-z0-9]{6}$/.test(res.code)) ? res.code.toUpperCase() : tokenNeptunCode(res.token);
+    if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
     onSessionChanged(); return apiSession;
   }
   return null;
