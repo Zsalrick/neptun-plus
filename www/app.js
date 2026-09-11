@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.159";
+const APP_VERSION = "v0.160";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1150,11 +1150,12 @@ async function renderMsgView() {
     apiMarkMessageRead(x.id, posts); // fire-and-forget; don't block the view
   }
   // Pick the text field robustly: known names first, else the longest string field that looks like a body.
+  const META = { postId: 1, parentPostId: 1, senderUserId: 1, sendDate: 1, expectedAttachmentsDeletionDate: 1, plainTextPreview: 1 };
   const pickText = (p) => {
-    const known = p.text || p.content || p.body || p.messageText || p.postText || p.messageBody || p.htmlBody || p.htmlContent || p.messageContent || p.description;
+    const known = p.htmlText || p.text || p.content || p.body || p.messageText || p.postText || p.messageBody || p.htmlBody || p.htmlContent || p.messageContent || p.description || p.plainTextPreview;
     if (known) return known;
     let best = "";
-    for (const k in p) { const v = p[k]; if (typeof v === "string" && /<|\n| /.test(v) && v.length > best.length && !/^https?:/.test(v)) best = v; }
+    for (const k in p) { const v = p[k]; if (typeof v === "string" && v && !META[k] && !/^https?:/.test(v) && v.length > best.length) best = v; }
     return best;
   };
   body.innerHTML = posts.map((p) => {
@@ -1168,9 +1169,10 @@ async function renderMsgView() {
     return `<div class="msg-post"><div class="msg-text">${inner}</div>`
       + `${meta ? `<div class="msg-time">${meta}</div>` : ""}</div>`;
   }).join("");
-  // Reply — offered only when this message's own reply flag is on (messageData.isReplyEnabled).
-  // Automated / no-reply Neptun messages have it false, so no button there.
-  const canReply = !x.sent && res.replyEnabled;
+  // Reply — offered whenever this thread's own reply flag is on (messageData.isReplyEnabled), whether
+  // it sits in Beérkezett or Elküldött (a two-way conversation shows up under Elküldött once you've
+  // replied). Automated / no-reply Neptun messages have the flag false → no button.
+  const canReply = !!res.replyEnabled;
   if (canReply) {
     const last = posts[posts.length - 1] || {};
     const lastPostId = last.postId || last.id || "";
