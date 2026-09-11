@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.154";
+const APP_VERSION = "v0.155";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1034,18 +1034,29 @@ function renderFinInvoices() {
   host.innerHTML = html;
 }
 // Refresh ONLY the finance data (topic-scoped) — used by the top-right button and pull-to-refresh.
+// Uses direct HTTP (getApiSession coalesces the token fetch), so no "flow busy" blocking. A silent
+// re-entrancy guard just ignores a second trigger while one is already running.
+let refreshingFin = false;
 async function refreshFinance(viaButton) {
-  if (flowActive) { toast("Már fut egy folyamat, várj."); return; }
+  if (refreshingFin) return;
+  refreshingFin = true;
   if (viaButton) showBusy("Pénzügyek frissítése…", true);
-  await totpTick();
-  let r; try { r = await syncFinance(); } catch (e) { r = { ok: false }; }
-  if (viaButton) hideBusy();
+  let r; try { await totpTick(); r = await syncFinance(); } catch (e) { r = { ok: false }; }
+  finally { refreshingFin = false; if (viaButton) hideBusy(); }
   renderFinance();
   toast(r && r.ok ? "Pénzügyek frissítve." : "Nem sikerült frissíteni.");
 }
 // ---- Üzenetek: list (Beérkezett / Elküldött) + on-demand message view. All from state.messages. ----
 let msgTab = "received"; // "received" | "sent"
 let msgOpen = null; // the message currently shown in tab-msg-view
+// Sender avatar: initial letter for a person, an icon for system / sent messages.
+function msgAvatar(x, big) {
+  const cls = "msg-avatar" + (big ? " lg" : "") + (x.unread && !x.sent ? " unread" : "");
+  if (x.isSystem) return `<span class="${cls}">${icon("shield")}</span>`;
+  const name = (x.sent ? (x.to || "") : (x.from || "")).trim();
+  if (!name) return `<span class="${cls}">${icon("mail")}</span>`;
+  return `<span class="${cls}">${esc(name[0].toUpperCase())}</span>`;
+}
 function renderMessages() {
   const host = $("messages-scroll"); if (!host) return;
   const m = state.messages;
@@ -1067,7 +1078,7 @@ function renderMessages() {
     list.forEach((x) => {
       const who = x.sent ? "" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
       html += `<button class="row msg-row${x.unread ? " unread" : ""}" data-msg="${esc(x.id)}" type="button">`
-        + `<span class="msg-dot"></span>`
+        + msgAvatar(x)
         + `<span class="row-main"><span class="row-title">${esc(x.subject)}</span>`
         + `<span class="row-sub">${[who, esc(ftDate(x.date))].filter(Boolean).join(" · ")}</span></span>`
         + `${x.hasAttachment ? `<span class="msg-clip">${icon("doc")}</span>` : ""}`
@@ -1090,8 +1101,9 @@ async function renderMsgView() {
   if (!x) { host.innerHTML = `<div class="dash-empty" style="padding:22px 4px">Nincs megnyitott üzenet.</div>`; return; }
   if (sub) sub.textContent = x.sent ? "Elküldött üzenet" : (x.isSystem ? "Rendszerüzenet" : (x.from || "Neptun üzenet"));
   const who = x.sent ? "Elküldött" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
-  host.innerHTML = `<div class="card msg-head"><div class="msg-subj">${esc(x.subject)}</div>`
-    + `<div class="row-sub">${[who, esc(ftDate(x.date))].filter(Boolean).join(" · ")}</div></div>`
+  host.innerHTML = `<div class="card msg-head">`
+    + `<div class="msg-from">${msgAvatar(x, true)}<span class="msg-from-main"><span class="msg-from-name">${who}</span><span class="row-sub">${esc(ftDate(x.date))}</span></span></div>`
+    + `<div class="msg-subj">${esc(x.subject)}</div></div>`
     + `<div class="card" id="msg-body"><div class="dash-empty" style="padding:8px 2px">Betöltés…</div></div>`;
   const body = $("msg-body");
   const posts = await apiReadMessagePosts(x.id);
@@ -1133,12 +1145,13 @@ function sanitizeHtml(s) {
   });
   return div.innerHTML;
 }
+let refreshingMsg = false;
 async function refreshMessages(viaButton) {
-  if (flowActive) { toast("Már fut egy folyamat, várj."); return; }
+  if (refreshingMsg) return;
+  refreshingMsg = true;
   if (viaButton) showBusy("Üzenetek frissítése…", true);
-  await totpTick();
-  let r; try { r = await syncMessages(); } catch (e) { r = { ok: false }; }
-  if (viaButton) hideBusy();
+  let r; try { await totpTick(); r = await syncMessages(); } catch (e) { r = { ok: false }; }
+  finally { refreshingMsg = false; if (viaButton) hideBusy(); }
   renderMessages();
   toast(r && r.ok ? "Üzenetek frissítve." : "Nem sikerült frissíteni.");
 }
@@ -1882,16 +1895,22 @@ function buildTokenGrabScript(username, password, code) {
   return "started";
 })();`;
 }
+let sessionInFlight = null; // coalesce concurrent token fetches so callers share one IAB flow
 async function getApiSession(force) {
   if (!force && apiSessionValid()) return apiSession;
-  const res = await neptunGetSession();
-  if (res && res.token) {
-    apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
-    const nc = (res.code && /^[A-Za-z0-9]{6}$/.test(res.code)) ? res.code.toUpperCase() : tokenNeptunCode(res.token);
-    if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
-    onSessionChanged(); return apiSession;
-  }
-  return null;
+  if (sessionInFlight) return sessionInFlight; // a fetch is already running → await the same one
+  sessionInFlight = (async () => {
+    let res = null;
+    try { res = await neptunGetSession(); } catch (e) { return null; } // e.g. another IAB flow busy → no session now
+    if (res && res.token) {
+      apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
+      const nc = (res.code && /^[A-Za-z0-9]{6}$/.test(res.code)) ? res.code.toUpperCase() : tokenNeptunCode(res.token);
+      if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
+      onSessionChanged(); return apiSession;
+    }
+    return null;
+  })();
+  try { return await sessionInFlight; } finally { sessionInFlight = null; }
 }
 // ---------- keep a warm Neptun session (no manual re-login) ----------
 // We hold the credentials + TOTP secret, so instead of fighting the OS to keep a token alive in the
@@ -2022,10 +2041,15 @@ async function apiReadIcsUrl(sess) {
   return u ? u.replace(/^webcal:\/\//i, "https://") : "";
 }
 
+let grabbingProgress = false;
 async function grabProgress() {
   if (!isNative) { toast("A kredit beolvasása a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
-  if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
+  if (grabbingProgress) return; // silently ignore a second trigger (e.g. double pull-to-refresh)
+  grabbingProgress = true;
+  try { await grabProgressInner(); } finally { grabbingProgress = false; }
+}
+async function grabProgressInner() {
   await totpTick();
   courseLog = []; showBusy("Bejelentkezés…", true);
   let prog = null, cancelled = false, viaApi = false;
