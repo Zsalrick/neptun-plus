@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.148";
+const APP_VERSION = "v0.149";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2220,25 +2220,27 @@ async function runApiDiagnostics() {
     const pageTermText = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.term": termText };
     // Üzenetek (Messages) endpoints — names known from the v0.143 JS grep; here we probe them to learn
     // the response shapes. Direct GET via CapacitorHttp; list endpoints try both no-param and paged.
-    void termId; void termText; void pageTermText;
+    void termId; void termText; void pageTermText; void pageNoTerm;
+    // Message list endpoints 400 on `sortAndPage.*` — error names a bare `firstRow` key.
+    // Probe flat firstRow/lastRow naming variants to nail the paging params + get the list shape.
+    const flat = { firstRow: 0, lastRow: 50 };
+    const flatPs = { firstRow: 0, lastRow: 50, pageSize: 50 };
     const eps = [
       ["Message/GetUnreadedMessagesCount", null],
-      ["Message/GetReceivedMessages", null],
-      ["Message/GetReceivedMessages", pageNoTerm],
-      ["Message/GetSentMessages", pageNoTerm],
-      ["Message/GetReceivedArchivedMessages", pageNoTerm],
+      ["Message/GetReceivedMessages", flat],
+      ["Message/GetReceivedMessages", flatPs],
+      ["Message/GetSentMessages", flat],
+      ["Message/GetReceivedArchivedMessages", flat],
       ["Message/GetMessageSendingSettings", null],
-      ["Message/GetMessageLimitSetting", null],
     ];
     for (const [ep, params] of eps) {
       $("busy-text").textContent = ep.split("/").pop() + "…";
       try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, params: params || undefined, status: r.status, data: r.data }); }
       catch (e) { results.push({ ep, error: String(e && e.message || e) }); }
     }
-    // Discover any other finance endpoints from the app's JS, then probe each (no params, then paged).
-    $("busy-text").textContent = "Végpontok felderítése…";
-    let discovered = [], discDebug = null;
-    try { const disc = await discoverFinanceEndpoints(sess.base); discovered = disc.found; discDebug = disc.debug; } catch (e) { dbg("discover: " + (e && e.message ? e.message : e)); }
+    // Endpoint names already known from the v0.143 grep — skip the slow JS re-discovery this run;
+    // we only need the Message list shapes above.
+    let discovered = [], discDebug = "skipped (targeted message probe)";
     const known = new Set(results.map((r) => r.ep));
     for (const ep of discovered) {
       if (known.has(ep)) continue; known.add(ep);
