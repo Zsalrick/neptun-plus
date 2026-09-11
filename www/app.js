@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.164";
+const APP_VERSION = "v0.165";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1194,8 +1194,15 @@ async function renderMsgView() {
     if (!ok) return;
     toast("Letöltés…");
     const r = await downloadAttachment(postId, [did], fn);
-    if (r.ok) await ask({ title: "Letöltve", okText: "OK", body: `Elmentve ide:<br><b>${esc(r.path)}</b><br><br>A fájlt a telefon <b>Fájlok</b> appjában, a Dokumentumok mappában nyithatod meg.` });
-    else toast("Nem sikerült letölteni" + (r.detail ? ": " + r.detail : "."));
+    if (!r.ok) { toast("Nem sikerült letölteni" + (r.detail ? ": " + r.detail : ".")); return; }
+    if (r.native) {
+      const open = await ask({ title: "Letöltve", okText: "Megnyitás", cancelText: "Bezár",
+        body: `A(z) <b>${esc(r.name)}</b> a <b>Letöltések</b> mappába került.` });
+      if (open) { try { await DLP().open({ uri: r.uri, mime: r.mime }); } catch (e) { toast("Nem sikerült megnyitni."); } }
+    } else {
+      await ask({ title: "Letöltve", okText: "OK",
+        body: `Elmentve ide:<br><b>${esc(r.path)}</b><br><br>Megnyitáshoz frissítsd az appot (új verzió kell a Letöltésekbe mentéshez és a megnyitáshoz).` });
+    }
   });
   // Reply — a persistent chat composer pinned to the bottom, shown whenever this thread's own reply flag
   // is on (messageData.isReplyEnabled). Automated / no-reply Neptun messages have it false → no composer.
@@ -2761,13 +2768,19 @@ async function apiSendReply(messageId, text, postId) {
     return { ok: false, detail: msg || ("hiba (" + (r && r.status) + ")") };
   } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
 }
-// Download a message attachment: POST Message/DownloadAttachments {documentationIds, postId} → blob.
-// CapacitorHttp returns the bytes base64 (responseType blob); we save them to Documents/neptunplus.
-// Returns { ok, path } or { ok:false, detail }. (Opening the saved file needs a native opener → APK.)
+function DLP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Downloads; }
+const MIMES = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain", csv: "text/csv", zip: "application/zip", rar: "application/vnd.rar", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif" };
+function guessMime(name) { const e = (name.split(".").pop() || "").toLowerCase(); return MIMES[e] || "application/octet-stream"; }
+// Download a message attachment: POST Message/DownloadAttachments {documentationIds, postId} → blob
+// (CapacitorHttp returns base64). Save to the phone's public Downloads via the native Downloads plugin
+// (returns a content uri, openable); if that plugin isn't in this build, fall back to Documents/neptunplus.
 async function downloadAttachment(postId, documentationIds, fileName) {
   if (!isNative) return { ok: false, detail: "csak a telefonos appban" };
-  const sess = await getApiSession(); const CH = CHTTP(), fs = FSP();
-  if (!sess || !sess.token || !CH || !fs) return { ok: false, detail: "nincs munkamenet" };
+  const sess = await getApiSession(); const CH = CHTTP();
+  if (!sess || !sess.token || !CH) return { ok: false, detail: "nincs munkamenet" };
   try {
     const res = await CH.post({ url: sess.base + "Message/DownloadAttachments",
       headers: { Authorization: "Bearer " + sess.token, "Content-Type": "application/json" },
@@ -2775,13 +2788,21 @@ async function downloadAttachment(postId, documentationIds, fileName) {
     if (!res || res.status < 200 || res.status >= 300) return { ok: false, detail: "hiba (" + (res && res.status) + ")" };
     let b64 = res.data; if (b64 == null || b64 === "") return { ok: false, detail: "üres fájl" };
     if (typeof b64 !== "string") b64 = String(b64);
-    // header may carry the real filename
     const cd = res.headers && (res.headers["content-disposition"] || res.headers["Content-Disposition"]) || "";
     const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
-    const name = (m && decodeURIComponent(m[1])) || fileName || ("melleklet-" + Date.now());
-    const path = BACKUP_DIR + "/letoltesek/" + name.replace(/[\\/:*?"<>|]/g, "_");
-    await fs.writeFile({ path, data: b64, directory: "DOCUMENTS", recursive: true }); // base64 → binary (no encoding)
-    return { ok: true, path: "Dokumentumok/" + path };
+    const name = ((m && decodeURIComponent(m[1])) || fileName || ("melleklet-" + Date.now())).replace(/[\\/:*?"<>|]/g, "_");
+    const mime = guessMime(name);
+    // Preferred: native → public Letöltések (Downloads), openable.
+    const dl = DLP();
+    if (dl && dl.saveToDownloads) {
+      const r2 = await dl.saveToDownloads({ base64: b64, fileName: name, mime });
+      return { ok: true, native: true, uri: r2 && r2.uri, name, mime };
+    }
+    // Fallback (old APK without the plugin): app Documents folder.
+    const fs = FSP(); if (!fs) return { ok: false, detail: "nincs fájlrendszer" };
+    const path = BACKUP_DIR + "/letoltesek/" + name;
+    await fs.writeFile({ path, data: b64, directory: "DOCUMENTS", recursive: true });
+    return { ok: true, native: false, path: "Dokumentumok/" + path, mime };
   } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
 }
 function fmtBytes(n) {
