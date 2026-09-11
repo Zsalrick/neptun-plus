@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.152";
+const APP_VERSION = "v0.153";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1098,12 +1098,23 @@ async function renderMsgView() {
   if (!posts) { body.innerHTML = `<div class="dash-empty" style="padding:8px 2px">Az üzenet szövege nem tölthető be.</div>`; return; }
   // mark read locally (server marks read on open too)
   if (x.unread) { x.unread = false; if (state.messages) { state.messages.unread = Math.max(0, (state.messages.unread || 1) - 1); saveState(); } }
+  // Pick the text field robustly: known names first, else the longest string field that looks like a body.
+  const pickText = (p) => {
+    const known = p.text || p.content || p.body || p.messageText || p.postText || p.messageBody || p.htmlBody || p.htmlContent || p.messageContent || p.description;
+    if (known) return known;
+    let best = "";
+    for (const k in p) { const v = p[k]; if (typeof v === "string" && /<|\n| /.test(v) && v.length > best.length && !/^https?:/.test(v)) best = v; }
+    return best;
+  };
   body.innerHTML = posts.map((p) => {
-    const txt = p.text || p.content || p.body || p.messageText || p.postText || p.messageBody || "";
+    const txt = pickText(p);
     const when = p.created || p.sendDate || p.sentDate || p.creationDate || p.postDate || p.date || p.lastPostDate || null;
     const author = p.senderName || p.author || p.sender || "";
-    return `<div class="msg-post">${[esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ") ? `<div class="row-sub" style="margin-bottom:6px">${[esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ")}</div>` : ""}`
-      + `<div class="msg-text">${sanitizeHtml(txt)}</div></div>`;
+    const meta = [esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ");
+    // Self-diagnosing fallback: if no text found, show the raw post keys so the field name is visible.
+    const inner = txt ? sanitizeHtml(txt)
+      : `<div class="row-sub" style="opacity:.7">Nincs szövegmező. Elérhető kulcsok:</div><pre style="white-space:pre-wrap;font-size:11px;color:var(--ink-3)">${esc(JSON.stringify(p, null, 1).slice(0, 1200))}</pre>`;
+    return `<div class="msg-post">${meta ? `<div class="row-sub" style="margin-bottom:6px">${meta}</div>` : ""}<div class="msg-text">${inner}</div></div>`;
   }).join("");
 }
 // Message post bodies are HTML from Neptun. Allow only basic inline formatting; strip scripts/attrs.
