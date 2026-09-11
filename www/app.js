@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.136";
+const APP_VERSION = "v0.137";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2006,9 +2006,9 @@ function buildApiSniffScript(username, password, code) {
   function interesting(c){ var u=(c.url||''); if(/\\.(js|css|png|jpe?g|svg|woff2?|ttf|ico|gif|map)(\\?|$)/i.test(u)) return false; var ct=(c.ct||''); return /json/i.test(ct) || /\\/api\\/|hallgato|kreptn|neptun|advancement|curriculum|subject|targ/i.test(u); }
   var KEYCTRL=/curriculum|credit|advancement|training|subject|myTrainings|progress|kredit|targ|finance|payment|invoice|p[eé]nz|befizet|sz[aá]ml|t[eé]tel|d[ií]j|balance|egyenleg|transaction|tranzak/i;
   function collect(){ var seen={}, out=[]; (window.__apiCalls||[]).forEach(function(c){ if(!interesting(c)) return; var key=c.method+' '+c.url; if(seen[key]) return; seen[key]=1;
-    // Keep the full endpoint list, but only carry a response sample for the data controllers (bounds payload size).
-    var keep=KEYCTRL.test(c.url||'');
-    out.push({method:c.method,url:c.url,status:c.status,ct:c.ct,headers:c.headers,body:c.body,resp:keep?(c.resp||'').slice(0,1500):''}); }); return out.slice(0,60); }
+    // Finance discovery: keep the response for EVERY captured /api/ call (low volume here), so each
+    // finance controller's shape is visible. deliver()/snap() trim if the payload gets too big.
+    out.push({method:c.method,url:c.url,status:c.status,ct:c.ct,headers:c.headers,body:c.body,resp:(c.resp||'').slice(0,1800)}); }); return out.slice(0,80); }
   // Each fetch is capped at 12s so a hanging endpoint can't stall the whole run.
   function hit(ep){ var url=new URL('api/'+ep, document.baseURI).href; var ctrl=window.AbortController?new AbortController():null; var timer;
     var run=(async function(){ try{ var r=await fetch(url,{headers: window.__bearer?{Authorization:window.__bearer}:{}, credentials:'include', signal:ctrl?ctrl.signal:undefined}); var t=await r.text(); return {ep:ep,url:url,status:r.status,ct:(r.headers&&r.headers.get('content-type'))||'',body:(t||'').slice(0,9000)}; }catch(e){ return {ep:ep,url:url,error:String(e)}; } })();
@@ -2019,16 +2019,17 @@ function buildApiSniffScript(username, password, code) {
   // Navigate the logged-in UI into Pénzügyek and its sub-tabs so the network hook captures the real
   // finance XHRs (endpoint URLs + response shapes) — the reliable way to discover them.
   async function navFinance(){
-    try{
-      var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(300); }
-      log("Pénzügyek megnyitása"); var pz=await waitFor(function(){return pick("Pénzügyek");},8000); if(pz){ pz.click(); await sleep(1100); } else log("Nincs 'Pénzügyek' menü");
-      // Real Pénzügyek sub-tabs (from the live UI): each click fires that tab's finance XHRs. We only
-      // click + wait briefly (we don't await the page's own request), so a slow/hanging tab (e.g.
-      // FinancialBonuses) can't stall the whole run — deliver() still fires with what was captured.
-      var subs=["Áttekintés","Befizetendő","Számlák","Tranzakciók","Ösztöndíjak és kifizetések","Jóváírások"];
-      for(var i=0;i<subs.length;i++){ var s=pick(subs[i]); if(s){ log("→ "+subs[i]); try{ s.click(); }catch(_){} await sleep(1000); snap(); } else log("nincs: "+subs[i]); }
-      await sleep(500); snap();
-    }catch(e){ log("Pénzügy nav hiba: "+String(e)); }
+    // Clicking a Pénzügyek sub-tab navigates and CLOSES the menu, so re-open Menü → Pénzügyek before
+    // EACH tab. snap() after each so the incremental file gets every tab even if a later one stalls.
+    var subs=["Áttekintés","Befizetendő","Számlák","Tranzakciók","Ösztöndíjak és kifizetések","Jóváírások"];
+    for(var i=0;i<subs.length;i++){
+      try{
+        var m=await waitFor(function(){return pick("Menü");},6000); if(m){ m.click(); await sleep(250); }
+        var pz=await waitFor(function(){return pick("Pénzügyek");},5000); if(pz){ pz.click(); await sleep(450); } else log("nincs 'Pénzügyek'");
+        var s=await waitFor(function(){return pick(subs[i]);},5000); if(s){ log("→ "+subs[i]); try{ s.click(); }catch(_){} await sleep(1500); snap(); } else log("nincs: "+subs[i]);
+      }catch(e){ log("nav "+subs[i]+" hiba: "+String(e)); }
+    }
+    await sleep(400); snap();
   }
   async function runDirect(){
     try{
