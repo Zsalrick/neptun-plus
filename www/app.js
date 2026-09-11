@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.138";
+const APP_VERSION = "v0.139";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -52,7 +52,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -64,6 +64,7 @@ function defaultState() {
     activeServerId: "u0",
     username: "", password: "",
     neptunCode: "", // immutable Neptun code (read-only); the login name (username) can differ / be custom
+    finance: null, // { fetchedAt, accounts:[{id,account,desc,balance,currency,autoPay}], impositions:[...] }
     no2fa: false,
     totp: null,
     pinHash: null,
@@ -2115,6 +2116,8 @@ const DATA_TASKS = [
     has: () => !!(state.courses && state.courses.list && state.courses.list.length), run: syncCourses },
   { id: "curriculum", label: "Mintatanterv (összes)", sub: "Képzésed összes tárgya és a szabadon választhatók",
     has: hasCurriculum, run: syncCurriculum },
+  { id: "finance", label: "Pénzügyek", sub: "Gyűjtőszámla egyenleg és kiírt tételek",
+    has: () => !!(state.finance && state.finance.fetchedAt), run: syncFinance },
 ];
 function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
 function missingTaskIds() { return DATA_TASKS.filter((t) => !t.has()).map((t) => t.id); }
@@ -2159,6 +2162,29 @@ async function syncCredit() {
   state.progress = { fetchedAt: new Date().toISOString(), done: p.done, total: p.total, free: p.free || 0 };
   saveState(); syncProgStatus();
   return { ok: true, detail: p.done + "/" + p.total + " kredit" };
+}
+// Finances: collective-account balance (egyenleg) + the overview to-pay/imposition block. Direct API
+// only (FinancialDataDashboard controller). Imposition item shape isn't confirmed yet (empty for a
+// student with no fees) → stored raw; the frontend renders it defensively.
+async function syncFinance() {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
+  let accounts = [], impositions = [];
+  try {
+    const r = await apiGet(sess, "FinancialDataDashboard/GetCollectiveInvoices");
+    const d = r && r.data && r.data.data;
+    if (Array.isArray(d)) accounts = d.map((a) => ({ id: a.collectiveInvoiceId, account: a.collectiveInvoiceBankAccount || "", desc: a.collectiveInvoiceDescription || "", balance: +a.collectiveInvoiceBalance || 0, currency: a.collectiveInvoiceCurrency || "HUF", autoPay: !!a.isCollectiveInvoiceAutomaticPayIn }));
+  } catch (e) { /* ignore */ }
+  try {
+    const r = await apiGet(sess, "FinancialDataDashboard/GetDashboardImpostionBlockLeft");
+    const d = r && r.data && r.data.data;
+    if (Array.isArray(d)) impositions = d;
+  } catch (e) { /* ignore */ }
+  if (!accounts.length && !impositions.length) return { ok: false, detail: "nem találtam pénzügyi adatot" };
+  state.finance = { fetchedAt: new Date().toISOString(), accounts, impositions };
+  saveState();
+  const bal = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+  return { ok: true, detail: accounts.length ? (bal.toLocaleString("hu") + " " + (accounts[0].currency || "HUF") + " egyenleg") : (impositions.length + " tétel") };
 }
 async function syncCourses() {
   // Preferred: direct API — terms, then enrolled subjects per term.
