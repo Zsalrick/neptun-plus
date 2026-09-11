@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.168";
+const APP_VERSION = "v0.169";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2524,8 +2524,8 @@ async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
-  const ok = await ask({ title: "Üzenet diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, <b>felderíti</b> az üzenet-végpontokat az app JS-fájljaiból, majd <b>közvetlenül</b> lekéri őket (natív HTTP, nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus). Kicsit tovább tart (JS-ek letöltése)." });
+  const ok = await ask({ title: "Órarend diagnosztika", okText: "Indítás", cancelText: "Mégse",
+    body: "Bejelentkezik, <b>felderíti</b> az órarend/tárgy-végpontokat az app JS-fájljaiból, majd <b>közvetlenül</b> lekéri őket (natív HTTP, nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus). Kicsit tovább tart (JS-ek letöltése)." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -2533,7 +2533,7 @@ async function runApiDiagnostics() {
   let cancelled = false;
   try {
     const sess = await getApiSession(true);
-    if (!sess || !sess.token) { hideBusy(); await ask({ title: "Üzenet diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
+    if (!sess || !sess.token) { hideBusy(); await ask({ title: "Órarend diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
     let termId = "", termText = "";
     try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; termId = (t && t.actualTermId) || ""; } catch (e) {}
     try { const tr = await apiGet(sess, "RegistrySheet/GetStudentTrainingTerms"); const t0 = tr && tr.data && tr.data.data && tr.data.data[0]; termText = (t0 && t0.text) || ""; } catch (e) {}
@@ -2543,41 +2543,43 @@ async function runApiDiagnostics() {
     // Üzenetek (Messages) endpoints — names known from the v0.143 JS grep; here we probe them to learn
     // the response shapes. Direct GET via CapacitorHttp; list endpoints try both no-param and paged.
     void termId; void termText; void pageTermText; void pageNoTerm;
-    // Message list endpoints 400 on `sortAndPage.*` — error names a bare `firstRow` key.
-    // Probe flat firstRow/lastRow naming variants to nail the paging params + get the list shape.
-    const flat = { firstRow: 0, lastRow: 50 };
-    const flatPs = { firstRow: 0, lastRow: 50, pageSize: 50 };
-    const eps = [
-      ["Message/GetUnreadedMessagesCount", null],
-      ["Message/GetReceivedMessages", flat],
-      ["Message/GetReceivedMessages", flatPs],
-      ["Message/GetSentMessages", flat],
-      ["Message/GetReceivedArchivedMessages", flat],
-      ["Message/GetMessageSendingSettings", null],
+    // ÓRAREND → TÁRGY drilldown discovery. Calendar events carry the ids (classInstanceId/courseId/
+    // subjectId) the ICS feed lacks; from one real class event we probe course details + tutors +
+    // students + subject details and dump every shape so we can build the redesigned course screen.
+    const now = Date.now(), wk = 7 * 864e5;
+    const calVariants = [
+      ["Calendar/GetCalendarEvents", { start: now - wk, end: now + wk }],
+      ["Calendar/GetCalendarEvents", { startDate: new Date(now - wk).toISOString(), endDate: new Date(now + wk).toISOString() }],
     ];
-    for (const [ep, params] of eps) {
-      $("busy-text").textContent = ep.split("/").pop() + "…";
-      try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, params: params || undefined, status: r.status, data: r.data }); }
-      catch (e) { results.push({ ep, error: String(e && e.message || e) }); }
+    let ev = null;
+    for (const [ep, params] of calVariants) {
+      $("busy-text").textContent = "Naptár…";
+      try {
+        const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data });
+        const dd = r && r.data && r.data.data;
+        const list = Array.isArray(dd) ? dd : (dd && (dd.events || dd.calendarEvents || dd.items));
+        if (!ev && Array.isArray(list) && list.length) ev = list.find((x) => x && (x.classInstanceId || x.courseId)) || list[0];
+      } catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
     }
-    // Find the body/posts endpoint: take a real received messageId, probe candidate endpoints,
-    // dump the FULL response of each so we learn the working endpoint + post shape.
-    try {
-      const rr = await apiGet(sess, "Message/GetReceivedMessages", flat);
-      const first = rr && rr.data && rr.data.data && rr.data.data.receivedMessages && rr.data.data.receivedMessages[0];
-      const mid = first && first.messageId;
-      results.push({ probeMessageId: mid, probeSubject: first && first.subject });
-      if (mid) {
-        const postEps = [
-          ["Messages/" + encodeURIComponent(mid) + "/Posts", null],
-        ];
-        for (const [ep, params] of postEps) {
-          $("busy-text").textContent = ep.split("/").pop() + "…";
-          try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); }
-          catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
-        }
+    results.push({ probeEvent: ev });
+    if (ev) {
+      const cid = ev.classInstanceId || "", coid = ev.courseId || "", sid = ev.subjectId || "";
+      const drill = [
+        ["Calendar/GetCourseDetails", { classInstanceId: cid, webexMeetingId: "", isInstitutionalCalendar: false }],
+        ["Course/GetCourseDetails", { courseId: coid }],
+        ["Course/GetCourseTabDetails", { courseId: coid }],
+        ["Course/GetSubjectCourseTutors", { courseId: coid, subjectId: sid, termId: termId }],
+        ["Course/GetSubjectCourseStudents", { courseId: coid, subjectId: sid, termId: termId }],
+        ["Course/GetSubjectStudents", { courseId: coid, subjectId: sid, termId: termId }],
+        ["Course/GetSubjectDetails", { subjectId: sid, courseId: coid, termId: termId }],
+        ["Course/GetSubjectCourseNotes", { courseId: coid, subjectId: sid, termId: termId }],
+      ];
+      for (const [ep, params] of drill) {
+        $("busy-text").textContent = ep.split("/").pop() + "…";
+        try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); }
+        catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
       }
-    } catch (e) { dbg("posts probe: " + (e && e.message ? e.message : e)); }
+    }
     // Endpoint names already known from the v0.143 grep — skip the slow JS re-discovery this run;
     // we only need the Message list shapes above.
     let discovered = [], discDebug = "skipped (targeted message probe)";
@@ -2596,13 +2598,13 @@ async function runApiDiagnostics() {
   hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
   const fileName = BACKUP_DIR + "/apidiag-" + backupTs() + ".json";
-  const json = JSON.stringify({ base: apiSession && apiSession.base, messages: results }, null, 2);
+  const json = JSON.stringify({ base: apiSession && apiSession.base, course: results }, null, 2);
   let fileMsg = "";
   try { const fs = FSP(); if (fs) { await fs.writeFile({ path: fileName, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true }); fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(fileName) + "</b>"; } }
   catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) {}
   const summary = results.filter((r) => r.ep).map((r) => `${r.discovered ? "🔎 " : ""}${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
-  await ask({ title: "Üzenet diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
+  await ask({ title: "Órarend diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
