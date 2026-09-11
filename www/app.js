@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.132";
+const APP_VERSION = "v0.133";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2014,11 +2014,12 @@ function buildApiSniffScript(username, password, code) {
   // finance XHRs (endpoint URLs + response shapes) — the reliable way to discover them.
   async function navFinance(){
     try{
-      var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(250); }
-      log("Pénzügyek megnyitása"); var pz=await waitFor(function(){return pick("Pénzügyek");},8000); if(pz){ pz.click(); await sleep(1200); } else log("Nincs 'Pénzügyek' menü");
-      var subs=["Befizetés","Kiírt tételek","Számlák","Tételek","Egyenleg","Tranzakciós lista","Befizetett tételek"];
-      for(var i=0;i<subs.length;i++){ var s=pick(subs[i]); if(s){ log("→ "+subs[i]); try{ s.click(); }catch(_){} await sleep(1400); } }
-      await sleep(600);
+      var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(300); }
+      log("Pénzügyek megnyitása"); var pz=await waitFor(function(){return pick("Pénzügyek");},8000); if(pz){ pz.click(); await sleep(1400); } else log("Nincs 'Pénzügyek' menü");
+      // Real Pénzügyek sub-tabs (from the live UI): each click fires that tab's finance XHRs.
+      var subs=["Áttekintés","Befizetendő","Számlák","Tranzakciók","Ösztöndíjak és kifizetések","Jóváírások"];
+      for(var i=0;i<subs.length;i++){ var s=pick(subs[i]); if(s){ log("→ "+subs[i]); try{ s.click(); }catch(_){} await sleep(1600); } else log("nincs: "+subs[i]); }
+      await sleep(700);
     }catch(e){ log("Pénzügy nav hiba: "+String(e)); }
   }
   async function runDirect(){
