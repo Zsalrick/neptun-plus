@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.163";
+const APP_VERSION = "v0.164";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -43,6 +43,7 @@ const P = {
   wallet: '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16 14.5h1.5"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
   send: '<path d="M4 12 20 4l-6 16-3-7-7-1Z"/>',
+  download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ""}</svg>`; }
 function renderIcons(root = document) {
@@ -1131,6 +1132,7 @@ function renderMsgList() {
 }
 async function renderMsgView() {
   const host = $("msg-view-scroll"); if (!host) return;
+  const composeHost = $("msg-view-compose"); if (composeHost) composeHost.innerHTML = ""; // reset the floor bar each render
   const x = msgOpen;
   const sub = $("msg-view-sub");
   if (!x) { host.innerHTML = `<div class="dash-empty" style="padding:22px 4px">Nincs megnyitott üzenet.</div>`; return; }
@@ -1170,11 +1172,31 @@ async function renderMsgView() {
     const name = mine ? "Te" : (names[p.senderUserId] || (x.sent ? "" : x.from) || "");
     const inner = txt ? sanitizeHtml(txt)
       : `<span style="opacity:.7">Nincs szöveg.</span> <pre style="white-space:pre-wrap;font-size:11px;color:var(--ink-3)">${esc(JSON.stringify(p, null, 1).slice(0, 800))}</pre>`;
+    // Attachments after the text — each a tappable chip (download on confirm).
+    const atts = (p.attachments || []).map((a) => {
+      const did = a.documentationId || a.documentId || a.id || "";
+      const fn = a.fileName || a.name || "Melléklet";
+      const sz = a.fileSize ? " · " + fmtBytes(a.fileSize) : "";
+      return `<button class="att" type="button" data-att="${esc(p.postId || "")}" data-did="${esc(did)}" data-fn="${esc(fn)}">`
+        + `${icon("doc")}<span class="att-n">${esc(fn)}${sz}</span>${icon("download")}</button>`;
+    }).join("");
     return `<div class="msg-bubble${mine ? " mine" : ""}">`
       + `${!mine && name ? `<div class="b-name">${esc(name)}</div>` : ""}`
       + `<div class="b-text">${inner}</div>`
+      + `${atts ? `<div class="b-atts">${atts}</div>` : ""}`
       + `${when ? `<div class="b-time">${esc(ftDate(when))}</div>` : ""}</div>`;
   }).join("");
+  // Attachment tap → confirm → download to Documents/neptunplus/letoltesek.
+  body.querySelectorAll("[data-att]").forEach((b) => b.onclick = async () => {
+    const fn = b.dataset.fn || "melléklet", postId = b.dataset.att, did = b.dataset.did;
+    if (!did) { toast("Ismeretlen melléklet."); return; }
+    const ok = await ask({ title: "Letöltöd a mellékletet?", okText: "Letöltés", cancelText: "Mégse", body: esc(fn) });
+    if (!ok) return;
+    toast("Letöltés…");
+    const r = await downloadAttachment(postId, [did], fn);
+    if (r.ok) await ask({ title: "Letöltve", okText: "OK", body: `Elmentve ide:<br><b>${esc(r.path)}</b><br><br>A fájlt a telefon <b>Fájlok</b> appjában, a Dokumentumok mappában nyithatod meg.` });
+    else toast("Nem sikerült letölteni" + (r.detail ? ": " + r.detail : "."));
+  });
   // Reply — a persistent chat composer pinned to the bottom, shown whenever this thread's own reply flag
   // is on (messageData.isReplyEnabled). Automated / no-reply Neptun messages have it false → no composer.
   if (res.replyEnabled) {
@@ -1184,7 +1206,7 @@ async function renderMsgView() {
     bar.className = "msg-compose";
     bar.innerHTML = `<textarea class="input" id="msg-reply-text" rows="1" placeholder="Írj üzenetet…"></textarea>`
       + `<button class="iconbtn send" id="msg-reply-send" type="button" title="Küldés">${icon("send")}</button>`;
-    host.appendChild(bar);
+    (composeHost || host).appendChild(bar); // pinned to the tab floor, outside the scroll (Messenger-style)
     const ta = $("msg-reply-text"), send = $("msg-reply-send");
     const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 140) + "px"; };
     ta.oninput = grow;
@@ -2738,6 +2760,34 @@ async function apiSendReply(messageId, text, postId) {
     const msg = d && (d.message || (d.modelStateErrors && d.modelStateErrors[0] && d.modelStateErrors[0].errors && d.modelStateErrors[0].errors[0]));
     return { ok: false, detail: msg || ("hiba (" + (r && r.status) + ")") };
   } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
+}
+// Download a message attachment: POST Message/DownloadAttachments {documentationIds, postId} → blob.
+// CapacitorHttp returns the bytes base64 (responseType blob); we save them to Documents/neptunplus.
+// Returns { ok, path } or { ok:false, detail }. (Opening the saved file needs a native opener → APK.)
+async function downloadAttachment(postId, documentationIds, fileName) {
+  if (!isNative) return { ok: false, detail: "csak a telefonos appban" };
+  const sess = await getApiSession(); const CH = CHTTP(), fs = FSP();
+  if (!sess || !sess.token || !CH || !fs) return { ok: false, detail: "nincs munkamenet" };
+  try {
+    const res = await CH.post({ url: sess.base + "Message/DownloadAttachments",
+      headers: { Authorization: "Bearer " + sess.token, "Content-Type": "application/json" },
+      data: { documentationIds: documentationIds, postId: postId }, responseType: "blob" });
+    if (!res || res.status < 200 || res.status >= 300) return { ok: false, detail: "hiba (" + (res && res.status) + ")" };
+    let b64 = res.data; if (b64 == null || b64 === "") return { ok: false, detail: "üres fájl" };
+    if (typeof b64 !== "string") b64 = String(b64);
+    // header may carry the real filename
+    const cd = res.headers && (res.headers["content-disposition"] || res.headers["Content-Disposition"]) || "";
+    const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+    const name = (m && decodeURIComponent(m[1])) || fileName || ("melleklet-" + Date.now());
+    const path = BACKUP_DIR + "/letoltesek/" + name.replace(/[\\/:*?"<>|]/g, "_");
+    await fs.writeFile({ path, data: b64, directory: "DOCUMENTS", recursive: true }); // base64 → binary (no encoding)
+    return { ok: true, path: "Dokumentumok/" + path };
+  } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
+}
+function fmtBytes(n) {
+  n = +n || 0; if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(0) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
 }
 async function syncCourses() {
   // Preferred: direct API — terms, then enrolled subjects per term.
