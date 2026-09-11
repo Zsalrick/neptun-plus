@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.147";
+const APP_VERSION = "v0.148";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2179,7 +2179,7 @@ async function discoverFinanceEndpoints(base) {
   const root = String(base || "").replace(/api\/?$/, "");
   if (!root) return [];
   const EP = /[A-Z][A-Za-z0-9]{2,}\/(?:Get|Post|Create|Update|Delete|Save|List|Download|Sign|Pay|Add|Remove)[A-Za-z0-9]+/g;
-  const FIN = /financ|invoice|payed|paid|payment|imposit|transacti|bonus|scholar|collective|bankaccount|d[ií]j|p[eé]nz|sz[aá]ml/i;
+  const FIN = /financ|invoice|payed|paid|payment|imposit|transacti|bonus|scholar|collective|bankaccount|d[ií]j|p[eé]nz|sz[aá]ml|message|inbox|recipient|posts?\b|[üu]zenet|level/i;
   const found = new Set(), all = new Set(), files = new Set(), fetched = new Set(), dbg = [];
   const toUrl = (f) => f.indexOf("http") === 0 ? f : root + f.replace(/^\//, "");
   // Only real Angular/esbuild bundle filenames — NOT jQuery-plugin names (widget.js, effect-*.js,
@@ -2202,8 +2202,8 @@ async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
-  const ok = await ask({ title: "Pénzügy diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, <b>felderíti</b> a pénzügyi végpontokat az app JS-fájljaiból, majd <b>közvetlenül</b> lekéri őket (natív HTTP, nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus). Kicsit tovább tart (JS-ek letöltése)." });
+  const ok = await ask({ title: "Üzenet diagnosztika", okText: "Indítás", cancelText: "Mégse",
+    body: "Bejelentkezik, <b>felderíti</b> az üzenet-végpontokat az app JS-fájljaiból, majd <b>közvetlenül</b> lekéri őket (natív HTTP, nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus). Kicsit tovább tart (JS-ek letöltése)." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -2211,23 +2211,24 @@ async function runApiDiagnostics() {
   let cancelled = false;
   try {
     const sess = await getApiSession(true);
-    if (!sess || !sess.token) { hideBusy(); await ask({ title: "Pénzügy diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
+    if (!sess || !sess.token) { hideBusy(); await ask({ title: "Üzenet diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
     let termId = "", termText = "";
     try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; termId = (t && t.actualTermId) || ""; } catch (e) {}
     try { const tr = await apiGet(sess, "RegistrySheet/GetStudentTrainingTerms"); const t0 = tr && tr.data && tr.data.data && tr.data.data[0]; termText = (t0 && t0.text) || ""; } catch (e) {}
     const page = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.pageSize": 50, "sortAndPage.term": termId };
     const pageNoTerm = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50 };
     const pageTermText = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.term": termText };
-    // Finance endpoints confirmed from the earlier capture (FinancialDataDashboard = Áttekintés) plus
-    // FinancialBonuses (Ösztöndíjak). Direct GET via CapacitorHttp — no InAppBrowser, so no setTimeout
-    // freeze / hang. Unknown-tab guesses included as best-effort (a 400/404 is just informative).
+    // Üzenetek (Messages) endpoints — names known from the v0.143 JS grep; here we probe them to learn
+    // the response shapes. Direct GET via CapacitorHttp; list endpoints try both no-param and paged.
+    void termId; void termText; void pageTermText;
     const eps = [
-      ["FinancialDataDashboard/GetDashboardElementsVisibility", null],
-      ["FinancialDataDashboard/GetCollectiveInvoices", null],
-      ["FinancialDataDashboard/GetDashboardImpostionBlockLeft", null],
-      ["FinancialDataDashboard/GetDashboardImpostionBlockRight", null],
-      ["FinancialBonuses/GetStudentFinancialBonuses", pageNoTerm],
-      ["FinancialBonuses/GetStudentFinancialBonuses", pageTermText],
+      ["Message/GetUnreadedMessagesCount", null],
+      ["Message/GetReceivedMessages", null],
+      ["Message/GetReceivedMessages", pageNoTerm],
+      ["Message/GetSentMessages", pageNoTerm],
+      ["Message/GetReceivedArchivedMessages", pageNoTerm],
+      ["Message/GetMessageSendingSettings", null],
+      ["Message/GetMessageLimitSetting", null],
     ];
     for (const [ep, params] of eps) {
       $("busy-text").textContent = ep.split("/").pop() + "…";
@@ -2253,13 +2254,13 @@ async function runApiDiagnostics() {
   hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
   const fileName = BACKUP_DIR + "/apidiag-" + backupTs() + ".json";
-  const json = JSON.stringify({ base: apiSession && apiSession.base, finance: results }, null, 2);
+  const json = JSON.stringify({ base: apiSession && apiSession.base, messages: results }, null, 2);
   let fileMsg = "";
   try { const fs = FSP(); if (fs) { await fs.writeFile({ path: fileName, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true }); fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(fileName) + "</b>"; } }
   catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) {}
   const summary = results.filter((r) => r.ep).map((r) => `${r.discovered ? "🔎 " : ""}${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
-  await ask({ title: "Pénzügy diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
+  await ask({ title: "Üzenet diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
