@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.160";
+const APP_VERSION = "v0.161";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1113,7 +1113,7 @@ function renderMsgList() {
   }
   let html = `<div class="card">`;
   list.forEach((x) => {
-    const who = x.sent ? "" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
+    const who = x.sent ? (x.to ? "Címzett: " + esc(x.to) : "Elküldött") : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
     html += `<button class="row msg-row${x.unread ? " unread" : ""}" data-msg="${esc(x.id)}" type="button">`
       + `<span class="msg-dot"></span>`
       + `<span class="row-main"><span class="row-title">${esc(x.subject)}</span>`
@@ -1133,11 +1133,10 @@ async function renderMsgView() {
   const x = msgOpen;
   const sub = $("msg-view-sub");
   if (!x) { host.innerHTML = `<div class="dash-empty" style="padding:22px 4px">Nincs megnyitott üzenet.</div>`; return; }
-  if (sub) sub.textContent = x.sent ? "Elküldött üzenet" : (x.isSystem ? "Rendszerüzenet" : (x.from || "Neptun üzenet"));
-  const who = x.sent ? "Elküldött" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
-  host.innerHTML = `<div class="card msg-head">`
-    + `<div class="msg-subj">${esc(x.subject)}</div>`
-    + `<div class="row-sub" style="margin-top:7px">${who}</div></div>`
+  const party = x.sent ? (x.to || "Címzett") : (x.isSystem ? "Rendszerüzenet" : (x.from || "Neptun"));
+  if (sub) sub.textContent = party;
+  host.innerHTML = `<div class="card msg-head"><div class="msg-subj">${esc(x.subject)}</div>`
+    + `<div class="row-sub" style="margin-top:7px">${esc(party)}</div></div>`
     + `<div id="msg-body"><div class="dash-empty" style="padding:8px 2px">Betöltés…</div></div>`;
   const body = $("msg-body");
   const res = await apiReadMessagePosts(x.id);
@@ -1158,16 +1157,22 @@ async function renderMsgView() {
     for (const k in p) { const v = p[k]; if (typeof v === "string" && v && !META[k] && !/^https?:/.test(v) && v.length > best.length) best = v; }
     return best;
   };
+  // Chat bubbles: my posts (senderUserId === my id) align right; the other party's align left with their
+  // name. Posts come oldest→newest, so newest sits at the bottom like a chat app (we scroll there).
+  const meId = (state.messages && state.messages.meId) || "";
+  const names = {}; (res.recipients || []).forEach((r) => { if (r.userId) names[r.userId] = r.printName || ""; });
+  body.className = "chat";
   body.innerHTML = posts.map((p) => {
     const txt = pickText(p);
-    const when = p.created || p.sendDate || p.sentDate || p.creationDate || p.postDate || p.date || p.lastPostDate || null;
-    const author = p.senderName || p.author || p.sender || "";
-    const meta = [esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ");
-    // Self-diagnosing fallback: if no text found, show the raw post keys so the field name is visible.
+    const when = p.sendDate || p.created || p.sentDate || p.creationDate || p.postDate || p.date || null;
+    const mine = !!(meId && p.senderUserId === meId);
+    const name = mine ? "Te" : (names[p.senderUserId] || (x.sent ? "" : x.from) || "");
     const inner = txt ? sanitizeHtml(txt)
-      : `<div class="row-sub" style="opacity:.7">Nincs szövegmező. Elérhető kulcsok:</div><pre style="white-space:pre-wrap;font-size:11px;color:var(--ink-3)">${esc(JSON.stringify(p, null, 1).slice(0, 1200))}</pre>`;
-    return `<div class="msg-post"><div class="msg-text">${inner}</div>`
-      + `${meta ? `<div class="msg-time">${meta}</div>` : ""}</div>`;
+      : `<span style="opacity:.7">Nincs szöveg.</span> <pre style="white-space:pre-wrap;font-size:11px;color:var(--ink-3)">${esc(JSON.stringify(p, null, 1).slice(0, 800))}</pre>`;
+    return `<div class="msg-bubble${mine ? " mine" : ""}">`
+      + `${!mine && name ? `<div class="b-name">${esc(name)}</div>` : ""}`
+      + `<div class="b-text">${inner}</div>`
+      + `${when ? `<div class="b-time">${esc(ftDate(when))}</div>` : ""}</div>`;
   }).join("");
   // Reply — offered whenever this thread's own reply flag is on (messageData.isReplyEnabled), whether
   // it sits in Beérkezett or Elküldött (a two-way conversation shows up under Elküldött once you've
@@ -1196,6 +1201,8 @@ async function renderMsgView() {
       };
     };
   }
+  // Chat-style: land at the newest message (bottom), like opening a chat thread.
+  requestAnimationFrame(() => { host.scrollTop = host.scrollHeight; });
 }
 // Message post bodies are HTML from Neptun. Allow only basic inline formatting; strip scripts/attrs.
 function sanitizeHtml(s) {
@@ -2660,9 +2667,10 @@ async function syncMessages() {
   const page = { firstRow: 0, lastRow: 200 };
   const get = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return (r && r.data && r.data.data) || null; } catch (e) { return null; } };
   const norm = (m, sent) => ({
-    id: m.messageId, from: m.senderName || "", subject: m.subject || "(nincs tárgy)",
-    date: m.lastPostDate || null, unread: (m.unreadedPostCount || 0) > 0,
-    hasAttachment: !!m.hasAttachment, isSystem: !!m.isSystemMessage, sent: !!sent,
+    id: m.messageId, from: m.senderName || "", to: "", senderUserId: m.senderUserId || "",
+    subject: m.subject || "(nincs tárgy)", date: m.lastPostDate || null, unread: (m.unreadedPostCount || 0) > 0,
+    hasAttachment: !!m.hasAttachment, isSystem: !!m.isSystemMessage,
+    isCreator: !!m.isCurrentUserMessageCreator, sent: !!sent,
   });
   const rec = await get("Message/GetReceivedMessages", page);
   const snt = await get("Message/GetSentMessages", page);
@@ -2671,10 +2679,17 @@ async function syncMessages() {
   const sentMsgs = (snt && snt.messages || []).map((m) => norm(m, true));
   const unread = (cnt && typeof cnt.count === "number") ? cnt.count : received.filter((m) => m.unread).length;
   if (!received.length && !sentMsgs.length && !unread) return { ok: false, detail: "nem találtam üzenetet" };
-  // Whether replying is allowed at all (Neptun's own flag on the received list; reply is offered on
-  // non-system received messages when this is on).
+  // My own user id = the sender of a message I created → used to right-align my chat bubbles.
+  const mine = sentMsgs.find((m) => m.isCreator) || received.find((m) => m.isCreator);
+  const meId = (mine && mine.senderUserId) || "";
+  // Sent-list items only carry MY name as senderName; the recipient lives in the thread's recipients[].
+  // Sent threads are few, so fetch recipient names for them (capped) to show "kinek írtam" in the list.
+  // ponytail: N calls for sent only, capped at 25; lazy-enrich the rest when a thread is opened.
+  for (const m of sentMsgs.slice(0, 25)) {
+    try { const res = await apiReadMessagePosts(m.id); if (res && res.recipients && res.recipients.length) m.to = res.recipients.map((r) => r.printName).filter(Boolean).join(", "); } catch (e) {}
+  }
   const canReply = !!(rec && rec.isCommunicationEnabled);
-  state.messages = { fetchedAt: new Date().toISOString(), unread, canReply, received, sent: sentMsgs };
+  state.messages = { fetchedAt: new Date().toISOString(), unread, canReply, meId, received, sent: sentMsgs };
   saveState();
   return { ok: true, detail: unread + " olvasatlan · " + received.length + " beérkezett" };
 }
@@ -2691,7 +2706,8 @@ async function apiReadMessagePosts(id) {
     // messageData.isReplyEnabled is the authoritative per-message reply flag (the Neptun web gates the
     // compose form on exactly this). Most automated messages have it false.
     const replyEnabled = !!(d && d.messageData && d.messageData.isReplyEnabled);
-    return { posts, replyEnabled };
+    const recipients = (d && d.recipients) || [];
+    return { posts, replyEnabled, recipients };
   } catch (e) { return null; }
 }
 // Mark a message's posts read on the Neptun server (fire-and-forget): POST Messages/<id>/Posts/Processed {postIds}.

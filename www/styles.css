@@ -247,6 +247,17 @@ button.row:active { background: var(--surface-2); }
 .msg-text { font-size: 14.5px; line-height: 1.55; color: var(--ink); word-break: break-word; }
 .msg-text a { color: var(--brand-plus); }
 .msg-text img { border-radius: 8px; margin: 6px 0; }
+/* Chat-style thread */
+.chat { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 6px; }
+.msg-bubble { max-width: 82%; align-self: flex-start; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 16px 16px 16px 5px; padding: 10px 13px; }
+.msg-bubble.mine { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-color: transparent; border-radius: 16px 16px 5px 16px; }
+.b-name { font-size: 12px; font-weight: 700; color: var(--brand-plus); margin-bottom: 4px; }
+.b-text { font-size: 14.5px; line-height: 1.5; word-break: break-word; }
+.b-text a { color: var(--brand-plus); }
+.msg-bubble.mine .b-text a { color: var(--accent-ink); text-decoration: underline; }
+.b-text img { max-width: 100%; border-radius: 8px; margin: 4px 0; }
+.b-time { font-size: 10.5px; margin-top: 6px; opacity: .6; text-align: right; }
 .msg-reply { margin-top: 16px; }
 .msg-reply textarea.input { resize: vertical; min-height: 96px; line-height: 1.5; }
 .msg-reply-actions { display: flex; gap: 10px; margin-top: 10px; }
