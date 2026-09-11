@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.126";
+const APP_VERSION = "v0.127";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -3380,6 +3380,6 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     setTimeout(maybeOfferDataSync, 1600); // offer the data read if something is still missing
     if (state.setupComplete) { setTimeout(dailyBackup, 2500); setTimeout(() => warmSession("start"), 1200); } // warm the Neptun session so login/reads are instant
   }
-  // Keep the splash up long enough for the logo animation to play (min ~1800ms), then reveal the app/login.
-  setTimeout(hideBoot, Math.max(0, 1800 - (Date.now() - bootTs)));
+  // Keep the splash up long enough for the logo animation to play (min ~3000ms), then reveal the app/login.
+  setTimeout(hideBoot, Math.max(0, 3000 - (Date.now() - bootTs)));
 })();

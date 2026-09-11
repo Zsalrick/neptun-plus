@@ -712,48 +712,70 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
   transition: opacity .38s ease;
 }
 .boot.boot--hide { opacity: 0; pointer-events: none; }
-/* Animated wordmark: the Kredit+ logo reveals letter by letter, the gold + pops last. */
+/* App icon: minimalist squircle monogram — white K, gold + accent (like a real launcher icon). */
+.app-icon {
+  position: relative; width: 96px; height: 96px; border-radius: 27px; margin-bottom: 6px;
+  background: linear-gradient(155deg, #26282f 0%, #131418 100%);
+  border: 1px solid #34373e;
+  box-shadow: 0 16px 36px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.07);
+  display: grid; place-items: center;
+  opacity: 0; transform: scale(.6);
+  animation: boot-icon-in .6s cubic-bezier(.34,1.56,.64,1) .12s forwards,
+             boot-icon-float 3.4s ease-in-out 1.1s infinite;
+}
+.app-icon .ai-k {
+  font-family: var(--font-brand); font-weight: 800; font-size: 58px; line-height: 1;
+  color: #fff; letter-spacing: -.04em; transform: translateX(-2px);
+}
+.app-icon .ai-plus {
+  position: absolute; top: 21px; right: 23px;
+  font-family: var(--font-brand); font-weight: 800; font-size: 27px; color: var(--brand-plus);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--brand-plus) 45%, transparent);
+}
+/* Animated wordmark: the Kredit+ logo reveals letter by letter, the gold + pops. */
 .boot-logo {
-  font-family: var(--font-brand); font-weight: 800; font-size: 46px; letter-spacing: -.02em;
-  color: var(--ink); display: flex; line-height: 1;
+  font-family: var(--font-brand); font-weight: 800; font-size: 34px; letter-spacing: -.02em;
+  color: var(--ink); display: flex; line-height: 1; margin-top: 2px;
 }
 .boot-logo .bl {
   display: inline-block; opacity: 0; transform: translateY(.55em);
-  animation: boot-letter .55s cubic-bezier(.2,.85,.25,1) forwards;
+  animation: boot-letter .5s cubic-bezier(.2,.85,.25,1) forwards;
 }
-.boot-logo .bl:nth-child(1) { animation-delay: .10s; }
-.boot-logo .bl:nth-child(2) { animation-delay: .17s; }
-.boot-logo .bl:nth-child(3) { animation-delay: .24s; }
-.boot-logo .bl:nth-child(4) { animation-delay: .31s; }
-.boot-logo .bl:nth-child(5) { animation-delay: .38s; }
-.boot-logo .bl:nth-child(6) { animation-delay: .45s; }
+.boot-logo .bl:nth-child(1) { animation-delay: .55s; }
+.boot-logo .bl:nth-child(2) { animation-delay: .61s; }
+.boot-logo .bl:nth-child(3) { animation-delay: .67s; }
+.boot-logo .bl:nth-child(4) { animation-delay: .73s; }
+.boot-logo .bl:nth-child(5) { animation-delay: .79s; }
+.boot-logo .bl:nth-child(6) { animation-delay: .85s; }
 .boot-logo .bl-plus {
   /* overrides .bl's boot-letter animation, so reveal opacity here (scale handles the pop) */
   color: var(--brand-plus); opacity: 1; transform: scale(0); transform-origin: 50% 62%;
-  animation: boot-plus .6s cubic-bezier(.34,1.56,.64,1) .60s forwards,
-             boot-plus-glow 2.6s ease-in-out 1.3s infinite;
+  animation: boot-plus .55s cubic-bezier(.34,1.56,.64,1) 1.0s forwards,
+             boot-plus-glow 2.6s ease-in-out 1.7s infinite;
 }
 /* gold loading bar: the track draws in under the logo, then a light shuttles left↔right while loading */
 .boot-rule {
-  width: 140px; height: 3px; margin-top: 6px; border-radius: 3px; overflow: hidden;
+  width: 140px; height: 3px; margin-top: 8px; border-radius: 3px; overflow: hidden;
   background: color-mix(in srgb, var(--brand-plus) 26%, transparent);
-  transform: scaleX(0); opacity: 0; animation: boot-track-in .5s ease .78s forwards;
+  transform: scaleX(0); opacity: 0; animation: boot-track-in .5s ease 1.15s forwards;
 }
 .boot-rule i {
   display: block; height: 100%; width: 46%; border-radius: 3px;
   background: linear-gradient(90deg, transparent 0%, var(--brand-plus) 35%, #ffe6a8 50%, var(--brand-plus) 65%, transparent 100%);
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--brand-plus) 60%, transparent));
-  transform: translateX(-120%); animation: boot-shimmer 1.5s ease-in-out 1.1s infinite alternate;
+  transform: translateX(-120%); animation: boot-shimmer 1.5s ease-in-out 1.5s infinite alternate;
 }
 .boot-byline {
   font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: .22em;
   text-transform: uppercase; color: var(--ink-3);
-  opacity: 0; animation: boot-rise .5s ease .98s forwards;
+  opacity: 0; animation: boot-rise .5s ease 1.4s forwards;
 }
 .boot-text {
   font-size: 12px; color: var(--ink-3); letter-spacing: .04em; min-height: 1em;
-  opacity: 0; animation: boot-rise .5s ease 1.12s forwards;
+  opacity: 0; animation: boot-rise .5s ease 1.55s forwards;
 }
+@keyframes boot-icon-in { to { opacity: 1; transform: scale(1); } }
+@keyframes boot-icon-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes boot-letter { to { opacity: 1; transform: none; } }
 @keyframes boot-plus { 0% { transform: scale(0); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
 @keyframes boot-plus-glow { 0%,100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--brand-plus) 70%, transparent)); } }
