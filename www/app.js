@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.170";
+const APP_VERSION = "v0.171";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2569,15 +2569,19 @@ async function runApiDiagnostics() {
     results.push({ probeEvent: ev });
     if (ev) {
       const cid = ev.classInstanceId || "", coid = ev.courseId || "", sid = ev.subjectId || "";
+      const cst = { courseId: coid, subjectId: sid, termId: termId };
+      const paged = Object.assign({ "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 }, cst);
       const drill = [
         ["Calendar/GetCourseDetails", { classInstanceId: cid, webexMeetingId: "", isInstitutionalCalendar: false }],
-        ["Course/GetCourseDetails", { courseId: coid }],
-        ["Course/GetCourseTabDetails", { courseId: coid }],
-        ["Course/GetSubjectCourseTutors", { courseId: coid, subjectId: sid, termId: termId }],
-        ["Course/GetSubjectCourseStudents", { courseId: coid, subjectId: sid, termId: termId }],
-        ["Course/GetSubjectStudents", { courseId: coid, subjectId: sid, termId: termId }],
-        ["Course/GetSubjectDetails", { subjectId: sid, courseId: coid, termId: termId }],
-        ["Course/GetSubjectCourseNotes", { courseId: coid, subjectId: sid, termId: termId }],
+        ["SubjectCourse/GetSubjectCourseTutors", cst],
+        ["SubjectCourse/GetSubjectCourseStudents", paged],
+        ["SubjectCourse/GetSubjectStudents", paged],
+        ["SubjectCourse/GetSubjectDetails", cst],
+        ["SubjectCourse/GetCourseTabDetails", cst],
+        ["SubjectCourse/GetSubjectCourseNotes", cst],
+        ["SubjectCourse/GetGeneralRequirements", cst],
+        ["SubjectCourse/GetSubjectTopicList", cst],
+        ["SubjectCourse/GetSubjectPrerequirements", cst],
       ];
       for (const [ep, params] of drill) {
         $("busy-text").textContent = ep.split("/").pop() + "…";
