@@ -6,20 +6,20 @@
   <title>Kredit+</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <!-- Boot / loading screen: shown on cold start while checking for an OTA update, before login. -->
   <div id="boot" class="boot">
     <div class="boot-mark" aria-hidden="true">
-      <svg viewBox="0 0 1024 1024" width="88" height="88">
+      <svg viewBox="0 0 1024 1024" width="96" height="96">
         <g fill="none" stroke="currentColor" stroke-width="66" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M372 344 L372 680"/>
-          <path d="M372 516 L588 344"/>
-          <path d="M372 516 L588 680"/>
+          <path class="k-stroke" pathLength="100" d="M372 344 L372 680"/>
+          <path class="k-stroke" pathLength="100" d="M372 516 L588 344"/>
+          <path class="k-stroke" pathLength="100" d="M372 516 L588 680"/>
         </g>
-        <g fill="#f5b221">
+        <g class="plus-mark" fill="#f5b221">
           <rect x="636" y="380" width="92" height="28" rx="14"/>
           <rect x="668" y="348" width="28" height="92" rx="14"/>
         </g>
@@ -45,7 +45,7 @@
 
             <!-- Step 0: welcome + legal -->
             <div class="ob-step active" data-step="0">
-              <div class="ob-hero"><span data-icon="key"></span></div>
+              <div class="ob-eyebrow">Neptun-asszisztens</div>
               <h1 class="ob-title">Kredit<span class="plus">+</span></h1>
               <p class="ob-sub">Belépés a Neptunba egyetlen érintéssel. Az azonosítót, a jelszót és a 2FA kódot az alkalmazás kitölti helyetted, itt az eszközödön.</p>
               <div class="ob-content">
@@ -69,7 +69,7 @@
 
             <!-- Step 1: university -->
             <div class="ob-step" data-step="1">
-              <div class="ob-hero"><span data-icon="building"></span></div>
+              <div class="ob-eyebrow">Első lépés</div>
               <h1 class="ob-title">Egyetem</h1>
               <p class="ob-sub">Keresd ki az egyetemed. A Neptun szervert automatikusan beállítjuk.</p>
               <div class="ob-content">
@@ -91,7 +91,7 @@
 
             <!-- Step 2: credentials -->
             <div class="ob-step" data-step="2">
-              <div class="ob-hero"><span data-icon="user"></span></div>
+              <div class="ob-eyebrow">Belépés</div>
               <h1 class="ob-title">Belépési adatok</h1>
               <p class="ob-sub">A Neptun azonosítód és a jelszavad. Csak ezen az eszközön tárolódik.</p>
               <div class="ob-content">
@@ -108,7 +108,7 @@
 
             <!-- Step 3: app lock -->
             <div class="ob-step" data-step="3">
-              <div class="ob-hero"><span data-icon="lock"></span></div>
+              <div class="ob-eyebrow">Védelem</div>
               <h1 class="ob-title">Alkalmazászár</h1>
               <p class="ob-sub" id="ob-pin-sub">Adj meg egy 4 számjegyű kódot. Ezt kérni fogja az app minden megnyitáskor.</p>
               <div class="ob-content">
@@ -119,7 +119,7 @@
 
             <!-- Step 4: biometrics -->
             <div class="ob-step" data-step="4">
-              <div class="ob-hero"><span data-icon="fingerprint"></span></div>
+              <div class="ob-eyebrow">Védelem</div>
               <h1 class="ob-title">Biometrikus feloldás</h1>
               <p class="ob-sub">A kód helyett ujjlenyomattal vagy arcfelismeréssel is feloldhatod az appot.</p>
               <div class="ob-content">
@@ -137,7 +137,7 @@
 
             <!-- Step 5: 2FA -->
             <div class="ob-step" data-step="5">
-              <div class="ob-hero"><span data-icon="shield"></span></div>
+              <div class="ob-eyebrow">Belépés</div>
               <h1 class="ob-title">Kétlépcsős kód</h1>
               <p class="ob-sub">Van kétlépcsős azonosítás az egyetemed Neptunjához?</p>
               <div class="ob-content">
@@ -162,6 +162,30 @@
                   <div id="ob-qr-result" class="qr-accts"></div>
                   <div id="ob-2fa-status" class="mt"></div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Step 6: subscription (placeholder — payment not wired yet) -->
+            <div class="ob-step" data-step="6">
+              <div class="ob-eyebrow">Előfizetés</div>
+              <h1 class="ob-title">Válassz csomagot</h1>
+              <p class="ob-sub">14 nap ingyen, bármikor lemondható. A próbaidő alatt nem vonunk le semmit.</p>
+              <div class="ob-content">
+                <div class="plans" id="ob-plans">
+                  <button class="plan" data-plan="monthly" type="button">
+                    <span class="plan-main"><span class="plan-name">Havi</span><span class="plan-bill">Havonta 299 Ft</span></span>
+                    <span class="plan-mo">299 Ft<small>/hó</small></span>
+                  </button>
+                  <button class="plan" data-plan="semester" type="button">
+                    <span class="plan-main"><span class="plan-name">Féléves<span class="plan-tag">−10%</span></span><span class="plan-bill">Félévente 1 615 Ft</span></span>
+                    <span class="plan-mo">269 Ft<small>/hó</small></span>
+                  </button>
+                  <button class="plan" data-plan="annual" type="button">
+                    <span class="plan-main"><span class="plan-name">Éves<span class="plan-tag gold">−25%</span></span><span class="plan-bill">Évente 2 691 Ft</span></span>
+                    <span class="plan-mo">224 Ft<small>/hó</small></span>
+                  </button>
+                </div>
+                <p class="plan-note">A próbaidő végén a kiválasztott csomag díja lép életbe. A fizetés még nincs bekötve, ez most csak előnézet.</p>
               </div>
             </div>
 
@@ -244,20 +268,57 @@
 
             <section class="tabscreen" id="tab-courses">
               <header class="topbar">
-                <button class="iconbtn plain" id="courses-back" title="Vissza"><span data-icon="back"></span></button>
+                <button class="iconbtn plain" id="courses-back" data-back title="Vissza"><span data-icon="back"></span></button>
                 <div style="flex:1"><div class="wordmark">Tárgyak</div><div class="topbar-sub" id="co-sub">Felvett tárgyak</div></div>
                 <button class="iconbtn" id="co-refresh" title="Beolvasás"><span data-icon="refresh"></span></button>
               </header>
               <div class="scroll" id="co-scroll"></div>
             </section>
 
+            <!-- Beállítások hub: rövid gomblista, minden csoport egy külön al-page -->
             <section class="tabscreen" id="tab-settings">
               <header class="topbar">
-                <button class="iconbtn plain" id="settings-back" title="Vissza"><span data-icon="back"></span></button>
+                <button class="iconbtn plain" id="settings-back" data-back title="Vissza"><span data-icon="back"></span></button>
                 <div style="flex:1"><div class="wordmark">Beállítások</div><div class="topbar-sub">Fiók és biztonság</div></div>
               </header>
               <div class="scroll">
                 <div class="section-label">Fiók</div>
+                <div class="card">
+                  <button class="row" data-setpage="tab-set-account"><span class="row-ic"><span data-icon="user"></span></span><span class="row-main"><span class="row-title">Fiók</span><span class="row-sub">Azonosító és jelszó</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" data-setpage="tab-set-university"><span class="row-ic"><span data-icon="building"></span></span><span class="row-main"><span class="row-title">Egyetem és szerver</span><span class="row-sub" id="hub-uni-sub">Nincs kiválasztva</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" data-setpage="tab-set-2fa"><span class="row-ic"><span data-icon="key"></span></span><span class="row-main"><span class="row-title">Kétlépcsős hitelesítés</span><span class="row-sub">2FA kód beállítása</span></span><span class="row-chev" data-icon="chev"></span></button>
+                </div>
+
+                <div class="section-label">Tanulmányok</div>
+                <div class="card">
+                  <button class="row" data-setpage="tab-set-timetable"><span class="row-ic"><span data-icon="calendar"></span></span><span class="row-main"><span class="row-title">Órarend</span><span class="row-sub">Feliratkozás és szünet</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" data-setpage="tab-set-credit"><span class="row-ic"><span data-icon="chart"></span></span><span class="row-main"><span class="row-title">Kredit</span><span class="row-sub" id="hub-prog-sub">Beolvasás a Neptunból</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" data-setpage="tab-set-notify"><span class="row-ic"><span data-icon="clock"></span></span><span class="row-main"><span class="row-title">Értesítések</span><span class="row-sub">Emlékeztetők órákra és vizsgákra</span></span><span class="row-chev" data-icon="chev"></span></button>
+                </div>
+
+                <div class="section-label">Biztonság</div>
+                <div class="card">
+                  <button class="row" data-setpage="tab-set-security"><span class="row-ic"><span data-icon="lock"></span></span><span class="row-main"><span class="row-title">Védelem</span><span class="row-sub">Biometria és mikor kérjen kódot</span></span><span class="row-chev" data-icon="chev"></span></button>
+                </div>
+
+                <div class="section-label">Adatok és alkalmazás</div>
+                <div class="card">
+                  <button class="row" data-setpage="tab-set-data"><span class="row-ic"><span data-icon="note"></span></span><span class="row-main"><span class="row-title">Adatok</span><span class="row-sub">Mentés, visszatöltés, törlés</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" data-setpage="tab-set-docs"><span class="row-ic"><span data-icon="doc"></span></span><span class="row-main"><span class="row-title">Dokumentumok</span><span class="row-sub">Adatkezelés és ÁSZF</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" data-setpage="tab-set-app"><span class="row-ic"><span data-icon="refresh"></span></span><span class="row-main"><span class="row-title">Alkalmazás</span><span class="row-sub" id="hub-update-sub">Frissítés keresése</span></span><span class="row-chev" data-icon="chev"></span></button>
+                  <button class="row" data-setpage="tab-set-dev"><span class="row-ic"><span data-icon="qr"></span></span><span class="row-main"><span class="row-title">Fejlesztői</span><span class="row-sub">API diagnosztika</span></span><span class="row-chev" data-icon="chev"></span></button>
+                </div>
+                <div class="hint center" style="margin:16px 0 6px">Kredit+, minden adat csak ezen az eszközön</div>
+              </div>
+            </section>
+
+            <!-- Beállítások al-page-ek -->
+            <section class="tabscreen" id="tab-set-account">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Fiók</div><div class="topbar-sub">Azonosító és jelszó</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card"><div class="card-pad">
                   <div class="field"><label>Azonosító</label><input class="input" id="in-username" placeholder="Neptun azonosító" autocomplete="off" autocapitalize="characters" maxlength="6" />
                     <div class="hint err" id="in-username-err" hidden>A Neptun azonosító pontosan 6 karakter, csak betű és szám.</div>
@@ -269,8 +330,15 @@
                     </div>
                   </div>
                 </div></div>
+              </div>
+            </section>
 
-                <div class="section-label">Egyetem és szerver</div>
+            <section class="tabscreen" id="tab-set-university">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Egyetem és szerver</div><div class="topbar-sub">Ahol tanulsz</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card">
                   <button class="row" id="btn-change-uni">
                     <span class="row-ic"><span data-icon="building"></span></span>
@@ -279,8 +347,15 @@
                   </button>
                 </div>
                 <div class="card" id="server-list"></div>
+              </div>
+            </section>
 
-                <div class="section-label">Kétlépcsős hitelesítés</div>
+            <section class="tabscreen" id="tab-set-2fa">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Kétlépcsős hitelesítés</div><div class="topbar-sub">2FA a belépéshez</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card"><div class="card-pad">
                   <div id="totp-status"></div>
                   <button class="help-link mt" id="set-2fa-help" type="button"><span data-icon="qr"></span> Hogyan szerezd meg a 2FA kódot?</button>
@@ -297,8 +372,15 @@
                     <span><span class="c-t">A sulimnál nincs kétlépcsős azonosítás</span><span class="c-b">A belépéshez csak az azonosító és a jelszó kell.</span></span>
                   </button>
                 </div></div>
+              </div>
+            </section>
 
-                <div class="section-label">Órarend</div>
+            <section class="tabscreen" id="tab-set-timetable">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Órarend</div><div class="topbar-sub">Feliratkozás és szünet</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card">
                   <button class="row" id="btn-ics">
                     <span class="row-ic"><span data-icon="calendar"></span></span>
@@ -311,8 +393,15 @@
                     <span class="row-chev" data-icon="chev"></span>
                   </button>
                 </div>
+              </div>
+            </section>
 
-                <div class="section-label">Tanulmányok</div>
+            <section class="tabscreen" id="tab-set-credit">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Kredit</div><div class="topbar-sub">Előrehaladás beolvasása</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card">
                   <button class="row" id="btn-prog">
                     <span class="row-ic"><span data-icon="book"></span></span>
@@ -320,11 +409,26 @@
                     <span class="row-chev" data-icon="chev"></span>
                   </button>
                 </div>
+              </div>
+            </section>
 
-                <div class="section-label">Értesítés</div>
+            <section class="tabscreen" id="tab-set-notify">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Értesítések</div><div class="topbar-sub">Emlékeztetők órákra és vizsgákra</div></div>
+              </header>
+              <div class="scroll">
                 <div id="notify-cats"></div>
                 <button class="btn tonal" id="notify-test" style="margin-top:2px"><span data-icon="clock"></span> Teszt értesítés (5 mp)</button>
+              </div>
+            </section>
 
+            <section class="tabscreen" id="tab-set-security">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Védelem</div><div class="topbar-sub">Biometria és mikor kérjen kódot</div></div>
+              </header>
+              <div class="scroll">
                 <div class="section-label">Alkalmazászár</div>
                 <div class="card"><div class="card-pad">
                   <button class="check" id="set-bio" type="button">
@@ -352,8 +456,15 @@
                     <span><span class="c-t">Biztonsági műveletek megerősítése</span><span class="c-b">Adatok törlése és ezen beállítások mentése.</span></span>
                   </button>
                 </div></div>
+              </div>
+            </section>
 
-                <div class="section-label">Alkalmazás</div>
+            <section class="tabscreen" id="tab-set-app">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Alkalmazás</div><div class="topbar-sub">Frissítés és verzió</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card">
                   <button class="row" id="btn-check-update">
                     <span class="row-ic"><span data-icon="refresh"></span></span>
@@ -361,8 +472,15 @@
                     <span class="row-chev" data-icon="chev"></span>
                   </button>
                 </div>
+              </div>
+            </section>
 
-                <div class="section-label">Fejlesztői eszközök</div>
+            <section class="tabscreen" id="tab-set-dev">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Fejlesztői</div><div class="topbar-sub">Diagnosztika</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card">
                   <button class="row" id="btn-apidiag">
                     <span class="row-ic"><span data-icon="qr"></span></span>
@@ -370,14 +488,28 @@
                     <span class="row-chev" data-icon="chev"></span>
                   </button>
                 </div>
+              </div>
+            </section>
 
-                <div class="section-label">Dokumentumok</div>
+            <section class="tabscreen" id="tab-set-docs">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Dokumentumok</div><div class="topbar-sub">Adatkezelés és ÁSZF</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card">
                   <button class="row" id="open-privacy2"><span class="row-ic"><span data-icon="shield"></span></span><span class="row-main"><span class="row-title">Adatkezelési tájékoztató</span></span><span class="row-chev" data-icon="chev"></span></button>
                   <button class="row" id="open-terms2"><span class="row-ic"><span data-icon="doc"></span></span><span class="row-main"><span class="row-title">Általános Szerződési Feltételek</span></span><span class="row-chev" data-icon="chev"></span></button>
                 </div>
+              </div>
+            </section>
 
-                <div class="section-label">Adatok</div>
+            <section class="tabscreen" id="tab-set-data">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Adatok</div><div class="topbar-sub">Mentés, visszatöltés, törlés</div></div>
+              </header>
+              <div class="scroll">
                 <div class="card">
                   <button class="row" id="btn-export">
                     <span class="row-ic"><span data-icon="doc"></span></span>
@@ -399,13 +531,12 @@
                     <span class="row-main"><span class="row-title">Minden adat törlése</span><span class="row-sub">Visszaáll a kezdő beállításra</span></span>
                   </button>
                 </div>
-                <div class="hint center" style="margin:16px 0 6px">Kredit+, minden adat csak ezen az eszközön</div>
               </div>
             </section>
 
             <section class="tabscreen" id="tab-profile">
               <header class="topbar">
-                <button class="iconbtn plain" id="profile-back" title="Vissza"><span data-icon="back"></span></button>
+                <button class="iconbtn plain" id="profile-back" data-back title="Vissza"><span data-icon="back"></span></button>
                 <div style="flex:1"><div class="wordmark">Profil</div><div class="topbar-sub">Váltás, hozzáadás, törlés</div></div>
               </header>
               <div class="scroll" id="profile-scroll"></div>
@@ -413,7 +544,7 @@
 
             <section class="tabscreen" id="tab-credit">
               <header class="topbar">
-                <button class="iconbtn plain" id="credit-back" title="Vissza"><span data-icon="back"></span></button>
+                <button class="iconbtn plain" id="credit-back" data-back title="Vissza"><span data-icon="back"></span></button>
                 <div style="flex:1"><div class="wordmark">Kredit</div><div class="topbar-sub">Előrehaladás</div></div>
                 <button class="iconbtn" id="credit-refresh" title="Frissítés"><span data-icon="refresh"></span></button>
               </header>

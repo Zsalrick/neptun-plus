@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.122";
+const APP_VERSION = "v0.123";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -293,12 +293,13 @@ function renderUniList(container, query, selectedName, onPick) {
 // =====================================================================
 //  ONBOARDING
 // =====================================================================
-let obSeq = [0, 1, 2, 3, 4, 5]; // data-step sequence; add-profile mode uses a shorter one
+let obSeq = [0, 1, 2, 3, 4, 5, 6]; // data-step sequence; add-profile mode uses a shorter one (no payment)
 let obPos = 0;                  // index into obSeq
 let obStep = 0;                 // = obSeq[obPos]
 let obMode = "";                // "" normal setup, "add" adding another profile
 let obSel = null; // university object, or "custom", or null
 let obPin = "", obFirst = null, obPinDone = false;
+let obPlan = null; // "monthly" | "semester" | "annual" — placeholder plan pick (not persisted yet)
 
 function updateObProgress() {
   $("ob-bar").style.width = ((obPos + 1) / obSeq.length * 100) + "%";
@@ -314,11 +315,13 @@ function obStepValid() {
   if (obStep === 3) return obPinDone;
   if (obStep === 4) return true; // biometrics is optional
   if (obStep === 5) return hasTotp() || state.no2fa;
+  if (obStep === 6) return !!obPlan;
   return true;
 }
 function updateObFooter() {
   $("ob-back").style.visibility = (obPos === 0 && obMode !== "add") ? "hidden" : "visible";
-  $("ob-next").textContent = (obPos === obSeq.length - 1) ? "Befejezés" : "Tovább";
+  $("ob-next").textContent = obStep === 6 ? "Ingyenes próbaidőszak indítása"
+    : (obPos === obSeq.length - 1) ? "Befejezés" : "Tovább";
   $("ob-next").disabled = !obStepValid();
 }
 function renderOb() {
@@ -329,6 +332,7 @@ function renderOb() {
   if (obStep === 3) { if (state.pinHash) obPinDone = true; if (!obPinDone) { obPin = ""; obFirst = null; } renderObPin(); }
   if (obStep === 4) renderObBio();
   if (obStep === 5) renderObTwoFA();
+  if (obStep === 6) renderObPlan();
   updateObProgress(); updateObFooter();
 }
 function renderObBio() {
@@ -386,13 +390,17 @@ function renderObTwoFA() {
   $("ob-2fa-setup").classList.toggle("hidden", ob2faChoice !== "yes");
   renderObStatus();
 }
+function renderObPlan() {
+  if (obPlan === null) obPlan = "annual"; // preselect the best-value plan
+  document.querySelectorAll("#ob-plans .plan").forEach((b) => b.classList.toggle("selected", b.dataset.plan === obPlan));
+}
 function commitObStep1() {
   if (obSel === "custom") applyCustom($("ob-custom-label").value.trim(), $("ob-custom-url").value.trim());
   else if (obSel) applyUniversity(obSel);
 }
 function finishOnboarding() {
   if (obMode === "add") {
-    obMode = ""; obSeq = [0, 1, 2, 3, 4, 5]; obPos = 0; obStep = 0;
+    obMode = ""; obSeq = [0, 1, 2, 3, 4, 5, 6]; obPos = 0; obStep = 0;
     dataSyncOffered = false; saveState();
     enterApp(); showTab("tab-home"); renderHome();
     toast("Profil hozzáadva.");
@@ -430,6 +438,7 @@ function initOnboarding() {
   $("ob-bio-yes").onclick = () => { if (!bioOK) return; state.biometric = true; saveState(); renderObBio(); };
   $("ob-bio-no").onclick = () => { state.biometric = false; saveState(); renderObBio(); };
   $("ob-show-pass").onclick = async () => { const el = $("ob-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuthFor("sensitive"))) return; el.type = "text"; };
+  document.querySelectorAll("#ob-plans .plan").forEach((b) => b.onclick = () => { obPlan = b.dataset.plan; renderObPlan(); updateObFooter(); });
   $("ob-2fa-no").onclick = () => { ob2faChoice = "no"; state.no2fa = true; saveState(); renderObTwoFA(); updateObFooter(); };
   $("ob-2fa-yes").onclick = () => { ob2faChoice = "yes"; state.no2fa = false; saveState(); renderObTwoFA(); updateObFooter(); };
   const obAfter2fa = () => { renderObStatus(); updateObFooter(); };
@@ -450,10 +459,20 @@ function initOnboarding() {
 //  TABS
 // =====================================================================
 const MAIN_TABS = ["tab-home", "tab-timetable", "tab-exams", "tab-more"];
-// Sub-screens are reached from within the app (grid tiles, back buttons), not the bottom nav —
-// the nav bar hides while they're open, and the hardware/gesture back leaves them to the main tab.
-const SUB_SCREENS = ["tab-settings", "tab-courses", "tab-profile", "tab-credit"];
+// Sub-screens are reached from within the app (grid tiles, rows, back buttons), not the bottom nav.
+// The nav bar hides while any non-main screen is open. Nesting (Beállítások → Védelem → …) is tracked
+// by navStack: pushScreen remembers where we came from, popScreen / hardware-back returns there.
 let lastMainTab = "tab-home";
+let navStack = []; // parent screen ids below the current one; empty at a root main tab
+function pushScreen(id) {
+  const cur = document.querySelector(".tabscreen.active");
+  if (cur && cur.id !== id) navStack.push(cur.id);
+  showTab(id, 1); // slide in from the right (native push)
+}
+function popScreen() {
+  const prev = navStack.pop() || lastMainTab;
+  showTab(prev, -1); // slide back to the left
+}
 function renderForTab(id) {
   if (id === "tab-home") renderHome();
   else if (id === "tab-timetable") renderTimetable();
@@ -462,7 +481,7 @@ function renderForTab(id) {
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-credit") renderCreditPage();
   else if (id === "tab-profile") renderProfilePage();
-  else if (id === "tab-settings") syncSettings();
+  else if (id === "tab-settings" || id.indexOf("tab-set-") === 0) syncSettings();
 }
 // Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
 // the slide animation, so the transition never has to wait on the DOM build (no jank).
@@ -499,7 +518,7 @@ function moveNavIndicator(id) {
   ind.style.opacity = "1";
 }
 function updateNavVisibility(id) {
-  const sh = $("app-shell"); if (sh) sh.classList.toggle("nav-hidden", SUB_SCREENS.includes(id));
+  const sh = $("app-shell"); if (sh) sh.classList.toggle("nav-hidden", !MAIN_TABS.includes(id));
 }
 function setActive(id) {
   document.querySelectorAll(".tabscreen").forEach((el) => el.classList.toggle("active", el.id === id));
@@ -514,6 +533,7 @@ function showTab(id, dir) {
     prepTab(id); // skeleton for heavy tabs (real render deferred to afterShow), full render for light ones
     document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === id));
     if (MAIN_TABS.includes(id)) { lastMainTab = id; moveNavIndicator(id); }
+    updateNavVisibility(id); // hide the bottom nav on sub-screens (the dir/slide path skips setActive)
     incoming.classList.add("active", "sliding"); incoming.style.transform = `translateX(${dir * 100}%)`;
     cur.classList.add("sliding");
     void incoming.offsetWidth;
@@ -528,6 +548,7 @@ function showTab(id, dir) {
   setActive(id);
 }
 function navTo(id) {
+  navStack = []; // tapping a root tab drops any sub-screen breadcrumb
   const cur = document.querySelector(".tabscreen.active");
   let dir = 0;
   if (cur && MAIN_TABS.includes(id) && MAIN_TABS.includes(cur.id)) dir = MAIN_TABS.indexOf(id) > MAIN_TABS.indexOf(cur.id) ? 1 : -1;
@@ -566,12 +587,12 @@ function cancelAddProfile() {
   const back = state.profiles[state.profiles.length - 1];
   state.activeProfileId = back ? back.id : null;
   if (back) loadProfileToTop(back);
-  obMode = ""; obSeq = [0, 1, 2, 3, 4, 5]; obPos = 0; obStep = 0;
+  obMode = ""; obSeq = [0, 1, 2, 3, 4, 5, 6]; obPos = 0; obStep = 0;
   resetProfileCaches(); saveState();
   enterApp(); showTab("tab-home"); renderHome();
 }
 // Full-screen profile page (replaces the old bottom-sheet picker): switch, add, delete.
-function openProfilePicker() { showTab("tab-profile"); }
+function openProfilePicker() { pushScreen("tab-profile"); }
 function renderProfilePage() {
   const host = $("profile-scroll"); if (!host) return;
   const profiles = state.profiles || [];
@@ -596,7 +617,7 @@ function renderProfilePage() {
   host.querySelectorAll("[data-pf]").forEach((b) => b.onclick = () => {
     const id = b.dataset.pf;
     if (id !== state.activeProfileId) switchProfile(id);
-    showTab(lastMainTab);
+    popScreen();
   });
   host.querySelectorAll("[data-del]").forEach((el) => el.onclick = async (e) => {
     e.stopPropagation();
@@ -632,11 +653,11 @@ function updateScrollPad() {
   if (pad > 0) document.documentElement.style.setProperty("--scroll-pad", pad + "px");
 }
 document.querySelectorAll(".nav-btn").forEach((b) => b.onclick = () => navTo(b.dataset.tab));
-document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => showTab("tab-settings"));
-$("settings-back").onclick = () => showTab(lastMainTab);
-{ const cb = $("courses-back"); if (cb) cb.onclick = () => showTab(lastMainTab); }
-{ const pb = $("profile-back"); if (pb) pb.onclick = () => showTab(lastMainTab); }
-{ const cb = $("credit-back"); if (cb) cb.onclick = () => showTab(lastMainTab); }
+document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => pushScreen("tab-settings"));
+// Every sub-screen back arrow (topbar) pops the nav stack — one handler for all of them.
+document.querySelectorAll("[data-back]").forEach((b) => b.onclick = popScreen);
+// Settings hub rows that open a settings sub-page.
+document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pushScreen(b.dataset.setpage));
 { const cr = $("credit-refresh"); if (cr) cr.onclick = () => grabProgress(); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
@@ -808,8 +829,8 @@ function renderSyncCard() {
 //  MORE (services grid) — scales to the features coming later
 // =====================================================================
 const MORE_SERVICES = [
-  { id: "courses", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => showTab("tab-courses") },
-  { id: "credit", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => showTab("tab-credit") },
+  { id: "courses", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => pushScreen("tab-courses") },
+  { id: "credit", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => pushScreen("tab-credit") },
   { id: "dlc", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "finance", label: "Pénzügyek", sub: "Egyenleg és számlák", icon: "wallet", soon: true },
@@ -899,7 +920,7 @@ function nextIsland(el, e, headText, tab, now) {
   const meta = p ? [p.type, p.teacher].filter(Boolean).join(" · ") : "";
   el.innerHTML = `<div class="nc-head">${icon("clock")} ${headText} · ${esc(dayHeading(e.S))}</div>
     <div class="nc-row"><span class="nc-time">${time}</span><div class="nc-body"><div class="nc-title">${esc(title)}</div>${meta ? `<div class="nc-loc">${icon("user")} ${esc(meta)}</div>` : ""}${e.location ? `<div class="nc-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}</div></div>`;
-  el.onclick = () => showTab(tab);
+  el.onclick = () => navTo(tab);
 }
 function renderNextClass() {
   nextIsland($("current-class"), currentClass(), "Jelenlegi óra", "tab-timetable", true);
@@ -2633,6 +2654,9 @@ function syncSettings() {
   syncSemStatus();
   syncProgStatus();
   syncBackupFreq();
+  // Mirror live values onto the settings hub rows.
+  const mir = (from, to) => { const a = $(from), b = $(to); if (a && b) b.textContent = a.textContent; };
+  mir("cur-uni", "hub-uni-sub"); mir("prog-status", "hub-prog-sub"); mir("update-status", "hub-update-sub");
 }
 function syncSemStatus() {
   const el = $("sems-status"); if (!el) return;
@@ -3202,10 +3226,10 @@ function onBackNav() {
     if (obMode === "add") { cancelAddProfile(); return true; }
     return false; // first-run onboarding, step 0 → allow exit
   }
+  if (navStack.length) { popScreen(); return true; } // nested sub-screen → up one level
   const act = document.querySelector(".tabscreen.active");
   const id = act ? act.id : "";
-  if (SUB_SCREENS.includes(id)) { showTab(lastMainTab); return true; }
-  if (id && id !== "tab-home") { showTab("tab-home"); return true; }
+  if (id && id !== "tab-home") { navTo("tab-home"); return true; }
   return false; // home, nothing open → allow exit
 }
 // Prefer the native App plugin (clean exitApp) when it's present in the APK; otherwise fall back to

@@ -21,6 +21,8 @@
   --nav-h: 72px;
   --brand-plus: #f5b221;     /* the gold "+" in the Kredit+ wordmark — the only colour accent */
   --font-brand: "Bricolage Grotesque", Georgia, "Times New Roman", serif;
+  --font-body: "Hanken Grotesk", "Inter", "Segoe UI", system-ui, sans-serif; /* editorial body (onboarding), matches the website */
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;           /* numerals (prices, big figures) */
 }
 /* Brand wordmark: display font, monochrome text, gold plus. */
 .wordmark, .boot-name, .lock-title, .ob-title { font-family: var(--font-brand); }
@@ -529,11 +531,42 @@ button.row:active { background: var(--surface-2); }
 .ob-body { flex: 1; overflow-y: auto; padding: 24px 22px; display: flex; flex-direction: column; }
 .ob-step { display: none; flex-direction: column; flex: 1; }
 .ob-step.active { display: flex; }
-.ob-hero { width: 56px; height: 56px; border-radius: 14px; margin-bottom: 20px; color: var(--ink); background: var(--surface-2);
-  border: 1px solid var(--line-2); display: grid; place-items: center; }
-.ob-hero svg.ic { width: 26px; height: 26px; }
-.ob-title { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 8px; }
-.ob-sub { font-size: 15.5px; color: var(--ink-2); line-height: 1.55; margin-bottom: 20px; }
+/* editorial header — eyebrow + big display title, no framed icon (matches the website) */
+.ob-eyebrow { font-family: var(--font-body); font-size: 12px; font-weight: 600; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--brand-plus); margin-bottom: 14px; }
+.ob-title { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1.02; margin-bottom: 12px; }
+.ob-sub { font-family: var(--font-body); font-size: 16px; color: var(--ink-2); line-height: 1.5; margin-bottom: 26px; max-width: 34ch; }
+/* onboarding runs on the editorial body font */
+#screen-onboarding { font-family: var(--font-body); }
+#screen-onboarding .doc-row, #screen-onboarding .opt, #screen-onboarding .check { font-family: var(--font-body); }
+/* Flatter, editorial rows in onboarding — hairline list instead of framed cards. */
+#screen-onboarding .doc-row, #screen-onboarding .opt {
+  background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  padding: 16px 2px; margin-bottom: 0; }
+#screen-onboarding .opt.selected { background: transparent; }
+#screen-onboarding .opt .o-t, #screen-onboarding .doc-row .d-t { font-size: 15px; font-weight: 600; }
+#screen-onboarding .opt .o-b { font-size: 12.5px; white-space: normal; }
+
+/* Subscription plans (placeholder). Selectable editorial rows, price in mono. */
+.plans { display: flex; flex-direction: column; }
+.plan { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer;
+  color: inherit; font-family: var(--font-body); background: transparent; border: 0;
+  border-bottom: 1px solid var(--line); padding: 18px 2px; }
+.plan:first-child { border-top: 1px solid var(--line); }
+.plan-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.plan-name { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; letter-spacing: -.01em; }
+.plan-bill { font-size: 13px; color: var(--ink-3); }
+.plan-tag { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--ink-2);
+  border: 1px solid var(--line-2); border-radius: 999px; padding: 1px 7px; letter-spacing: 0; }
+.plan-tag.gold { color: var(--brand-plus); border-color: color-mix(in srgb, var(--brand-plus) 45%, var(--line-2)); }
+.plan-mo { font-family: var(--font-mono); font-size: 19px; font-weight: 600; color: var(--ink); flex: none; }
+.plan-mo small { font-size: 11px; color: var(--ink-3); font-weight: 500; margin-left: 1px; }
+.plan.selected { }
+.plan .plan-name::before { content: ""; width: 9px; height: 9px; border-radius: 50%; flex: none;
+  border: 1.5px solid var(--ink-3); box-sizing: border-box; }
+.plan.selected .plan-name::before { border-color: var(--brand-plus); background: var(--brand-plus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-plus) 22%, transparent); }
+.plan.selected .plan-mo { color: var(--brand-plus); }
+.plan-note { font-family: var(--font-body); font-size: 12px; color: var(--ink-3); line-height: 1.5; margin-top: 18px; }
 .ob-content { flex: 1; }
 .ob-footer { display: flex; gap: 10px; padding: 14px 22px calc(20px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 .ob-footer .btn.back { width: 50px; flex: none; }
@@ -676,11 +709,25 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .boot.boot--hide { opacity: 0; pointer-events: none; }
 .boot-mark {
   color: var(--ink);
-  animation: boot-pulse 1.6s ease-in-out infinite;
+  animation: boot-breathe 3s ease-in-out 1.15s infinite;
 }
-.boot-mark svg { display: block; }
+.boot-mark svg { display: block; overflow: visible; }
+/* K strokes draw themselves on, one after another */
+.boot-mark .k-stroke {
+  stroke-dasharray: 100; stroke-dashoffset: 100;
+  animation: boot-draw .5s ease forwards;
+}
+.boot-mark .k-stroke:nth-child(1) { animation-delay: .06s; }
+.boot-mark .k-stroke:nth-child(2) { animation-delay: .30s; }
+.boot-mark .k-stroke:nth-child(3) { animation-delay: .54s; }
+/* the gold plus pops in once the K is drawn */
+.boot-mark .plus-mark {
+  transform-origin: 682px 394px; transform: scale(0); opacity: 0;
+  animation: boot-pop .5s cubic-bezier(.34,1.56,.64,1) .82s forwards;
+}
 .boot-name {
-  font-size: 20px; font-weight: 650; letter-spacing: .01em; color: var(--ink);
+  font-size: 21px; font-weight: 650; letter-spacing: .01em; color: var(--ink);
+  opacity: 0; animation: boot-rise .5s ease .95s forwards;
 }
 .boot-bar {
   position: relative; width: 148px; height: 3px; border-radius: 3px;
@@ -693,10 +740,10 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .boot-text {
   font-size: 13px; color: var(--ink-2); letter-spacing: .02em; min-height: 1em;
 }
-@keyframes boot-pulse {
-  0%, 100% { opacity: .55; transform: scale(.97); }
-  50%      { opacity: 1;   transform: scale(1); }
-}
+@keyframes boot-draw  { to { stroke-dashoffset: 0; } }
+@keyframes boot-pop   { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes boot-rise  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes boot-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 @keyframes boot-slide {
   0%   { left: -40%; }
   100% { left: 100%; }
