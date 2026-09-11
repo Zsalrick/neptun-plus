@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.129";
+const APP_VERSION = "v0.130";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1998,7 +1998,7 @@ function buildApiSniffScript(username, password, code) {
   }
   function tokenKeys(){ var out=[]; [['local',window.localStorage],['session',window.sessionStorage]].forEach(function(pair){ try{ var st=pair[1]; for(var i=0;i<st.length;i++){ var k=st.key(i); var v=st.getItem(k)||''; var looksTok=/token|auth|oidc|msal|bearer|jwt|access/i.test(k) || (/^ey[A-Za-z0-9_-]+\\./.test(v)); if(looksTok) out.push({store:pair[0],key:k,len:v.length,preview:redact(v)}); } }catch(e){} }); return out; }
   function interesting(c){ var u=(c.url||''); if(/\\.(js|css|png|jpe?g|svg|woff2?|ttf|ico|gif|map)(\\?|$)/i.test(u)) return false; var ct=(c.ct||''); return /json/i.test(ct) || /\\/api\\/|hallgato|kreptn|neptun|advancement|curriculum|subject|targ/i.test(u); }
-  var KEYCTRL=/curriculum|credit|advancement|training|subject|myTrainings|progress|kredit|targ/i;
+  var KEYCTRL=/curriculum|credit|advancement|training|subject|myTrainings|progress|kredit|targ|finance|payment|invoice|p[eé]nz|befizet|sz[aá]ml|t[eé]tel|d[ií]j|balance|egyenleg|transaction|tranzak/i;
   function collect(){ var seen={}, out=[]; (window.__apiCalls||[]).forEach(function(c){ if(!interesting(c)) return; var key=c.method+' '+c.url; if(seen[key]) return; seen[key]=1;
     // Keep the full endpoint list, but only carry a response sample for the data controllers (bounds payload size).
     var keep=KEYCTRL.test(c.url||'');
@@ -2010,6 +2010,17 @@ function buildApiSniffScript(username, password, code) {
     return Promise.race([run,to]).then(function(out){ try{clearTimeout(timer);}catch(_){}; log("Direct "+ep+" → "+(out.status||out.error)); return out; }); }
   // Event-driven: fire the direct study calls the moment a Bearer token is captured (active network),
   // instead of polling for login/token which the throttled hidden webview can freeze.
+  // Navigate the logged-in UI into Pénzügyek and its sub-tabs so the network hook captures the real
+  // finance XHRs (endpoint URLs + response shapes) — the reliable way to discover them.
+  async function navFinance(){
+    try{
+      var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(250); }
+      log("Pénzügyek megnyitása"); var pz=await waitFor(function(){return pick("Pénzügyek");},8000); if(pz){ pz.click(); await sleep(1200); } else log("Nincs 'Pénzügyek' menü");
+      var subs=["Befizetés","Kiírt tételek","Számlák","Tételek","Egyenleg","Tranzakciós lista","Befizetett tételek"];
+      for(var i=0;i<subs.length;i++){ var s=pick(subs[i]); if(s){ log("→ "+subs[i]); try{ s.click(); }catch(_){} await sleep(1400); } }
+      await sleep(600);
+    }catch(e){ log("Pénzügy nav hiba: "+String(e)); }
+  }
   async function runDirect(){
     try{
       log("Token megvan — közvetlen lekérések…");
@@ -2021,6 +2032,11 @@ function buildApiSniffScript(username, password, code) {
       var ctid="", arid=""; try{ var tb=tpl.body||""; var m1=tb.match(/"curriculumTemplateId":(\\d+)/); if(m1)ctid=m1[1]; var m2=tb.match(/"advancementRowId":"([^"]+)"/); if(m2)arid=m2[1]; }catch(_){}
       log("Képzés id="+(ctid||"?")+" adv="+(arid?arid.slice(0,8):"?"));
       if(ctid){ var q="Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate?curriculumTemplateId="+ctid+"&needSubjectGroups=true"+(arid?"&advancementRowId="+arid:""); direct.push(await hit(q)); }
+      // Finance endpoint guesses (best-effort; navigation capture below is the real source).
+      var fin=["Finance/GetToBePayedItems","Finance/GetPayedItems","Finance/GetInvoices","Finance/GetStudentBalance","Finance/GetTransactions"];
+      for(var i=0;i<fin.length;i++){ direct.push(await hit(fin[i])); }
+      log("Pénzügy navigáció…");
+      await navFinance(); // triggers the real finance XHRs → captured by the hook (collect())
       log("Kész — közvetlen: "+direct.length);
       deliver({origin:location.origin, base:document.baseURI, bearer: window.__bearer?("["+String(window.__bearer).length+" kar.]"):"nincs", direct:direct, calls:collect(), storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
@@ -2037,7 +2053,7 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "API diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, majd <b>natív HTTP-vel</b> lekéri a tanulmányi végpontokat és a <b>teljes JSON választ</b> fájlba menti (Dokumentumok/neptunplus). Ez a felderítő eszköz új/változott végpontokhoz." });
+    body: "Bejelentkezik, lekéri a tanulmányi végpontokat, majd megnyitja a <b>Pénzügyek</b> menüt, és rögzíti az ott lefutó hálózati hívásokat + a <b>teljes JSON választ</b> (Dokumentumok/neptunplus). Felderítő eszköz a pénzügyi végpontokhoz." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
