@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.166";
+const APP_VERSION = "v0.167";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1252,7 +1252,9 @@ async function renderMsgView() {
       try {
         for (let i = 0; i < pending.length; i++) { send.textContent = ""; toast("Feltöltés… (" + (i + 1) + "/" + pending.length + ")"); fileIds.push(await apiUploadFile(pending[i].file)); }
       } catch (e) {
-        ta.disabled = send.disabled = false; toast("Feltöltés nem sikerült" + (e && e.message ? ": " + e.message : ".")); return;
+        ta.disabled = send.disabled = false;
+        await ask({ title: "Feltöltés nem sikerült", okText: "OK", body: esc(e && e.message ? e.message : String(e)) });
+        return;
       }
       const r = await apiSendReply(x.id, text, lastPostId, fileIds);
       if (r.ok) { toast("Elküldve."); renderMsgView(); }               // reload thread → shows the new reply at the bottom
@@ -2808,8 +2810,13 @@ async function apiUploadFile(file) {
     fileName: file.name, fileSize: file.size, documentationTypeId: null, languageId: null, description: "" };
   const r0 = await apiPost(sess, "FileHandler/FileUpStart", start);
   let d0 = r0 && r0.data; if (typeof d0 === "string") { try { d0 = JSON.parse(d0); } catch (e) {} }
-  const guid = d0 && (d0.guid || (d0.data && d0.data.guid));
-  if (!guid) throw new Error("FileUpStart: nincs guid (" + (r0 && r0.status) + ")");
+  // The guid may sit at various depths / names depending on the server; try the common ones, else the
+  // body's `data` if it's itself the id string.
+  const dd = d0 && d0.data;
+  const guid = (d0 && (d0.guid || d0.tempFileGUID || d0.tempFileGuid || d0.id))
+    || (dd && (typeof dd === "string" ? dd : (dd.guid || dd.tempFileGUID || dd.tempFileGuid || dd.id)))
+    || (typeof d0 === "string" ? d0 : "");
+  if (!guid) throw new Error("FileUpStart(" + (r0 && r0.status) + "): " + JSON.stringify(d0).slice(0, 260));
   for (let pos = 0; pos < file.size || pos === 0; pos += UP_CHUNK) {
     const fd = new FormData();
     fd.append("chunkFile", new File([file.slice(pos, pos + UP_CHUNK)], file.name));
