@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.121";
+const APP_VERSION = "v0.122";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -845,17 +845,28 @@ function renderCreditPage() {
     return;
   }
   const pct = Math.max(0, Math.min(100, Math.round((p.done / p.total) * 100)));
+  const free = Math.max(0, p.free || 0);
+  const req = Math.max(0, p.done - free);
   const remaining = Math.max(0, p.total - p.done);
-  const stat = (val, label) => `<div class="stat"><div class="stat-v">${esc(String(val))}</div><div class="stat-l">${esc(label)}</div></div>`;
+  const w = (n) => p.total > 0 ? (n / p.total * 100) : 0;
+  const leg = (cls, label, val) => `<div class="cl"><span class="dot ${cls}"></span><span class="cl-t">${label}</span><span class="cl-v">${val} kr</span></div>`;
   host.innerHTML = `<div class="card cred-hero">`
-    + `<div class="ch-pct">${pct}<span>%</span></div>`
-    + `<div class="ch-cap">teljesítve</div>`
+    + `<div class="ch-num">${p.done} / ${p.total}</div>`
+    + `<div class="ch-cap">teljesített kredit</div>`
     + `<div class="cred-bar" style="margin-top:16px"><div class="cred-fill" style="width:${pct}%"></div></div>`
-    + `<div class="ch-sub">${p.done} / ${p.total} kredit</div>`
+    + `<div class="ch-pctline">${pct}%</div>`
     + `</div>`
-    + `<div class="stat-grid">`
-    + stat(p.done, "Teljesített") + stat(remaining, "Hátralévő")
-    + stat(p.total, "Összes kredit") + stat(p.free || 0, "Szabadon vál.")
+    + `<div class="dash-label">Megoszlás</div>`
+    + `<div class="card" style="padding:16px">`
+    +   `<div class="cbar">`
+    +     (req ? `<span class="cseg s-req" style="width:${w(req)}%"></span>` : "")
+    +     (free ? `<span class="cseg s-free" style="width:${w(free)}%"></span>` : "")
+    +     `</div>`
+    +   `<div class="clegend">`
+    +     leg("s-req", "Kötelező teljesített", req)
+    +     leg("s-free", "Szabadon választható", free)
+    +     leg("s-rem", "Hátralévő", remaining)
+    +     `</div>`
     + `</div>`
     + `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(p.fetchedAt))}</div>`;
 }
