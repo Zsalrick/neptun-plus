@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.153";
+const APP_VERSION = "v0.154";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1096,8 +1096,12 @@ async function renderMsgView() {
   const body = $("msg-body");
   const posts = await apiReadMessagePosts(x.id);
   if (!posts) { body.innerHTML = `<div class="dash-empty" style="padding:8px 2px">Az üzenet szövege nem tölthető be.</div>`; return; }
-  // mark read locally (server marks read on open too)
-  if (x.unread) { x.unread = false; if (state.messages) { state.messages.unread = Math.max(0, (state.messages.unread || 1) - 1); saveState(); } }
+  // Mark read locally, and in the background tell Neptun we've seen it (so the web/other devices agree).
+  if (x.unread && !x.sent) {
+    x.unread = false;
+    if (state.messages) { state.messages.unread = Math.max(0, (state.messages.unread || 1) - 1); saveState(); }
+    apiMarkMessageRead(x.id, posts); // fire-and-forget; don't block the view
+  }
   // Pick the text field robustly: known names first, else the longest string field that looks like a body.
   const pickText = (p) => {
     const known = p.text || p.content || p.body || p.messageText || p.postText || p.messageBody || p.htmlBody || p.htmlContent || p.messageContent || p.description;
@@ -1931,6 +1935,20 @@ async function apiGet(sess, ep, params) {
   const r = await fetch(u, { headers, credentials: "include" });
   return { status: r.status, data: await r.json().catch(() => null) };
 }
+async function apiPost(sess, ep, bodyObj) {
+  const url = (sess.base || "") + ep;
+  const headers = { "Content-Type": "application/json" };
+  if (sess.token) headers.Authorization = "Bearer " + sess.token;
+  const CH = CHTTP();
+  if (CH) {
+    const res = await CH.post({ url, headers, data: bodyObj || {} });
+    let data = res && res.data;
+    if (typeof data === "string") { try { data = JSON.parse(data); } catch (e) { /* leave */ } }
+    return { status: res ? res.status : 0, data };
+  }
+  const r = await fetch(url, { method: "POST", headers, credentials: "include", body: JSON.stringify(bodyObj || {}) });
+  return { status: r.status, data: await r.json().catch(() => null) };
+}
 // Read the whole curriculum via API: program + all subjects (recursing subject groups) + the
 // completed free electives. Returns { program, required:[...], free:[...] } or null.
 async function apiReadCurriculum(sess) {
@@ -2532,6 +2550,17 @@ async function apiReadMessagePosts(id) {
     const posts = d && (Array.isArray(d) ? d : (d.posts || d.messagePosts));
     return (posts && posts.length) ? posts : null;
   } catch (e) { return null; }
+}
+// Mark a message's posts read on the Neptun server (fire-and-forget): POST Messages/<id>/Posts/Processed {postIds}.
+async function apiMarkMessageRead(id, posts) {
+  const ids = (posts || []).map((p) => p.postId || p.id || p.messagePostId).filter(Boolean);
+  if (!ids.length) return false;
+  try {
+    const sess = await getApiSession();
+    if (!sess || !sess.token) return false;
+    const r = await apiPost(sess, "Messages/" + encodeURIComponent(id) + "/Posts/Processed", { postIds: ids });
+    return !!(r && r.status >= 200 && r.status < 300);
+  } catch (e) { return false; }
 }
 async function syncCourses() {
   // Preferred: direct API — terms, then enrolled subjects per term.
