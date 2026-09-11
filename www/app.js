@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.161";
+const APP_VERSION = "v0.162";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -42,6 +42,7 @@ const P = {
   chart: '<path d="M4 20V4M4 20h16"/><path d="M8 20v-6M12.5 20V9M17 20v-9"/>',
   wallet: '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16 14.5h1.5"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
+  send: '<path d="M4 12 20 4l-6 16-3-7-7-1Z"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ""}</svg>`; }
 function renderIcons(root = document) {
@@ -1174,32 +1175,30 @@ async function renderMsgView() {
       + `<div class="b-text">${inner}</div>`
       + `${when ? `<div class="b-time">${esc(ftDate(when))}</div>` : ""}</div>`;
   }).join("");
-  // Reply — offered whenever this thread's own reply flag is on (messageData.isReplyEnabled), whether
-  // it sits in Beérkezett or Elküldött (a two-way conversation shows up under Elküldött once you've
-  // replied). Automated / no-reply Neptun messages have the flag false → no button.
-  const canReply = !!res.replyEnabled;
-  if (canReply) {
+  // Reply — a persistent chat composer pinned to the bottom, shown whenever this thread's own reply flag
+  // is on (messageData.isReplyEnabled). Automated / no-reply Neptun messages have it false → no composer.
+  if (res.replyEnabled) {
     const last = posts[posts.length - 1] || {};
     const lastPostId = last.postId || last.id || "";
-    const rc = document.createElement("div");
-    rc.className = "msg-reply";
-    rc.innerHTML = `<button class="btn primary" id="msg-reply-btn" type="button">${icon("mail")} Válasz</button>`;
-    host.appendChild(rc);
-    $("msg-reply-btn").onclick = () => {
-      rc.innerHTML = `<textarea class="input" id="msg-reply-text" rows="4" placeholder="Írd ide a válaszod…"></textarea>`
-        + `<div class="msg-reply-actions"><button class="btn ghost" id="msg-reply-cancel" type="button">Mégse</button>`
-        + `<button class="btn primary" id="msg-reply-send" type="button">${icon("mail")} Küldés</button></div>`;
-      const ta = $("msg-reply-text"); ta.focus();
-      $("msg-reply-cancel").onclick = () => renderMsgView();
-      $("msg-reply-send").onclick = async () => {
-        const text = ta.value.trim();
-        if (!text) { toast("Írj be egy üzenetet."); return; }
-        const send = $("msg-reply-send"); send.disabled = true; send.textContent = "Küldés…";
-        const r = await apiSendReply(x.id, text, lastPostId);
-        if (r.ok) { toast("Válasz elküldve."); renderMsgView(); }        // reload thread → shows the new reply
-        else { send.disabled = false; send.innerHTML = `${icon("mail")} Küldés`; toast("Nem sikerült elküldeni" + (r.detail ? ": " + r.detail : ".")); }
-      };
+    const bar = document.createElement("div");
+    bar.className = "msg-compose";
+    bar.innerHTML = `<textarea class="input" id="msg-reply-text" rows="1" placeholder="Írj üzenetet…"></textarea>`
+      + `<button class="iconbtn send" id="msg-reply-send" type="button" title="Küldés">${icon("send")}</button>`;
+    host.appendChild(bar);
+    const ta = $("msg-reply-text"), send = $("msg-reply-send");
+    const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 140) + "px"; };
+    ta.oninput = grow;
+    const doSend = async () => {
+      const text = ta.value.trim();
+      if (!text) return;
+      ta.disabled = send.disabled = true;
+      const r = await apiSendReply(x.id, text, lastPostId);
+      if (r.ok) { toast("Elküldve."); renderMsgView(); }               // reload thread → shows the new reply at the bottom
+      else { ta.disabled = send.disabled = false; toast("Nem sikerült elküldeni" + (r.detail ? ": " + r.detail : ".")); }
     };
+    send.onclick = doSend;
+    // Enter sends, Shift+Enter makes a new line (desktop-style chat convenience).
+    ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } };
   }
   // Chat-style: land at the newest message (bottom), like opening a chat thread.
   requestAnimationFrame(() => { host.scrollTop = host.scrollHeight; });

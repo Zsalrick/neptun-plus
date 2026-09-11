@@ -258,10 +258,13 @@ button.row:active { background: var(--surface-2); }
 .msg-bubble.mine .b-text a { color: var(--accent-ink); text-decoration: underline; }
 .b-text img { max-width: 100%; border-radius: 8px; margin: 4px 0; }
 .b-time { font-size: 10.5px; margin-top: 6px; opacity: .6; text-align: right; }
-.msg-reply { margin-top: 16px; }
-.msg-reply textarea.input { resize: vertical; min-height: 96px; line-height: 1.5; }
-.msg-reply-actions { display: flex; gap: 10px; margin-top: 10px; }
-.msg-reply-actions .btn { flex: 1; }
+/* Chat composer — pinned to the bottom of the thread */
+.msg-compose { position: sticky; bottom: 0; display: flex; align-items: flex-end; gap: 9px; margin: 10px -2px 0;
+  padding: 10px 2px calc(6px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
+.msg-compose textarea.input { flex: 1; resize: none; min-height: 44px; max-height: 140px; line-height: 1.4; padding: 11px 14px; border-radius: 22px; }
+.msg-compose .iconbtn.send { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); border: none; }
+.msg-compose .iconbtn.send:disabled { opacity: .5; }
+.msg-compose .iconbtn.send svg.ic { width: 20px; height: 20px; }
 
 /* Profile page rows */
 .pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }
