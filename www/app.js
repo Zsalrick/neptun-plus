@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.151";
+const APP_VERSION = "v0.152";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1099,9 +1099,9 @@ async function renderMsgView() {
   // mark read locally (server marks read on open too)
   if (x.unread) { x.unread = false; if (state.messages) { state.messages.unread = Math.max(0, (state.messages.unread || 1) - 1); saveState(); } }
   body.innerHTML = posts.map((p) => {
-    const txt = p.text || p.content || p.body || p.messageText || "";
-    const when = p.date || p.postDate || p.creationDate || null;
-    const author = p.senderName || p.author || "";
+    const txt = p.text || p.content || p.body || p.messageText || p.postText || p.messageBody || "";
+    const when = p.created || p.sendDate || p.sentDate || p.creationDate || p.postDate || p.date || p.lastPostDate || null;
+    const author = p.senderName || p.author || p.sender || "";
     return `<div class="msg-post">${[esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ") ? `<div class="row-sub" style="margin-bottom:6px">${[esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ")}</div>` : ""}`
       + `<div class="msg-text">${sanitizeHtml(txt)}</div></div>`;
   }).join("");
@@ -2334,11 +2334,7 @@ async function runApiDiagnostics() {
       results.push({ probeMessageId: mid, probeSubject: first && first.subject });
       if (mid) {
         const postEps = [
-          ["Message/GetMessagePosts", { messageId: mid }],
-          ["Message/GetArchivedMessagePosts", { messageId: mid }],
-          ["Message/GetMessagePost", { messageId: mid }],
-          ["Message/GetMessage", { messageId: mid }],
-          ["Message/GetMessagePosts", { messageId: mid, firstRow: 0, lastRow: 50 }],
+          ["Messages/" + encodeURIComponent(mid) + "/Posts", null],
         ];
         for (const [ep, params] of postEps) {
           $("busy-text").textContent = ep.split("/").pop() + "…";
@@ -2514,19 +2510,17 @@ async function syncMessages() {
   saveState();
   return { ok: true, detail: unread + " olvasatlan · " + received.length + " beérkezett" };
 }
-// Read one message's posts (body) on demand. Two candidate endpoints; return the first that yields posts.
+// Read one message's posts (body) on demand. REST-style path (id is a path segment, controller is
+// plural `Messages`): GET api/Messages/<id>/Posts → {data:{posts:[…], recipients:[…]}}.
 async function apiReadMessagePosts(id) {
   const sess = await getApiSession();
   if (!sess || !sess.token) return null;
-  for (const ep of ["Message/GetMessagePosts", "Message/GetArchivedMessagePosts"]) {
-    try {
-      const r = await apiGet(sess, ep, { messageId: id });
-      const d = r && r.data && r.data.data;
-      const posts = d && (d.posts || d.messagePosts || (Array.isArray(d) ? d : null));
-      if (posts && posts.length) return posts;
-    } catch (e) { /* try next */ }
-  }
-  return null;
+  try {
+    const r = await apiGet(sess, "Messages/" + encodeURIComponent(id) + "/Posts");
+    const d = r && r.data && r.data.data;
+    const posts = d && (Array.isArray(d) ? d : (d.posts || d.messagePosts));
+    return (posts && posts.length) ? posts : null;
+  } catch (e) { return null; }
 }
 async function syncCourses() {
   // Preferred: direct API — terms, then enrolled subjects per term.
