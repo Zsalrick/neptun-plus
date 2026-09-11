@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.158";
+const APP_VERSION = "v0.159";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1140,8 +1140,9 @@ async function renderMsgView() {
     + `<div class="row-sub" style="margin-top:7px">${who}</div></div>`
     + `<div id="msg-body"><div class="dash-empty" style="padding:8px 2px">Betöltés…</div></div>`;
   const body = $("msg-body");
-  const posts = await apiReadMessagePosts(x.id);
-  if (!posts) { body.innerHTML = `<div class="dash-empty" style="padding:8px 2px">Az üzenet szövege nem tölthető be.</div>`; return; }
+  const res = await apiReadMessagePosts(x.id);
+  if (!res) { body.innerHTML = `<div class="dash-empty" style="padding:8px 2px">Az üzenet szövege nem tölthető be.</div>`; return; }
+  const posts = res.posts;
   // Mark read locally, and in the background tell Neptun we've seen it (so the web/other devices agree).
   if (x.unread && !x.sent) {
     x.unread = false;
@@ -1167,8 +1168,9 @@ async function renderMsgView() {
     return `<div class="msg-post"><div class="msg-text">${inner}</div>`
       + `${meta ? `<div class="msg-time">${meta}</div>` : ""}</div>`;
   }).join("");
-  // Reply — offered on non-system received messages when Neptun allows communication in the thread.
-  const canReply = !x.sent && !x.isSystem && !!(state.messages && state.messages.canReply);
+  // Reply — offered only when this message's own reply flag is on (messageData.isReplyEnabled).
+  // Automated / no-reply Neptun messages have it false, so no button there.
+  const canReply = !x.sent && res.replyEnabled;
   if (canReply) {
     const last = posts[posts.length - 1] || {};
     const lastPostId = last.postId || last.id || "";
@@ -2683,7 +2685,11 @@ async function apiReadMessagePosts(id) {
     const r = await apiGet(sess, "Messages/" + encodeURIComponent(id) + "/Posts");
     const d = r && r.data && r.data.data;
     const posts = d && (Array.isArray(d) ? d : (d.posts || d.messagePosts));
-    return (posts && posts.length) ? posts : null;
+    if (!posts || !posts.length) return null;
+    // messageData.isReplyEnabled is the authoritative per-message reply flag (the Neptun web gates the
+    // compose form on exactly this). Most automated messages have it false.
+    const replyEnabled = !!(d && d.messageData && d.messageData.isReplyEnabled);
+    return { posts, replyEnabled };
   } catch (e) { return null; }
 }
 // Mark a message's posts read on the Neptun server (fire-and-forget): POST Messages/<id>/Posts/Processed {postIds}.

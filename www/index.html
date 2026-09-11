@@ -626,8 +626,15 @@
 
         <!-- App lock overlay -->
         <div class="lock hidden" id="lock">
-          <div class="lock-badge"><span data-icon="lock"></span></div>
           <div class="lock-title">Kredit<span class="plus">+</span></div>
+          <div class="lock-badge" aria-hidden="true">
+            <svg class="lock-lock" viewBox="0 0 48 48" width="34" height="34">
+              <path d="M15 23 V17 a9 9 0 0 1 18 0 V23" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+              <rect x="10.5" y="22" width="27" height="18" rx="5.5" fill="currentColor"/>
+              <circle cx="24" cy="29.5" r="2.8" fill="#f5b221"/>
+              <rect x="22.75" y="30.5" width="2.5" height="6.2" rx="1.25" fill="#f5b221"/>
+            </svg>
+          </div>
           <div class="lock-hint" id="lock-hint">Add meg a kódot a folytatáshoz.</div>
           <div class="pin-dots" id="lock-dots"></div>
           <div class="keypad" id="lock-keypad"></div>
