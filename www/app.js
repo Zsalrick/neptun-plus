@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.130";
+const APP_VERSION = "v0.131";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2095,9 +2095,17 @@ async function runApiDiagnostics() {
       try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); } catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
     }
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
-  finally { hideBusy(); }
-  if (cancelled) { toast("Megszakítva"); return; }
-  const json = JSON.stringify({ base: apiSession && apiSession.base, results }, null, 2);
+  // Finance discovery: run the in-page sniff (logs in, navigates Menü → Pénzügyek + sub-tabs, and
+  // records the real finance XHRs via the network hook). This is the reliable way to find the endpoints.
+  let sniff = null;
+  if (!cancelled) {
+    $("busy-text").textContent = "Pénzügyek felderítése…";
+    try { sniff = await neptunSniffApi(); } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("sniff: " + (e && e.message ? e.message : e)); }
+  }
+  hideBusy();
+  if (cancelled && !results.length) { toast("Megszakítva"); return; }
+  const finance = sniff ? { base: sniff.base, direct: sniff.direct, calls: sniff.calls, storage: sniff.storage } : null;
+  const json = JSON.stringify({ base: apiSession && apiSession.base, results, finance }, null, 2);
   let fileMsg = "";
   try {
     const fs = FSP();
@@ -2107,7 +2115,9 @@ async function runApiDiagnostics() {
   } catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) { /* ignore */ }
   const summary = results.map((r) => `${esc(r.ep.split("?")[0])} → ${r.error ? "HIBA" : r.status}`).join("<br>");
-  await ask({ title: "API diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
+  const finCount = finance && finance.calls ? finance.calls.length : 0;
+  const finMsg = finance ? `<br><b>Pénzügy:</b> ${finCount} rögzített hálózati hívás` : "<br><b>Pénzügy:</b> nem sikerült felderíteni";
+  await ask({ title: "API diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.${finMsg}<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
