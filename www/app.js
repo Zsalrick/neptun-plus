@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.140";
+const APP_VERSION = "v0.141";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2061,17 +2061,18 @@ async function discoverFinanceEndpoints(base) {
   if (!root) return [];
   const EP = /[A-Z][A-Za-z0-9]{2,}\/(?:Get|Post|Create|Update|Delete|Save|List|Download|Sign|Pay|Add|Remove)[A-Za-z0-9]+/g;
   const FIN = /financ|invoice|payed|paid|payment|imposit|transacti|bonus|scholar|collective|bankaccount|d[ií]j|p[eé]nz|sz[aá]ml/i;
-  const found = new Set(), files = new Set(), fetched = new Set();
+  const found = new Set(), all = new Set(), files = new Set(), fetched = new Set(), dbg = [];
   const toUrl = (f) => f.indexOf("http") === 0 ? f : root + f.replace(/^\//, "");
   const addFiles = (txt) => { (txt.match(/[A-Za-z0-9._-]+\.js/g) || []).forEach((f) => files.add(f)); };
-  const grep = (txt) => { (txt.match(EP) || []).forEach((m) => { if (FIN.test(m)) found.add(m); }); };
-  try { const idx = await fetchText(root); addFiles(idx); } catch (e) {}
+  const grep = (txt) => { (txt.match(EP) || []).forEach((m) => { all.add(m); if (FIN.test(m)) found.add(m); }); };
+  let idxLen = 0; try { const idx = await fetchText(root); idxLen = idx.length; addFiles(idx); } catch (e) { dbg.push({ f: "(index)", err: String(e && e.message || e) }); }
+  dbg.push({ f: "(index)", len: idxLen, foundFiles: files.size });
   // pass 1: the entry bundles (also reveal the lazy-chunk filenames)
-  for (const f of Array.from(files).slice(0, 12)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); grep(js); addFiles(js); } catch (e) {} }
+  for (const f of Array.from(files).slice(0, 12)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); dbg.push({ f, len: js.length }); grep(js); addFiles(js); } catch (e) { dbg.push({ f, err: String(e && e.message || e) }); } }
   // pass 2: the remaining (lazy) chunks
   const rest = Array.from(files).filter((f) => !fetched.has(toUrl(f)));
-  for (const f of rest.slice(0, 45)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); grep(js); } catch (e) {} }
-  return Array.from(found);
+  for (const f of rest.slice(0, 45)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); if (js.length) dbg.push({ f, len: js.length }); grep(js); } catch (e) {} }
+  return { found: Array.from(found), debug: { root, fileCount: files.size, fetched: dbg.slice(0, 60), sample: Array.from(all).slice(0, 60) } };
 }
 async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
@@ -2087,9 +2088,12 @@ async function runApiDiagnostics() {
   try {
     const sess = await getApiSession(true);
     if (!sess || !sess.token) { hideBusy(); await ask({ title: "Pénzügy diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
-    let termId = "";
+    let termId = "", termText = "";
     try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; termId = (t && t.actualTermId) || ""; } catch (e) {}
+    try { const tr = await apiGet(sess, "RegistrySheet/GetStudentTrainingTerms"); const t0 = tr && tr.data && tr.data.data && tr.data.data[0]; termText = (t0 && t0.text) || ""; } catch (e) {}
     const page = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.pageSize": 50, "sortAndPage.term": termId };
+    const pageNoTerm = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50 };
+    const pageTermText = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.term": termText };
     // Finance endpoints confirmed from the earlier capture (FinancialDataDashboard = Áttekintés) plus
     // FinancialBonuses (Ösztöndíjak). Direct GET via CapacitorHttp — no InAppBrowser, so no setTimeout
     // freeze / hang. Unknown-tab guesses included as best-effort (a 400/404 is just informative).
@@ -2098,10 +2102,8 @@ async function runApiDiagnostics() {
       ["FinancialDataDashboard/GetCollectiveInvoices", null],
       ["FinancialDataDashboard/GetDashboardImpostionBlockLeft", null],
       ["FinancialDataDashboard/GetDashboardImpostionBlockRight", null],
-      ["FinancialBonuses/GetStudentFinancialBonuses", page],
-      ["Payment/GetToBePayedItems", page],
-      ["Invoice/GetInvoices", page],
-      ["Transaction/GetTransactions", page],
+      ["FinancialBonuses/GetStudentFinancialBonuses", pageNoTerm],
+      ["FinancialBonuses/GetStudentFinancialBonuses", pageTermText],
     ];
     for (const [ep, params] of eps) {
       $("busy-text").textContent = ep.split("/").pop() + "…";
@@ -2110,8 +2112,8 @@ async function runApiDiagnostics() {
     }
     // Discover any other finance endpoints from the app's JS, then probe each (no params, then paged).
     $("busy-text").textContent = "Végpontok felderítése…";
-    let discovered = [];
-    try { discovered = await discoverFinanceEndpoints(sess.base); } catch (e) { dbg("discover: " + (e && e.message ? e.message : e)); }
+    let discovered = [], discDebug = null;
+    try { const disc = await discoverFinanceEndpoints(sess.base); discovered = disc.found; discDebug = disc.debug; } catch (e) { dbg("discover: " + (e && e.message ? e.message : e)); }
     const known = new Set(results.map((r) => r.ep));
     for (const ep of discovered) {
       if (known.has(ep)) continue; known.add(ep);
@@ -2122,7 +2124,7 @@ async function runApiDiagnostics() {
         results.push({ ep, discovered: true, status: r.status, data: r.data });
       } catch (e) { results.push({ ep, discovered: true, error: String(e && e.message || e) }); }
     }
-    results.push({ discoveredEndpoints: discovered });
+    results.push({ discoveredEndpoints: discovered, _debug: discDebug });
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("finance diag: " + (e && e.message ? e.message : e)); }
   hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
