@@ -183,6 +183,11 @@ button.row:active { background: var(--surface-2); }
 #home-profile.has-multi::after { content: ""; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--brand-plus); border: 2px solid var(--bg); }
 
+/* Account save/cancel bar (anchored to the bottom of the sub-screen) */
+.save-bar { display: flex; gap: 10px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--bg); }
+.save-bar .btn { flex: 1; width: auto; }
+
 /* Credit page */
 .cred-hero { padding: 28px 20px 22px; text-align: center; box-shadow: var(--shadow-sm); }
 .ch-num { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-weight: 700; font-size: 46px; line-height: 1; letter-spacing: -.01em; }
@@ -707,44 +712,45 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
   transition: opacity .38s ease;
 }
 .boot.boot--hide { opacity: 0; pointer-events: none; }
-.boot-mark {
-  color: var(--ink);
-  animation: boot-breathe 3s ease-in-out 1.15s infinite;
+/* Animated wordmark: the Kredit+ logo reveals letter by letter, the gold + pops last. */
+.boot-logo {
+  font-family: var(--font-brand); font-weight: 800; font-size: 46px; letter-spacing: -.02em;
+  color: var(--ink); display: flex; line-height: 1;
 }
-.boot-mark svg { display: block; overflow: visible; }
-/* K strokes draw themselves on, one after another */
-.boot-mark .k-stroke {
-  stroke-dasharray: 100; stroke-dashoffset: 100;
-  animation: boot-draw .5s ease forwards;
+.boot-logo .bl {
+  display: inline-block; opacity: 0; transform: translateY(.55em);
+  animation: boot-letter .55s cubic-bezier(.2,.85,.25,1) forwards;
 }
-.boot-mark .k-stroke:nth-child(1) { animation-delay: .06s; }
-.boot-mark .k-stroke:nth-child(2) { animation-delay: .30s; }
-.boot-mark .k-stroke:nth-child(3) { animation-delay: .54s; }
-/* the gold plus pops in once the K is drawn */
-.boot-mark .plus-mark {
-  transform-origin: 682px 394px; transform: scale(0); opacity: 0;
-  animation: boot-pop .5s cubic-bezier(.34,1.56,.64,1) .82s forwards;
+.boot-logo .bl:nth-child(1) { animation-delay: .10s; }
+.boot-logo .bl:nth-child(2) { animation-delay: .17s; }
+.boot-logo .bl:nth-child(3) { animation-delay: .24s; }
+.boot-logo .bl:nth-child(4) { animation-delay: .31s; }
+.boot-logo .bl:nth-child(5) { animation-delay: .38s; }
+.boot-logo .bl:nth-child(6) { animation-delay: .45s; }
+.boot-logo .bl-plus {
+  /* overrides .bl's boot-letter animation, so reveal opacity here (scale handles the pop) */
+  color: var(--brand-plus); opacity: 1; transform: scale(0); transform-origin: 50% 62%;
+  animation: boot-plus .6s cubic-bezier(.34,1.56,.64,1) .60s forwards,
+             boot-plus-glow 2.6s ease-in-out 1.3s infinite;
 }
-.boot-name {
-  font-size: 21px; font-weight: 650; letter-spacing: .01em; color: var(--ink);
-  opacity: 0; animation: boot-rise .5s ease .95s forwards;
+/* gold hairline sweeps out under the logo */
+.boot-rule { width: 132px; height: 2px; margin-top: 4px; display: flex; justify-content: center; }
+.boot-rule i {
+  display: block; height: 100%; width: 0; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand-plus), transparent);
+  animation: boot-sweep .6s ease .78s forwards;
 }
-.boot-bar {
-  position: relative; width: 148px; height: 3px; border-radius: 3px;
-  background: rgba(236,237,238,.12); overflow: hidden; margin-top: 4px;
-}
-.boot-bar span {
-  position: absolute; top: 0; left: 0; height: 100%; width: 40%; border-radius: 3px;
-  background: var(--accent); animation: boot-slide 1.15s ease-in-out infinite;
+.boot-byline {
+  font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--ink-3);
+  opacity: 0; animation: boot-rise .5s ease .98s forwards;
 }
 .boot-text {
-  font-size: 13px; color: var(--ink-2); letter-spacing: .02em; min-height: 1em;
+  font-size: 12px; color: var(--ink-3); letter-spacing: .04em; min-height: 1em;
+  opacity: 0; animation: boot-rise .5s ease 1.12s forwards;
 }
-@keyframes boot-draw  { to { stroke-dashoffset: 0; } }
-@keyframes boot-pop   { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes boot-letter { to { opacity: 1; transform: none; } }
+@keyframes boot-plus { 0% { transform: scale(0); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+@keyframes boot-plus-glow { 0%,100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--brand-plus) 70%, transparent)); } }
+@keyframes boot-sweep { to { width: 132px; } }
 @keyframes boot-rise  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@keyframes boot-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
-@keyframes boot-slide {
-  0%   { left: -40%; }
-  100% { left: 100%; }
-}

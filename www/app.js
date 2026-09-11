@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.123";
+const APP_VERSION = "v0.124";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -52,7 +52,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -63,6 +63,7 @@ function defaultState() {
     servers: UNIVERSITIES[0].servers.map((s, i) => ({ id: "u" + i, label: s.label, url: s.url })),
     activeServerId: "u0",
     username: "", password: "",
+    neptunCode: "", // immutable Neptun code (read-only); the login name (username) can differ / be custom
     no2fa: false,
     totp: null,
     pinHash: null,
@@ -311,7 +312,7 @@ function obStepValid() {
     if (obSel === "custom") return !!$("ob-custom-url").value.trim();
     return !!obSel;
   }
-  if (obStep === 2) return validCode(state.username) && !!state.password;
+  if (obStep === 2) return !!state.username && !!state.password;
   if (obStep === 3) return obPinDone;
   if (obStep === 4) return true; // biometrics is optional
   if (obStep === 5) return hasTotp() || state.no2fa;
@@ -430,8 +431,8 @@ function initOnboarding() {
   $("ob-uni-custom").onclick = () => { obSel = "custom"; $("ob-custom-wrap").classList.remove("hidden"); renderObUni(); updateObFooter(); };
   $("ob-custom-url").addEventListener("input", updateObFooter);
   $("ob-username").addEventListener("input", (e) => {
-    const v = normCode(e.target.value); e.target.value = v; state.username = v; saveState();
-    $("ob-username-err").hidden = v.length === 0 || validCode(v);
+    const v = e.target.value.slice(0, 255); e.target.value = v; state.username = v; saveState();
+    $("ob-username-err").hidden = v.length > 0;
     updateObFooter();
   });
   $("ob-password").addEventListener("input", (e) => { state.password = e.target.value; saveState(); updateObFooter(); });
@@ -470,8 +471,22 @@ function pushScreen(id) {
   showTab(id, 1); // slide in from the right (native push)
 }
 function popScreen() {
+  const cur = document.querySelector(".tabscreen.active");
+  if (cur && cur.id === "tab-set-account" && accountDirty()) { promptSaveAccount(); return; } // guard unsaved edits
   const prev = navStack.pop() || lastMainTab;
   showTab(prev, -1); // slide back to the left
+}
+// Leaving the account page with unsaved changes → ask to save or discard, then leave.
+async function promptSaveAccount() {
+  const u = $("in-username").value.slice(0, 255);
+  const rows = [];
+  if (u !== (state.username || "")) rows.push(esc(state.username || "—") + " → " + esc(u || "—"));
+  if ($("in-password").value !== (state.password || "")) rows.push("jelszó módosítva");
+  const ok = await ask({ title: "Mented a változásokat?", okText: "Mentés", cancelText: "Elvetés", body: rows.join("<br>") });
+  if (ok) { if (!saveAccount()) return; } // save failed (empty) → stay
+  else { $("in-username").value = state.username || ""; $("in-password").value = state.password || ""; $("in-username-err").hidden = true; }
+  refreshAccountBar();
+  const prev = navStack.pop() || lastMainTab; showTab(prev, -1);
 }
 function renderForTab(id) {
   if (id === "tab-home") renderHome();
@@ -1578,6 +1593,20 @@ function apiSessionValid(marginMs) {
   const m = marginMs == null ? 30000 : marginMs;
   return apiSession.exp ? (Date.now() < apiSession.exp - m) : ((Date.now() - apiSession.at) < 4 * 60 * 1000);
 }
+// Pull the immutable Neptun code out of the JWT. The login name can be customised (up to 255 chars),
+// so it's not a stable identity — the code is. ponytail: claim name isn't confirmed, so match the
+// classic 6-char Neptun-code shape conservatively (prefer a code-ish claim key); returns "" if unsure,
+// and nothing is shown. Confirm the exact claim via API diagnostics if a real account comes back blank.
+function tokenNeptunCode(tok) {
+  try {
+    const p = JSON.parse(atob(String(tok).split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const is6 = (v) => /^[A-Za-z0-9]{6}$/.test(String(v));
+    const keys = Object.keys(p);
+    const named = keys.find((k) => /neptun|code|kod|login|nnr/i.test(k) && is6(p[k]));
+    const k = named || keys.find((x) => is6(p[x]));
+    return k ? String(p[k]).toUpperCase() : "";
+  } catch (e) { return ""; }
+}
 // Grab { token, base } by logging in (browser) and reading sessionStorage.access_token.
 function neptunGetSession() { return runNeptunFlow(buildTokenGrabScript, "__tok"); }
 function buildTokenGrabScript(username, password, code) {
@@ -1601,7 +1630,11 @@ function buildTokenGrabScript(username, password, code) {
 async function getApiSession(force) {
   if (!force && apiSessionValid()) return apiSession;
   const res = await neptunGetSession();
-  if (res && res.token) { apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) }; onSessionChanged(); return apiSession; }
+  if (res && res.token) {
+    apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
+    const nc = tokenNeptunCode(res.token); if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
+    onSessionChanged(); return apiSession;
+  }
   return null;
 }
 // ---------- keep a warm Neptun session (no manual re-login) ----------
@@ -2640,7 +2673,9 @@ $("detail-close").onclick = () => $("detail-sheet").classList.add("hidden");
 // =====================================================================
 function syncSettings() {
   $("in-username").value = state.username || "";
-  $("in-username-err").hidden = !state.username || validCode(state.username);
+  $("in-username-err").hidden = !!state.username;
+  { const cf = $("in-code-field"), ci = $("in-code"); if (cf && ci) { if (state.neptunCode) { ci.value = state.neptunCode; cf.hidden = false; } else cf.hidden = true; } }
+  refreshAccountBar();
   updateIcsStatus();
   $("in-password").value = state.password || "";
   $("cur-uni").textContent = state.university || "Nincs kiválasztva";
@@ -2796,11 +2831,31 @@ $("btn-check-update").onclick = async () => {
   else if (res && res.ok) toast("Az alkalmazás naprakész (" + APP_VERSION + ").");
   else toast("Frissítés nem sikerült: " + ((res && (res.error || res.reason)) || "ismeretlen"));
 };
+// Account page uses STAGED editing: inputs don't auto-save; a Save/Cancel bar commits, and leaving
+// with unsaved edits prompts. (The onboarding fields still auto-save — different flow.)
+function accountDirty() {
+  const u = $("in-username"), p = $("in-password");
+  if (!u || !p) return false;
+  return u.value !== (state.username || "") || p.value !== (state.password || "");
+}
+function refreshAccountBar() { const b = $("account-savebar"); if (b) b.hidden = !accountDirty(); }
+function saveAccount() {
+  const u = $("in-username").value.slice(0, 255);
+  if (!u) { toast("Az azonosító nem lehet üres."); return false; }
+  const old = state.username || "";
+  state.username = u; state.password = $("in-password").value; saveState();
+  renderHome(); refreshAccountBar();
+  toast(old && old !== u ? "Azonosító mentve: " + old + " → " + u : "Mentve.");
+  return true;
+}
 $("in-username").addEventListener("input", (e) => {
-  const v = normCode(e.target.value); e.target.value = v; state.username = v; saveState();
-  $("in-username-err").hidden = v.length === 0 || validCode(v);
+  e.target.value = e.target.value.slice(0, 255);
+  $("in-username-err").hidden = e.target.value.length > 0;
+  refreshAccountBar();
 });
-$("in-password").addEventListener("input", (e) => { state.password = e.target.value; saveState(); });
+$("in-password").addEventListener("input", refreshAccountBar);
+{ const s = $("account-save"); if (s) s.onclick = () => saveAccount(); }
+{ const c = $("account-cancel"); if (c) c.onclick = () => { $("in-username").value = state.username || ""; $("in-password").value = state.password || ""; $("in-username-err").hidden = true; refreshAccountBar(); }; }
 $("btn-show-pass").onclick = async () => { const el = $("in-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuthFor("sensitive"))) return; el.type = "text"; };
 
 function renderServersSettings() {
@@ -3293,6 +3348,6 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     setTimeout(maybeOfferDataSync, 1600); // offer the data read if something is still missing
     if (state.setupComplete) { setTimeout(dailyBackup, 2500); setTimeout(() => warmSession("start"), 1200); } // warm the Neptun session so login/reads are instant
   }
-  // Keep the loader visible long enough to read (min ~700ms), then reveal the app/login.
-  setTimeout(hideBoot, Math.max(0, 700 - (Date.now() - bootTs)));
+  // Keep the splash up long enough for the logo animation to play (min ~1800ms), then reveal the app/login.
+  setTimeout(hideBoot, Math.max(0, 1800 - (Date.now() - bootTs)));
 })();

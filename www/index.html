@@ -12,21 +12,9 @@
 <body>
   <!-- Boot / loading screen: shown on cold start while checking for an OTA update, before login. -->
   <div id="boot" class="boot">
-    <div class="boot-mark" aria-hidden="true">
-      <svg viewBox="0 0 1024 1024" width="96" height="96">
-        <g fill="none" stroke="currentColor" stroke-width="66" stroke-linecap="round" stroke-linejoin="round">
-          <path class="k-stroke" pathLength="100" d="M372 344 L372 680"/>
-          <path class="k-stroke" pathLength="100" d="M372 516 L588 344"/>
-          <path class="k-stroke" pathLength="100" d="M372 516 L588 680"/>
-        </g>
-        <g class="plus-mark" fill="#f5b221">
-          <rect x="636" y="380" width="92" height="28" rx="14"/>
-          <rect x="668" y="348" width="28" height="92" rx="14"/>
-        </g>
-      </svg>
-    </div>
-    <div class="boot-name">Kredit<span class="plus">+</span></div>
-    <div class="boot-bar"><span></span></div>
+    <div class="boot-logo" aria-label="Kredit+"><span class="bl">K</span><span class="bl">r</span><span class="bl">e</span><span class="bl">d</span><span class="bl">i</span><span class="bl">t</span><span class="bl bl-plus">+</span></div>
+    <div class="boot-rule"><i></i></div>
+    <div class="boot-byline">Kiss Ádám E.V.</div>
     <div class="boot-text" id="boot-text">Indítás</div>
   </div>
 
@@ -95,8 +83,8 @@
               <h1 class="ob-title">Belépési adatok</h1>
               <p class="ob-sub">A Neptun azonosítód és a jelszavad. Csak ezen az eszközön tárolódik.</p>
               <div class="ob-content">
-                <div class="field"><label>Azonosító</label><input class="input" id="ob-username" placeholder="Neptun azonosító" autocomplete="off" autocapitalize="characters" maxlength="6" /></div>
-                <div class="hint err" id="ob-username-err" hidden>A Neptun azonosító pontosan 6 karakter, csak betű és szám.</div>
+                <div class="field"><label>Azonosító</label><input class="input" id="ob-username" placeholder="Neptun azonosító vagy bejelentkezési név" autocomplete="off" maxlength="255" /></div>
+                <div class="hint err" id="ob-username-err" hidden>Add meg a Neptun azonosítód vagy bejelentkezési neved.</div>
                 <div class="field"><label>Jelszó</label>
                   <div class="input-group">
                     <input class="input" id="ob-password" type="password" placeholder="Jelszó" autocomplete="off" />
@@ -320,8 +308,12 @@
               </header>
               <div class="scroll">
                 <div class="card"><div class="card-pad">
-                  <div class="field"><label>Azonosító</label><input class="input" id="in-username" placeholder="Neptun azonosító" autocomplete="off" autocapitalize="characters" maxlength="6" />
-                    <div class="hint err" id="in-username-err" hidden>A Neptun azonosító pontosan 6 karakter, csak betű és szám.</div>
+                  <div class="field" id="in-code-field" hidden><label>Neptun kód</label>
+                    <input class="input mono" id="in-code" readonly />
+                    <div class="hint" style="margin-top:6px">Az állandó Neptun kódod. Nem módosítható.</div>
+                  </div>
+                  <div class="field"><label>Azonosító / bejelentkezési név</label><input class="input" id="in-username" placeholder="Neptun azonosító vagy bejelentkezési név" autocomplete="off" maxlength="255" />
+                    <div class="hint err" id="in-username-err" hidden>Az azonosító nem lehet üres.</div>
                   </div>
                   <div class="field"><label>Jelszó</label>
                     <div class="input-group">
@@ -330,6 +322,10 @@
                     </div>
                   </div>
                 </div></div>
+              </div>
+              <div class="save-bar" id="account-savebar" hidden>
+                <button class="btn outline" id="account-cancel" type="button">Mégse</button>
+                <button class="btn primary" id="account-save" type="button">Mentés</button>
               </div>
             </section>
 
