@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.174";
+const APP_VERSION = "v0.175";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4184,27 +4184,33 @@ function playBootChime() {
   try {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     const ctx = new AC(); if (ctx.state === "suspended") ctx.resume().catch(() => {});
-    // Warm master low-pass → rounded, ASMR-soft (no harsh highs).
-    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900; lp.Q.value = 0.4;
-    const master = ctx.createGain(); master.gain.value = 0.9;
-    lp.connect(master); master.connect(ctx.destination);
+    const master = ctx.createGain(); master.gain.value = 0.95; master.connect(ctx.destination);
+    // short white-noise buffer reused for every "crack"
+    const nb = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.12), ctx.sampleRate);
+    const ch = nb.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
     const t0 = ctx.currentTime + 0.03;
-    const note = (freq, at, dur, peak) => {
-      const o = ctx.createOscillator(), sub = ctx.createOscillator(), g = ctx.createGain(); const s = t0 + at;
-      o.type = "sine"; o.frequency.value = freq;
-      sub.type = "sine"; sub.frequency.value = freq / 2; // gentle sub-octave for body/depth
-      const sg = ctx.createGain(); sg.gain.value = 0.5; sub.connect(sg); sg.connect(g);
-      g.gain.setValueAtTime(0.0001, s);
-      g.gain.linearRampToValueAtTime(peak, s + 0.05);        // soft attack
-      g.gain.exponentialRampToValueAtTime(0.0001, s + dur);  // long, gentle release
-      o.connect(g); g.connect(lp);
-      o.start(s); sub.start(s); o.stop(s + dur + 0.05); sub.stop(s + dur + 0.05);
+    // One "chocolate snap": a fast bandpassed noise crack + a quick woody body pitch-drop.
+    const snap = (at, bpFreq, bodyFreq, gain) => {
+      const s = t0 + at;
+      const src = ctx.createBufferSource(); src.buffer = nb;
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = bpFreq; bp.Q.value = 1.1;
+      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 700;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.0001, s);
+      ng.gain.linearRampToValueAtTime(gain, s + 0.001);              // instant crack
+      ng.gain.exponentialRampToValueAtTime(0.0001, s + 0.075);        // crisp short tail
+      src.connect(bp); bp.connect(hp); hp.connect(ng); ng.connect(master);
+      src.start(s); src.stop(s + 0.12);
+      const o = ctx.createOscillator(), og = ctx.createGain();        // woody resonance under the crack
+      o.type = "triangle"; o.frequency.setValueAtTime(bodyFreq, s); o.frequency.exponentialRampToValueAtTime(bodyFreq * 0.45, s + 0.06);
+      og.gain.setValueAtTime(0.0001, s); og.gain.linearRampToValueAtTime(gain * 0.7, s + 0.003); og.gain.exponentialRampToValueAtTime(0.0001, s + 0.11);
+      o.connect(og); og.connect(master); o.start(s); o.stop(s + 0.13);
     };
-    // Deep, mellow pentatonic for the letters K r e d i t (CSS delays .10–.45s): A2 C3 D3 E3 G3 A3
-    const notes = [110.0, 130.81, 146.83, 164.81, 196.0, 220.0], times = [0.10, 0.17, 0.24, 0.31, 0.38, 0.45];
-    notes.forEach((f, i) => note(f, times[i], 0.7, 0.22));
-    // "+" — a soft warm low chord (A2 + E3), not a bright sparkle
-    [110.0, 164.81].forEach((f, i) => note(f, 0.60 + i * 0.01, 1.1, 0.2));
+    // A crisp snap per letter K r e d i t (CSS delays .10–.45s), slight variation so it feels organic.
+    const times = [0.10, 0.17, 0.24, 0.31, 0.38, 0.45];
+    const bp = [2600, 2400, 2900, 2500, 3000, 2700], body = [330, 300, 360, 320, 380, 340];
+    times.forEach((t, i) => snap(t, bp[i], body[i], 0.5));
+    snap(0.60, 2100, 240, 0.75); // the "+" — the big satisfying break
   } catch (e) {}
 }
 function bootSoundOn() { return state.bootSound !== false; } // default on
