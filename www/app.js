@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.134";
+const APP_VERSION = "v0.135";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2026,18 +2026,10 @@ function buildApiSniffScript(username, password, code) {
   }
   async function runDirect(){
     try{
-      log("Token megvan — közvetlen lekérések…");
-      var direct=[];
-      direct.push(await hit("advancement/creditprogress"));
-      var tpl=await hit("Advancement/GetStudentCurriculumTemplates"); direct.push(tpl);
-      direct.push(await hit("Curriculum/GetOptionalSubjectsSummary"));
-      // Pull the curriculum + advancement ids out of the templates response, then fetch the subject list.
-      var ctid="", arid=""; try{ var tb=tpl.body||""; var m1=tb.match(/"curriculumTemplateId":(\\d+)/); if(m1)ctid=m1[1]; var m2=tb.match(/"advancementRowId":"([^"]+)"/); if(m2)arid=m2[1]; }catch(_){}
-      log("Képzés id="+(ctid||"?")+" adv="+(arid?arid.slice(0,8):"?"));
-      if(ctid){ var q="Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate?curriculumTemplateId="+ctid+"&needSubjectGroups=true"+(arid?"&advancementRowId="+arid:""); direct.push(await hit(q)); }
-      log("Pénzügy navigáció…");
+      log("Bejelentkezve — Pénzügyek felderítése…");
+      var direct=[]; // finance-only: no study probes, straight to the finance navigation
       await navFinance(); // triggers the real finance XHRs → captured by the hook (collect())
-      log("Kész — közvetlen: "+direct.length);
+      log("Kész — rögzített hívások: "+((window.__apiCalls||[]).length));
       deliver({origin:location.origin, base:document.baseURI, bearer: window.__bearer?("["+String(window.__bearer).length+" kar.]"):"nincs", direct:direct, calls:collect(), storage:tokenKeys()});
     }catch(err){ log("HIBA: "+String(err)); deliver({calls:collect(),storage:tokenKeys()}); }
   }
@@ -2052,60 +2044,20 @@ async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
-  const ok = await ask({ title: "API diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, lekéri a tanulmányi végpontokat, majd megnyitja a <b>Pénzügyek</b> menüt, és rögzíti az ott lefutó hálózati hívásokat + a <b>teljes JSON választ</b> (Dokumentumok/neptunplus). Felderítő eszköz a pénzügyi végpontokhoz." });
+  const ok = await ask({ title: "Pénzügy diagnosztika", okText: "Indítás", cancelText: "Mégse",
+    body: "Bejelentkezik, megnyitja a <b>Pénzügyek</b> menüt, és rögzíti az ott lefutó hálózati hívásokat + a <b>teljes JSON választ</b> (Dokumentumok/neptunplus). Csak a pénzügyi részt vizsgálja, ezért gyors." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
-  let cancelled = false; const results = [];
-  try {
-    const sess = await getApiSession(true); // fresh token
-    if (!sess || !sess.token) { hideBusy(); await ask({ title: "API diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
-    $("busy-text").textContent = "Végpontok lekérése…";
-    // No-param endpoints: credit, curriculum templates, free-subjects summary, trainings, terms, calendar links.
-    const eps = ["advancement/creditprogress", "Advancement/GetStudentCurriculumTemplates", "Curriculum/GetOptionalSubjectsSummary", "MyTrainings", "RegistrySheet/GetStudentTrainingTerms", "Calendar/GetLinksForCalendarExport"];
-    for (const ep of eps) { $("busy-text").textContent = ep.split("/").pop() + "…"; try { const r = await apiGet(sess, ep); results.push({ ep, status: r.status, data: r.data }); } catch (e) { results.push({ ep, error: String(e && e.message || e) }); } }
-    const tpl = results.find((r) => r.ep.indexOf("CurriculumTemplates") >= 0);
-    const row = tpl && tpl.data && tpl.data.data && tpl.data.data[0];
-    // Extract a term id from the terms list (field name unknown yet — try common ones, else first guid).
-    const termsRes = results.find((r) => r.ep.indexOf("GetStudentTrainingTerms") >= 0);
-    const terms = termsRes && termsRes.data && termsRes.data.data;
-    let termId = null;
-    if (Array.isArray(terms) && terms.length) {
-      const t0 = terms[0];
-      termId = t0.termId || t0.id || t0.studentTrainingTermId || t0.trainingTermId || t0.termGuid ||
-        Object.values(t0).find((v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(v)) || null;
-    }
-    const candidates = [];
-    if (row && row.advancementRowId) {
-      const ar = row.advancementRowId;
-      candidates.push(["Curriculum/GetCurriculumSubjectGroupAndSubjectsData", { parentAdvancementRowId: ar }]);
-      candidates.push(["Curriculum/GetOptionalSubjectsWithoutCurriculum", { advancementRowId: ar }]);
-    }
-    if (termId) {
-      // enrolled ("felvett") subjects for a term — probe a few param shapes to see which binds.
-      candidates.push(["TakenSubjects/GetTakenSubjects", { termId }]);
-      candidates.push(["TakenSubjects/GetTakenSubjects", { "request.termId": termId }]);
-      candidates.push(["RegistrySheet/GetStudentTakenSubjectsByTerm", { termId }]);
-      candidates.push(["RegistrySheet/GetStudentTakenSubjectsByTerm", { "request.termId": termId }]);
-    }
-    for (const [ep, params] of candidates) {
-      if (Object.values(params).some((v) => v === undefined || v === null)) continue;
-      $("busy-text").textContent = ep.split("/")[1] + "…";
-      try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); } catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
-    }
-  } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("HIBA: " + (e && e.message ? e.message : e)); }
-  // Finance discovery: run the in-page sniff (logs in, navigates Menü → Pénzügyek + sub-tabs, and
-  // records the real finance XHRs via the network hook). This is the reliable way to find the endpoints.
+  let cancelled = false;
+  // Finance-only: the in-page sniff logs in, navigates Menü → Pénzügyek + sub-tabs, and records the
+  // real finance XHRs via the network hook. No study probes → fast, can't stall on other endpoints.
   let sniff = null;
-  if (!cancelled) {
-    $("busy-text").textContent = "Pénzügyek felderítése…";
-    try { sniff = await neptunSniffApi(); } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("sniff: " + (e && e.message ? e.message : e)); }
-  }
+  try { sniff = await neptunSniffApi(); } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("sniff: " + (e && e.message ? e.message : e)); }
   hideBusy();
-  if (cancelled && !results.length) { toast("Megszakítva"); return; }
-  const finance = sniff ? { base: sniff.base, direct: sniff.direct, calls: sniff.calls, storage: sniff.storage, log: sniff.log } : null;
-  const json = JSON.stringify({ base: apiSession && apiSession.base, results, finance }, null, 2);
+  if (cancelled && !sniff) { toast("Megszakítva"); return; }
+  const finance = sniff ? { base: sniff.base, calls: sniff.calls, storage: sniff.storage, log: sniff.log } : null;
+  const json = JSON.stringify({ finance }, null, 2);
   let fileMsg = "";
   try {
     const fs = FSP();
@@ -2114,10 +2066,10 @@ async function runApiDiagnostics() {
       fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(name) + "</b>"; }
   } catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) { /* ignore */ }
-  const summary = results.map((r) => `${esc(r.ep.split("?")[0])} → ${r.error ? "HIBA" : r.status}`).join("<br>");
   const finCount = finance && finance.calls ? finance.calls.length : 0;
-  const finMsg = finance ? `<br><b>Pénzügy:</b> ${finCount} rögzített hálózati hívás` : "<br><b>Pénzügy:</b> nem sikerült felderíteni";
-  await ask({ title: "API diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.${finMsg}<br><br>${summary}` });
+  const eps = finance && finance.calls ? Array.from(new Set(finance.calls.map((c) => String(c.url).split("/api/")[1] || c.url).map((u) => u.split("?")[0]))).slice(0, 20).map(esc).join("<br>") : "";
+  const finMsg = finance ? `<b>Pénzügy:</b> ${finCount} rögzített hívás${eps ? "<br>" + eps : ""}` : "<b>Pénzügy:</b> nem sikerült felderíteni";
+  await ask({ title: "Pénzügy diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${finMsg}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
