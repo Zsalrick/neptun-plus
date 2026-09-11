@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.167";
+const APP_VERSION = "v0.168";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2802,12 +2802,19 @@ async function apiSendReply(messageId, text, postId, fileIds) {
 // description} → {guid}; FileUp multipart {chunkFile, tempFileGUID} per 1MB chunk; FileUpEnd {tempFileGUID}.
 // The multipart POST uses fetch (CapacitorHttp intercepts fetch → routes native, no CORS).
 const UP_CHUNK = 1048576;
+let msgDocTypeId = ""; // Neptun's allowed documentation type for a new message attachment (server constant)
+async function getMsgDocTypeId(sess) {
+  if (msgDocTypeId) return msgDocTypeId;
+  try { const r = await apiGet(sess, "Message/GetDocumentationsTypeIds"); const d = r && r.data && r.data.data; msgDocTypeId = (d && d.allowedDocumentationTypeForNewFile) || ""; } catch (e) {}
+  return msgDocTypeId;
+}
 async function apiUploadFile(file) {
   const sess = await getApiSession();
   if (!sess || !sess.token) throw new Error("nincs munkamenet");
   const auth = "Bearer " + sess.token, base = sess.base;
+  const docType = await getMsgDocTypeId(sess); // required — null type → server rejects ("nincs engedélyezve")
   const start = { maxChunkSize: UP_CHUNK, chunkCount: Math.max(1, Math.ceil(file.size / UP_CHUNK)),
-    fileName: file.name, fileSize: file.size, documentationTypeId: null, languageId: null, description: "" };
+    fileName: file.name, fileSize: file.size, documentationTypeId: docType || null, languageId: null, description: "" };
   const r0 = await apiPost(sess, "FileHandler/FileUpStart", start);
   let d0 = r0 && r0.data; if (typeof d0 === "string") { try { d0 = JSON.parse(d0); } catch (e) {} }
   // The guid may sit at various depths / names depending on the server; try the common ones, else the
