@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.145";
+const APP_VERSION = "v0.146";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -688,7 +688,7 @@ document.querySelectorAll("[data-back]").forEach((b) => b.onclick = popScreen);
 // Settings hub rows that open a settings sub-page.
 document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pushScreen(b.dataset.setpage));
 { const cr = $("credit-refresh"); if (cr) cr.onclick = () => grabProgress(); }
-{ const fr = $("finance-refresh"); if (fr) fr.onclick = () => openDataSync(["finance"]); }
+{ const fr = $("finance-refresh"); if (fr) fr.onclick = () => refreshFinance(true); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
@@ -985,6 +985,16 @@ function renderFinance() {
   html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(f.fetchedAt))}</div>`;
   host.innerHTML = html;
   host.querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast("Számlaszám másolva"); } catch (e) { toast("Számlaszám: " + b.dataset.copy); } });
+}
+// Refresh ONLY the finance data (topic-scoped) — used by the top-right button and pull-to-refresh.
+async function refreshFinance(viaButton) {
+  if (flowActive) { toast("Már fut egy folyamat, várj."); return; }
+  if (viaButton) showBusy("Pénzügyek frissítése…", true);
+  await totpTick();
+  let r; try { r = await syncFinance(); } catch (e) { r = { ok: false }; }
+  if (viaButton) hideBusy();
+  renderFinance();
+  toast(r && r.ok ? "Pénzügyek frissítve." : "Nem sikerült frissíteni.");
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
@@ -3461,6 +3471,8 @@ renderIcons(document);
 $("version-tag").textContent = APP_VERSION;
 attachPTR($("tt-scroll"), $("tt-ptr"), fetchTimetable);
 attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
+attachPTR($("credit-scroll"), $("credit-ptr"), grabProgress);       // credit-only refresh
+attachPTR($("finance-scroll"), $("finance-ptr"), () => refreshFinance(false)); // finance-only
 if (isNative) { document.body.classList.add("native"); document.querySelectorAll("[data-preview-only]").forEach((el) => el.remove()); }
 initOnboarding();
 
