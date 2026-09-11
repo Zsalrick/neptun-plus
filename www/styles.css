@@ -207,6 +207,22 @@ button.row:active { background: var(--surface-2); }
 .cl-t { flex: 1; }
 .cl-v { font-family: ui-monospace, Consolas, monospace; font-weight: 700; color: var(--ink); }
 
+/* Finance page */
+.fin-acc { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 12px; border: 1px solid var(--line-2);
+  background: var(--surface-2); color: var(--ink-2); border-radius: 9px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; cursor: pointer; }
+.fin-acc:active { background: var(--surface-3); }
+.fin-acc svg.ic { width: 15px; height: 15px; }
+.fin-row2 { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit; padding: 14px 16px; cursor: pointer; }
+.fin-row2 svg.ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+.fin-item { padding: 14px 16px; }
+.fin-item-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.fin-item-n { font-size: 15px; font-weight: 650; }
+.fin-item-v { font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 16px; white-space: nowrap; }
+.fin-tx { align-items: center; }
+.fin-amt { font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 14.5px; white-space: nowrap; color: var(--ink); }
+.fin-amt.pos { color: var(--brand-plus); }
+.fin-amt.neg { color: var(--ink-2); }
+
 /* Profile page rows */
 .pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }
 .pf-check { color: var(--ink); }

@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.144";
+const APP_VERSION = "v0.145";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -508,6 +508,7 @@ function renderForTab(id) {
   else if (id === "tab-more") renderMore();
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-credit") renderCreditPage();
+  else if (id === "tab-finance") renderFinance();
   else if (id === "tab-profile") renderProfilePage();
   else if (id === "tab-settings" || id.indexOf("tab-set-") === 0) syncSettings();
 }
@@ -687,6 +688,7 @@ document.querySelectorAll("[data-back]").forEach((b) => b.onclick = popScreen);
 // Settings hub rows that open a settings sub-page.
 document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pushScreen(b.dataset.setpage));
 { const cr = $("credit-refresh"); if (cr) cr.onclick = () => grabProgress(); }
+{ const fr = $("finance-refresh"); if (fr) fr.onclick = () => openDataSync(["finance"]); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
@@ -863,7 +865,7 @@ const MORE_SERVICES = [
   { id: "credit", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => pushScreen("tab-credit") },
   { id: "dlc", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
-  { id: "finance", label: "Pénzügyek", sub: "Egyenleg és számlák", icon: "wallet", soon: true },
+  { id: "finance", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
   { id: "messages", label: "Üzenetek", sub: "Neptun üzenetek", icon: "mail", soon: true },
   { id: "reg-course", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
   { id: "reg-exam", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
@@ -920,6 +922,69 @@ function renderCreditPage() {
     +     `</div>`
     + `</div>`
     + `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(p.fetchedAt))}</div>`;
+}
+// Full-screen Pénzügyek page. All data comes from state.finance (syncFinance); no Neptun calls here.
+function ftFt(v, cur) { return (v == null ? "—" : Number(v).toLocaleString("hu")) + " " + (cur === "HUF" || !cur ? "Ft" : cur); }
+function ftDate(iso) { if (!iso) return ""; const d = new Date(iso); return TT_MON[d.getMonth()] + " " + d.getDate() + "., " + d.getFullYear(); }
+function renderFinance() {
+  const host = $("finance-scroll"); if (!host) return;
+  const f = state.finance;
+  if (!f || !f.fetchedAt) {
+    host.innerHTML = `<div class="empty" style="flex:none;padding:52px 32px 8px"><div class="empty-ic">${icon("wallet")}</div>`
+      + `<h2>Nincs még pénzügyi adat</h2><p>Olvasd be a Neptunból az egyenleged, tételeid és tranzakcióid.</p>`
+      + `<button class="btn primary narrow" id="fin-read" style="margin-top:4px">${icon("wallet")} Beolvasás</button></div>`;
+    const b = $("fin-read"); if (b) b.onclick = () => openDataSync(["finance"]);
+    return;
+  }
+  const accts = f.accounts || [], main = accts.find((a) => a.currency === "HUF") || accts[0];
+  let html = "";
+  // 1) Balance hero
+  if (main) {
+    html += `<div class="card cred-hero"><div class="ch-num">${ftFt(main.balance, main.currency)}</div>`
+      + `<div class="ch-cap">${esc(main.label || "Egyenleg")}</div>`
+      + (main.account ? `<button class="fin-acc" data-copy="${esc(main.account)}">${esc(main.account)} ${icon("copy")}</button>` : "")
+      + (main.autoPayText ? `<div class="hint center" style="margin:8px 0 0">Automatikus befizetés: ${esc(main.autoPayText)}</div>` : "")
+      + `</div>`;
+    accts.filter((a) => a !== main).forEach((a) => {
+      html += `<button class="card fin-row2" data-copy="${esc(a.account)}"><span class="row-main"><span class="row-title">${ftFt(a.balance, a.currency)}</span><span class="row-sub">${esc(a.label || a.currency)} · ${esc(a.account)}</span></span>${icon("copy")}</button>`;
+    });
+  }
+  // 2) To pay
+  html += `<div class="dash-label">Befizetendő</div>`;
+  if (!(f.toPay || []).length) html += `<div class="dash-empty" style="padding:14px 4px">Nincs befizetendő tételed.</div>`;
+  else f.toPay.forEach((i) => {
+    html += `<div class="card fin-item"><div class="fin-item-h"><span class="fin-item-n">${esc(i.name)}</span><span class="fin-item-v">${ftFt(i.value, i.currency)}</span></div>`
+      + `<div class="row-sub">${[esc(i.subjectName), esc(i.term)].filter(Boolean).join(" · ")}${i.dueDate ? " · határidő " + esc(ftDate(i.dueDate)) : ""}</div></div>`;
+  });
+  // 3) Transactions
+  if ((f.transactions || []).length) {
+    html += `<div class="dash-label">Tranzakciók</div><div class="card">`;
+    f.transactions.forEach((t) => {
+      const pos = t.sign === "+";
+      html += `<div class="row fin-tx"><span class="row-main"><span class="row-title">${esc(t.direction || t.type)}</span><span class="row-sub">${esc(ftDate(t.date))}${t.note ? " · " + esc(t.note) : ""}</span></span>`
+        + `<span class="fin-amt ${pos ? "pos" : "neg"}">${pos ? "+" : "−"}${ftFt(t.value, t.currency)}</span></div>`;
+    });
+    html += `</div>`;
+  }
+  // 4) Scholarships
+  if ((f.scholarships || []).length) {
+    html += `<div class="dash-label">Ösztöndíjak és kifizetések</div><div class="card">`;
+    f.scholarships.forEach((s) => {
+      html += `<div class="row fin-tx"><span class="row-main"><span class="row-title">${esc(s.name)}</span><span class="row-sub">${[esc(s.term), esc(s.status), esc(ftDate(s.date))].filter(Boolean).join(" · ")}</span></span><span class="fin-amt pos">${ftFt(s.amount, s.currency)}</span></div>`;
+    });
+    html += `</div>`;
+  }
+  // 5) Invoices
+  if ((f.invoices || []).length) {
+    html += `<div class="dash-label">Számlák</div><div class="card">`;
+    f.invoices.forEach((v) => {
+      html += `<div class="row fin-tx"><span class="row-main"><span class="row-title">${esc(v.name || v.number)}</span><span class="row-sub">${[esc(v.number), esc(ftDate(v.date))].filter(Boolean).join(" · ")}</span></span><span class="fin-amt">${ftFt(v.value, v.currency)}</span></div>`;
+    });
+    html += `</div>`;
+  }
+  html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(f.fetchedAt))}</div>`;
+  host.innerHTML = html;
+  host.querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast("Számlaszám másolva"); } catch (e) { toast("Számlaszám: " + b.dataset.copy); } });
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
