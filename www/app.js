@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.133";
+const APP_VERSION = "v0.134";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2015,11 +2015,13 @@ function buildApiSniffScript(username, password, code) {
   async function navFinance(){
     try{
       var m=await waitFor(function(){return pick("Menü");},8000); if(m){ m.click(); await sleep(300); }
-      log("Pénzügyek megnyitása"); var pz=await waitFor(function(){return pick("Pénzügyek");},8000); if(pz){ pz.click(); await sleep(1400); } else log("Nincs 'Pénzügyek' menü");
-      // Real Pénzügyek sub-tabs (from the live UI): each click fires that tab's finance XHRs.
+      log("Pénzügyek megnyitása"); var pz=await waitFor(function(){return pick("Pénzügyek");},8000); if(pz){ pz.click(); await sleep(1100); } else log("Nincs 'Pénzügyek' menü");
+      // Real Pénzügyek sub-tabs (from the live UI): each click fires that tab's finance XHRs. We only
+      // click + wait briefly (we don't await the page's own request), so a slow/hanging tab (e.g.
+      // FinancialBonuses) can't stall the whole run — deliver() still fires with what was captured.
       var subs=["Áttekintés","Befizetendő","Számlák","Tranzakciók","Ösztöndíjak és kifizetések","Jóváírások"];
-      for(var i=0;i<subs.length;i++){ var s=pick(subs[i]); if(s){ log("→ "+subs[i]); try{ s.click(); }catch(_){} await sleep(1600); } else log("nincs: "+subs[i]); }
-      await sleep(700);
+      for(var i=0;i<subs.length;i++){ var s=pick(subs[i]); if(s){ log("→ "+subs[i]); try{ s.click(); }catch(_){} await sleep(1000); } else log("nincs: "+subs[i]); }
+      await sleep(500);
     }catch(e){ log("Pénzügy nav hiba: "+String(e)); }
   }
   async function runDirect(){
@@ -2033,9 +2035,6 @@ function buildApiSniffScript(username, password, code) {
       var ctid="", arid=""; try{ var tb=tpl.body||""; var m1=tb.match(/"curriculumTemplateId":(\\d+)/); if(m1)ctid=m1[1]; var m2=tb.match(/"advancementRowId":"([^"]+)"/); if(m2)arid=m2[1]; }catch(_){}
       log("Képzés id="+(ctid||"?")+" adv="+(arid?arid.slice(0,8):"?"));
       if(ctid){ var q="Curriculum/GetSubjectGroupsAndSubjectsByCurriculumTemplate?curriculumTemplateId="+ctid+"&needSubjectGroups=true"+(arid?"&advancementRowId="+arid:""); direct.push(await hit(q)); }
-      // Finance endpoint guesses (best-effort; navigation capture below is the real source).
-      var fin=["Finance/GetToBePayedItems","Finance/GetPayedItems","Finance/GetInvoices","Finance/GetStudentBalance","Finance/GetTransactions"];
-      for(var i=0;i<fin.length;i++){ direct.push(await hit(fin[i])); }
       log("Pénzügy navigáció…");
       await navFinance(); // triggers the real finance XHRs → captured by the hook (collect())
       log("Kész — közvetlen: "+direct.length);
