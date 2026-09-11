@@ -9,6 +9,9 @@ android/.gradle/
 android/app/src/main/assets/public/
 *.apk
 
+# website track — lives in its own repo (see PROJECT.md)
+website/
+
 # os / editor
 .DS_Store
 Thumbs.db
