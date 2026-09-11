@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.141";
+const APP_VERSION = "v0.142";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -64,7 +64,7 @@ function defaultState() {
     activeServerId: "u0",
     username: "", password: "",
     neptunCode: "", // immutable Neptun code (read-only); the login name (username) can differ / be custom
-    finance: null, // { fetchedAt, accounts:[{id,account,desc,balance,currency,autoPay}], impositions:[...] }
+    finance: null, // { fetchedAt, accounts:[{id,account,desc,balance,currency,autoPay}], impositions:[...raw], bonuses:[...raw] }
     no2fa: false,
     totp: null,
     pinHash: null,
@@ -2222,8 +2222,15 @@ async function syncFinance() {
     const d = r && r.data && r.data.data;
     if (Array.isArray(d)) impositions = d;
   } catch (e) { /* ignore */ }
-  if (!accounts.length && !impositions.length) return { ok: false, detail: "nem találtam pénzügyi adatot" };
-  state.finance = { fetchedAt: new Date().toISOString(), accounts, impositions };
+  let bonuses = [];
+  try {
+    // FinancialBonuses (Ösztöndíjak és kifizetések). No `term` param — the GUID/text values are rejected; omitting returns all.
+    const r = await apiGet(sess, "FinancialBonuses/GetStudentFinancialBonuses", { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 200 });
+    const d = r && r.data && r.data.data;
+    if (Array.isArray(d)) bonuses = d;
+  } catch (e) { /* ignore */ }
+  if (!accounts.length && !impositions.length && !bonuses.length) return { ok: false, detail: "nem találtam pénzügyi adatot" };
+  state.finance = { fetchedAt: new Date().toISOString(), accounts, impositions, bonuses };
   saveState();
   const bal = accounts.reduce((s, a) => s + (a.balance || 0), 0);
   return { ok: true, detail: accounts.length ? (bal.toLocaleString("hu") + " " + (accounts[0].currency || "HUF") + " egyenleg") : (impositions.length + " tétel") };

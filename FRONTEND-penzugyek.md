@@ -10,8 +10,9 @@ oldalt építeni. Prémium fekete-fehér, egy arany akcentus (mint a többi olda
 state.finance = {
   fetchedAt: ISO,
   accounts: [{ id, account, desc, balance, currency, autoPay }],  // gyűjtőszámla + egyenleg
-  impositions: [ ... ]   // kiírt/befizetendő tételek NYERS tömbje (most üres [], a mezőnevek
-                         //  még nem ismertek — defenzíven renderelj, lásd lentebb)
+  impositions: [ ... ], // kiírt/befizetendő tételek NYERS tömbje (teszt-fióknál üres [], mezőnevek
+                        //  még nem ismertek — defenzíven renderelj)
+  bonuses: [ ... ]      // Ösztöndíjak és kifizetések NYERS tömbje (teszt-fióknál üres [] — defenzív)
 }
 ```
 Példa `accounts[0]`: `{ account:"103000021080215300024903", desc:"HUF Pannon gyűjtőszámla", balance:2000, currency:"HUF", autoPay:false }`.
@@ -44,9 +45,11 @@ Jelenleg: `{ id:"finance", ..., soon:true }`. Tedd élővé:
      fiókjában most üres volt). Amíg nem tudjuk a pontos szerkezetet, jeleníts meg minden
      elemből egy címet (első string mező) + összeget (első number mező, `... Ft`), és ne
      feltételezz konkrét kulcsneveket. Amint egy fizetős diák adata megvan, pontosítjuk.
-3. **Hamarosan** szekció (halkan, letiltva): Számlák · Tranzakciók · Ösztöndíjak és
-   kifizetések. Ezek végpontjai **még nincsenek felderítve** (a tippelt controllerek 404-et
-   adtak, a navigációs sniff pedig befagy) — ne köss rájuk semmit, csak jelezd, hogy jön.
+3. **Ösztöndíjak és kifizetések** szekció (`bonuses`): ha üres → „Nincs ösztöndíj vagy kifizetés.";
+   ha van elem → defenzív render (cím = első string mező, összeg = első number mező `... Ft`),
+   amíg egy adatokkal rendelkező fiókból meg nem erősítjük a mezőneveket.
+4. **Hamarosan** szekció (halkan, letiltva): Számlák · Tranzakciók. Ezek végpontjai **még nincsenek
+   felderítve** (a lusta-betöltésű finance chunkban vannak; backend feladat kideríteni) — ne köss rájuk semmit.
 4. Lábléc: „Frissítve: {fmtWhen(state.finance.fetchedAt)}".
 
 ## Amit NE csinálj
@@ -55,7 +58,7 @@ Jelenleg: `{ id:"finance", ..., soon:true }`. Tedd élővé:
 
 ## Státusz (mi ismert)
 - ✅ Egyenleg + gyűjtőszámla: `FinancialDataDashboard/GetCollectiveInvoices` (kész).
-- ✅ Befizetendő blokk: `FinancialDataDashboard/GetDashboardImpostionBlockLeft` (kész, de a
-  tesztfióknál üres → item-szerkezet még nyitott).
-- ⏳ Számlák / Tranzakciók / Ösztöndíjak: végpont ismeretlen (backend feladat felderíteni).
+- ✅ Befizetendő blokk: `FinancialDataDashboard/GetDashboardImpostionBlockLeft` (kész; tesztfióknál üres → item-szerkezet még nyitott).
+- ✅ Ösztöndíjak/kifizetések: `FinancialBonuses/GetStudentFinancialBonuses` (term param NÉLKÜL!; tesztfióknál üres).
+- ⏳ Számlák / Tranzakciók: végpont ismeretlen (lusta finance chunkban; backend feladat felderíteni).
 Lásd a `neptun-hallgato-api` memóriát a részletekért.
