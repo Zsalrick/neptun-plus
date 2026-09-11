@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.150";
+const APP_VERSION = "v0.151";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2325,6 +2325,28 @@ async function runApiDiagnostics() {
       try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, params: params || undefined, status: r.status, data: r.data }); }
       catch (e) { results.push({ ep, error: String(e && e.message || e) }); }
     }
+    // Find the body/posts endpoint: take a real received messageId, probe candidate endpoints,
+    // dump the FULL response of each so we learn the working endpoint + post shape.
+    try {
+      const rr = await apiGet(sess, "Message/GetReceivedMessages", flat);
+      const first = rr && rr.data && rr.data.data && rr.data.data.receivedMessages && rr.data.data.receivedMessages[0];
+      const mid = first && first.messageId;
+      results.push({ probeMessageId: mid, probeSubject: first && first.subject });
+      if (mid) {
+        const postEps = [
+          ["Message/GetMessagePosts", { messageId: mid }],
+          ["Message/GetArchivedMessagePosts", { messageId: mid }],
+          ["Message/GetMessagePost", { messageId: mid }],
+          ["Message/GetMessage", { messageId: mid }],
+          ["Message/GetMessagePosts", { messageId: mid, firstRow: 0, lastRow: 50 }],
+        ];
+        for (const [ep, params] of postEps) {
+          $("busy-text").textContent = ep.split("/").pop() + "…";
+          try { const r = await apiGet(sess, ep, params); results.push({ ep, params, status: r.status, data: r.data }); }
+          catch (e) { results.push({ ep, params, error: String(e && e.message || e) }); }
+        }
+      }
+    } catch (e) { dbg("posts probe: " + (e && e.message ? e.message : e)); }
     // Endpoint names already known from the v0.143 grep — skip the slow JS re-discovery this run;
     // we only need the Message list shapes above.
     let discovered = [], discDebug = "skipped (targeted message probe)";
