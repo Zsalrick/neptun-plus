@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.156";
+const APP_VERSION = "v0.157";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1057,16 +1057,27 @@ function msgAvatar(x, big) {
   if (!name) return `<span class="${cls}">${icon("mail")}</span>`;
   return `<span class="${cls}">${esc(name[0].toUpperCase())}</span>`;
 }
+let msgAutoAt = 0; // throttle auto-load retries so a failing fetch can't tight-loop
 function renderMessages() {
   const host = $("messages-scroll"); if (!host) return;
   const m = state.messages;
   if (!m || !m.fetchedAt) {
+    // No data yet → auto-load silently on open (token is kept warm, so it's quick). Throttled so a
+    // failed fetch shows the manual button instead of looping.
+    if (isNative && canAutoLogin() && !refreshingMsg && Date.now() - msgAutoAt > 15000) {
+      msgAutoAt = Date.now();
+      host.innerHTML = `<div class="dash-empty" style="padding:40px 4px">Üzenetek betöltése…</div>`;
+      refreshMessages(false); // re-renders when done
+      return;
+    }
     host.innerHTML = `<div class="empty" style="flex:none;padding:52px 32px 8px"><div class="empty-ic">${icon("mail")}</div>`
       + `<h2>Nincs még üzenet</h2><p>Olvasd be a Neptun beérkezett és elküldött üzeneteidet.</p>`
       + `<button class="btn primary narrow" id="msg-read" style="margin-top:4px">${icon("mail")} Beolvasás</button></div>`;
-    const b = $("msg-read"); if (b) b.onclick = () => openDataSync(["messages"]);
+    const b = $("msg-read"); if (b) b.onclick = () => refreshMessages(true);
     return;
   }
+  // Have (possibly stale) data → show it immediately, refresh in the background if older than 3 min.
+  if (isNative && canAutoLogin() && !refreshingMsg && (Date.now() - new Date(m.fetchedAt).getTime() > 3 * 60 * 1000)) refreshMessages(false);
   const list = msgTab === "sent" ? (m.sent || []) : (m.received || []);
   const seg = (id, label, n) => `<button class="seg-btn${msgTab === id ? " active" : ""}" data-mtab="${id}" type="button">${label}${n ? ` <span class="seg-n">${n}</span>` : ""}</button>`;
   let html = `<div class="seg" style="margin-bottom:12px">`
@@ -1102,9 +1113,9 @@ async function renderMsgView() {
   if (sub) sub.textContent = x.sent ? "Elküldött üzenet" : (x.isSystem ? "Rendszerüzenet" : (x.from || "Neptun üzenet"));
   const who = x.sent ? "Elküldött" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
   host.innerHTML = `<div class="card msg-head">`
-    + `<div class="msg-from">${msgAvatar(x, true)}<span class="msg-from-main"><span class="msg-from-name">${who}</span><span class="row-sub">${esc(ftDate(x.date))}</span></span></div>`
-    + `<div class="msg-subj">${esc(x.subject)}</div></div>`
-    + `<div class="card" id="msg-body"><div class="dash-empty" style="padding:8px 2px">Betöltés…</div></div>`;
+    + `<div class="msg-subj">${esc(x.subject)}</div>`
+    + `<div class="row-sub" style="margin-top:7px">${who}</div></div>`
+    + `<div id="msg-body"><div class="dash-empty" style="padding:8px 2px">Betöltés…</div></div>`;
   const body = $("msg-body");
   const posts = await apiReadMessagePosts(x.id);
   if (!posts) { body.innerHTML = `<div class="dash-empty" style="padding:8px 2px">Az üzenet szövege nem tölthető be.</div>`; return; }
@@ -1130,7 +1141,8 @@ async function renderMsgView() {
     // Self-diagnosing fallback: if no text found, show the raw post keys so the field name is visible.
     const inner = txt ? sanitizeHtml(txt)
       : `<div class="row-sub" style="opacity:.7">Nincs szövegmező. Elérhető kulcsok:</div><pre style="white-space:pre-wrap;font-size:11px;color:var(--ink-3)">${esc(JSON.stringify(p, null, 1).slice(0, 1200))}</pre>`;
-    return `<div class="msg-post">${meta ? `<div class="row-sub" style="margin-bottom:6px">${meta}</div>` : ""}<div class="msg-text">${inner}</div></div>`;
+    return `<div class="msg-post"><div class="msg-text">${inner}</div>`
+      + `${meta ? `<div class="msg-time">${meta}</div>` : ""}</div>`;
   }).join("");
 }
 // Message post bodies are HTML from Neptun. Allow only basic inline formatting; strip scripts/attrs.
