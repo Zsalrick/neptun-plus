@@ -222,6 +222,7 @@ button.row:active { background: var(--surface-2); }
 .fin-amt { font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 14.5px; white-space: nowrap; color: var(--ink); }
 .fin-amt.pos { color: var(--brand-plus); }
 .fin-amt.neg { color: var(--ink-2); }
+.fin-due { color: var(--danger); font-weight: 600; }
 
 /* Profile page rows */
 .pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }
