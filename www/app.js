@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.139";
+const APP_VERSION = "v0.140";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2048,12 +2048,37 @@ function buildApiSniffScript(username, password, code) {
   return "started";
 })();`;
 }
+// Fetch a text resource (HTML/JS) natively — CapacitorHttp bypasses CORS; falls back to fetch.
+async function fetchText(url) {
+  const CH = CHTTP();
+  if (CH) { const r = await CH.get({ url, headers: { Accept: "text/html,application/javascript,text/javascript,*/*" } }); const d = r && r.data; return typeof d === "string" ? d : (d == null ? "" : JSON.stringify(d)); }
+  const r = await fetch(url, { credentials: "include" }); return await r.text();
+}
+// Discover finance API endpoints by grepping the app's JS bundles/lazy chunks for "<Controller>/<Action>"
+// strings that look finance-related. Native fetches only → no InAppBrowser, no setTimeout freeze.
+async function discoverFinanceEndpoints(base) {
+  const root = String(base || "").replace(/api\/?$/, "");
+  if (!root) return [];
+  const EP = /[A-Z][A-Za-z0-9]{2,}\/(?:Get|Post|Create|Update|Delete|Save|List|Download|Sign|Pay|Add|Remove)[A-Za-z0-9]+/g;
+  const FIN = /financ|invoice|payed|paid|payment|imposit|transacti|bonus|scholar|collective|bankaccount|d[ií]j|p[eé]nz|sz[aá]ml/i;
+  const found = new Set(), files = new Set(), fetched = new Set();
+  const toUrl = (f) => f.indexOf("http") === 0 ? f : root + f.replace(/^\//, "");
+  const addFiles = (txt) => { (txt.match(/[A-Za-z0-9._-]+\.js/g) || []).forEach((f) => files.add(f)); };
+  const grep = (txt) => { (txt.match(EP) || []).forEach((m) => { if (FIN.test(m)) found.add(m); }); };
+  try { const idx = await fetchText(root); addFiles(idx); } catch (e) {}
+  // pass 1: the entry bundles (also reveal the lazy-chunk filenames)
+  for (const f of Array.from(files).slice(0, 12)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); grep(js); addFiles(js); } catch (e) {} }
+  // pass 2: the remaining (lazy) chunks
+  const rest = Array.from(files).filter((f) => !fetched.has(toUrl(f)));
+  for (const f of rest.slice(0, 45)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); grep(js); } catch (e) {} }
+  return Array.from(found);
+}
 async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "Pénzügy diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, majd <b>közvetlenül</b> lekéri a pénzügyi végpontokat (natív HTTP, nem a böngészőn át — nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus)." });
+    body: "Bejelentkezik, <b>felderíti</b> a pénzügyi végpontokat az app JS-fájljaiból, majd <b>közvetlenül</b> lekéri őket (natív HTTP, nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus). Kicsit tovább tart (JS-ek letöltése)." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -2083,6 +2108,21 @@ async function runApiDiagnostics() {
       try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, params: params || undefined, status: r.status, data: r.data }); }
       catch (e) { results.push({ ep, error: String(e && e.message || e) }); }
     }
+    // Discover any other finance endpoints from the app's JS, then probe each (no params, then paged).
+    $("busy-text").textContent = "Végpontok felderítése…";
+    let discovered = [];
+    try { discovered = await discoverFinanceEndpoints(sess.base); } catch (e) { dbg("discover: " + (e && e.message ? e.message : e)); }
+    const known = new Set(results.map((r) => r.ep));
+    for (const ep of discovered) {
+      if (known.has(ep)) continue; known.add(ep);
+      $("busy-text").textContent = ep.split("/").pop() + "…";
+      try {
+        let r = await apiGet(sess, ep);
+        if (r && r.status === 400) { try { const r2 = await apiGet(sess, ep, page); if (r2 && r2.status < 400) r = r2; } catch (e) {} }
+        results.push({ ep, discovered: true, status: r.status, data: r.data });
+      } catch (e) { results.push({ ep, discovered: true, error: String(e && e.message || e) }); }
+    }
+    results.push({ discoveredEndpoints: discovered });
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("finance diag: " + (e && e.message ? e.message : e)); }
   hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
@@ -2092,7 +2132,7 @@ async function runApiDiagnostics() {
   try { const fs = FSP(); if (fs) { await fs.writeFile({ path: fileName, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true }); fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(fileName) + "</b>"; } }
   catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) {}
-  const summary = results.map((r) => `${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
+  const summary = results.filter((r) => r.ep).map((r) => `${r.discovered ? "🔎 " : ""}${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
   await ask({ title: "Pénzügy diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
