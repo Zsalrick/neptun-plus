@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.131";
+const APP_VERSION = "v0.132";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2104,7 +2104,7 @@ async function runApiDiagnostics() {
   }
   hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
-  const finance = sniff ? { base: sniff.base, direct: sniff.direct, calls: sniff.calls, storage: sniff.storage } : null;
+  const finance = sniff ? { base: sniff.base, direct: sniff.direct, calls: sniff.calls, storage: sniff.storage, log: sniff.log } : null;
   const json = JSON.stringify({ base: apiSession && apiSession.base, results, finance }, null, 2);
   let fileMsg = "";
   try {
