@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.149";
+const APP_VERSION = "v0.150";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -52,7 +52,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -513,6 +513,8 @@ function renderForTab(id) {
   else if (id === "tab-fin-tx") renderFinTx();
   else if (id === "tab-fin-scholar") renderFinScholar();
   else if (id === "tab-fin-invoices") renderFinInvoices();
+  else if (id === "tab-messages") renderMessages();
+  else if (id === "tab-msg-view") renderMsgView();
   else if (id === "tab-profile") renderProfilePage();
   else if (id === "tab-settings" || id.indexOf("tab-set-") === 0) syncSettings();
 }
@@ -693,6 +695,7 @@ document.querySelectorAll("[data-back]").forEach((b) => b.onclick = popScreen);
 document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pushScreen(b.dataset.setpage));
 { const cr = $("credit-refresh"); if (cr) cr.onclick = () => grabProgress(); }
 { const fr = $("finance-refresh"); if (fr) fr.onclick = () => refreshFinance(true); }
+{ const mr = $("messages-refresh"); if (mr) mr.onclick = () => refreshMessages(true); }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
@@ -870,7 +873,7 @@ const MORE_SERVICES = [
   { id: "dlc", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "finance", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
-  { id: "messages", label: "Üzenetek", sub: "Neptun üzenetek", icon: "mail", soon: true },
+  { id: "messages", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
   { id: "reg-course", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
   { id: "reg-exam", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
 ];
@@ -1039,6 +1042,90 @@ async function refreshFinance(viaButton) {
   if (viaButton) hideBusy();
   renderFinance();
   toast(r && r.ok ? "Pénzügyek frissítve." : "Nem sikerült frissíteni.");
+}
+// ---- Üzenetek: list (Beérkezett / Elküldött) + on-demand message view. All from state.messages. ----
+let msgTab = "received"; // "received" | "sent"
+let msgOpen = null; // the message currently shown in tab-msg-view
+function renderMessages() {
+  const host = $("messages-scroll"); if (!host) return;
+  const m = state.messages;
+  if (!m || !m.fetchedAt) {
+    host.innerHTML = `<div class="empty" style="flex:none;padding:52px 32px 8px"><div class="empty-ic">${icon("mail")}</div>`
+      + `<h2>Nincs még üzenet</h2><p>Olvasd be a Neptun beérkezett és elküldött üzeneteidet.</p>`
+      + `<button class="btn primary narrow" id="msg-read" style="margin-top:4px">${icon("mail")} Beolvasás</button></div>`;
+    const b = $("msg-read"); if (b) b.onclick = () => openDataSync(["messages"]);
+    return;
+  }
+  const list = msgTab === "sent" ? (m.sent || []) : (m.received || []);
+  const seg = (id, label, n) => `<button class="seg-btn${msgTab === id ? " active" : ""}" data-mtab="${id}" type="button">${label}${n ? ` <span class="seg-n">${n}</span>` : ""}</button>`;
+  let html = `<div class="seg" style="margin-bottom:12px">`
+    + seg("received", "Beérkezett", m.unread || 0)
+    + seg("sent", "Elküldött", 0) + `</div>`;
+  if (!list.length) { html += `<div class="dash-empty" style="padding:22px 4px">${msgTab === "sent" ? "Nincs elküldött üzenet." : "Nincs beérkezett üzenet."}</div>`; }
+  else {
+    html += `<div class="card">`;
+    list.forEach((x) => {
+      const who = x.sent ? "" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
+      html += `<button class="row msg-row${x.unread ? " unread" : ""}" data-msg="${esc(x.id)}" type="button">`
+        + `<span class="msg-dot"></span>`
+        + `<span class="row-main"><span class="row-title">${esc(x.subject)}</span>`
+        + `<span class="row-sub">${[who, esc(ftDate(x.date))].filter(Boolean).join(" · ")}</span></span>`
+        + `${x.hasAttachment ? `<span class="msg-clip">${icon("doc")}</span>` : ""}`
+        + `<span class="row-chev">${icon("chev")}</span></button>`;
+    });
+    html += `</div>`;
+  }
+  html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(m.fetchedAt))}</div>`;
+  host.innerHTML = html;
+  host.querySelectorAll("[data-mtab]").forEach((b) => b.onclick = () => { msgTab = b.dataset.mtab; renderMessages(); });
+  host.querySelectorAll("[data-msg]").forEach((b) => b.onclick = () => {
+    msgOpen = list.find((x) => x.id === b.dataset.msg) || null;
+    pushScreen("tab-msg-view");
+  });
+}
+async function renderMsgView() {
+  const host = $("msg-view-scroll"); if (!host) return;
+  const x = msgOpen;
+  const sub = $("msg-view-sub");
+  if (!x) { host.innerHTML = `<div class="dash-empty" style="padding:22px 4px">Nincs megnyitott üzenet.</div>`; return; }
+  if (sub) sub.textContent = x.sent ? "Elküldött üzenet" : (x.isSystem ? "Rendszerüzenet" : (x.from || "Neptun üzenet"));
+  const who = x.sent ? "Elküldött" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
+  host.innerHTML = `<div class="card msg-head"><div class="msg-subj">${esc(x.subject)}</div>`
+    + `<div class="row-sub">${[who, esc(ftDate(x.date))].filter(Boolean).join(" · ")}</div></div>`
+    + `<div class="card" id="msg-body"><div class="dash-empty" style="padding:8px 2px">Betöltés…</div></div>`;
+  const body = $("msg-body");
+  const posts = await apiReadMessagePosts(x.id);
+  if (!posts) { body.innerHTML = `<div class="dash-empty" style="padding:8px 2px">Az üzenet szövege nem tölthető be.</div>`; return; }
+  // mark read locally (server marks read on open too)
+  if (x.unread) { x.unread = false; if (state.messages) { state.messages.unread = Math.max(0, (state.messages.unread || 1) - 1); saveState(); } }
+  body.innerHTML = posts.map((p) => {
+    const txt = p.text || p.content || p.body || p.messageText || "";
+    const when = p.date || p.postDate || p.creationDate || null;
+    const author = p.senderName || p.author || "";
+    return `<div class="msg-post">${[esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ") ? `<div class="row-sub" style="margin-bottom:6px">${[esc(author), esc(when ? ftDate(when) : "")].filter(Boolean).join(" · ")}</div>` : ""}`
+      + `<div class="msg-text">${sanitizeHtml(txt)}</div></div>`;
+  }).join("");
+}
+// Message post bodies are HTML from Neptun. Allow only basic inline formatting; strip scripts/attrs.
+function sanitizeHtml(s) {
+  if (!s) return "";
+  const div = document.createElement("div");
+  div.innerHTML = String(s);
+  div.querySelectorAll("script,style,iframe,object,embed").forEach((el) => el.remove());
+  div.querySelectorAll("*").forEach((el) => {
+    [...el.attributes].forEach((a) => { if (!/^href$/i.test(a.name) || /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name); });
+    if (el.tagName === "A") { el.setAttribute("target", "_blank"); el.setAttribute("rel", "noopener"); }
+  });
+  return div.innerHTML;
+}
+async function refreshMessages(viaButton) {
+  if (flowActive) { toast("Már fut egy folyamat, várj."); return; }
+  if (viaButton) showBusy("Üzenetek frissítése…", true);
+  await totpTick();
+  let r; try { r = await syncMessages(); } catch (e) { r = { ok: false }; }
+  if (viaButton) hideBusy();
+  renderMessages();
+  toast(r && r.ok ? "Üzenetek frissítve." : "Nem sikerült frissíteni.");
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
@@ -2287,6 +2374,8 @@ const DATA_TASKS = [
     has: hasCurriculum, run: syncCurriculum },
   { id: "finance", label: "Pénzügyek", sub: "Egyenleg, befizetendő, tranzakciók, számlák, ösztöndíjak",
     has: () => !!(state.finance && state.finance.fetchedAt), run: syncFinance },
+  { id: "messages", label: "Üzenetek", sub: "Beérkezett és elküldött üzenetek, olvasatlan darabszám",
+    has: () => !!(state.messages && state.messages.fetchedAt), run: syncMessages },
 ];
 function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
 function missingTaskIds() { return DATA_TASKS.filter((t) => !t.has()).map((t) => t.id); }
@@ -2378,6 +2467,44 @@ async function syncFinance() {
   const huf = accounts.find((a) => a.currency === "HUF");
   const bal = huf && huf.balance != null ? huf.balance : (accounts[0] && accounts[0].balance) || 0;
   return { ok: true, detail: Number(bal).toLocaleString("hu") + " Ft egyenleg · " + toPay.length + " befizetendő" };
+}
+// Üzenetek (discovered v0.149, direct API). Message list endpoints use FLAT firstRow/lastRow paging
+// (NOT sortAndPage.*). Received list is data.receivedMessages, sent is data.messages. Normalized to a
+// stable {id, from, subject, date, unread, hasAttachment, isSystem, sent} shape; body loaded on demand.
+async function syncMessages() {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
+  const page = { firstRow: 0, lastRow: 200 };
+  const get = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return (r && r.data && r.data.data) || null; } catch (e) { return null; } };
+  const norm = (m, sent) => ({
+    id: m.messageId, from: m.senderName || "", subject: m.subject || "(nincs tárgy)",
+    date: m.lastPostDate || null, unread: (m.unreadedPostCount || 0) > 0,
+    hasAttachment: !!m.hasAttachment, isSystem: !!m.isSystemMessage, sent: !!sent,
+  });
+  const rec = await get("Message/GetReceivedMessages", page);
+  const snt = await get("Message/GetSentMessages", page);
+  const cnt = await get("Message/GetUnreadedMessagesCount");
+  const received = (rec && rec.receivedMessages || []).map((m) => norm(m, false));
+  const sentMsgs = (snt && snt.messages || []).map((m) => norm(m, true));
+  const unread = (cnt && typeof cnt.count === "number") ? cnt.count : received.filter((m) => m.unread).length;
+  if (!received.length && !sentMsgs.length && !unread) return { ok: false, detail: "nem találtam üzenetet" };
+  state.messages = { fetchedAt: new Date().toISOString(), unread, received, sent: sentMsgs };
+  saveState();
+  return { ok: true, detail: unread + " olvasatlan · " + received.length + " beérkezett" };
+}
+// Read one message's posts (body) on demand. Two candidate endpoints; return the first that yields posts.
+async function apiReadMessagePosts(id) {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) return null;
+  for (const ep of ["Message/GetMessagePosts", "Message/GetArchivedMessagePosts"]) {
+    try {
+      const r = await apiGet(sess, ep, { messageId: id });
+      const d = r && r.data && r.data.data;
+      const posts = d && (d.posts || d.messagePosts || (Array.isArray(d) ? d : null));
+      if (posts && posts.length) return posts;
+    } catch (e) { /* try next */ }
+  }
+  return null;
 }
 async function syncCourses() {
   // Preferred: direct API — terms, then enrolled subjects per term.
@@ -3520,6 +3647,7 @@ attachPTR($("tt-scroll"), $("tt-ptr"), fetchTimetable);
 attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
 attachPTR($("credit-scroll"), $("credit-ptr"), grabProgress);       // credit-only refresh
 attachPTR($("finance-scroll"), $("finance-ptr"), () => refreshFinance(false)); // finance-only
+attachPTR($("messages-scroll"), $("messages-ptr"), () => refreshMessages(false)); // messages-only
 if (isNative) { document.body.classList.add("native"); document.querySelectorAll("[data-preview-only]").forEach((el) => el.remove()); }
 initOnboarding();
 

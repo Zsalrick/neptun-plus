@@ -224,6 +224,22 @@ button.row:active { background: var(--surface-2); }
 .fin-amt.neg { color: var(--ink-2); }
 .fin-due { color: var(--danger); font-weight: 600; }
 
+/* Üzenetek */
+.seg-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: 9px; background: var(--brand-plus); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: middle; }
+.msg-row { align-items: center; }
+.msg-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: transparent; margin-right: 10px; }
+.msg-row.unread .msg-dot { background: var(--brand-plus); }
+.msg-row.unread .row-title { font-weight: 700; color: var(--ink); }
+.msg-clip { color: var(--ink-3); display: grid; place-items: center; margin: 0 2px; }
+.msg-clip svg.ic { width: 16px; height: 16px; }
+.msg-head { padding: 16px; }
+.msg-subj { font-weight: 700; font-size: 16px; color: var(--ink); margin-bottom: 6px; line-height: 1.35; }
+.msg-post { padding: 4px 2px; }
+.msg-post + .msg-post { border-top: 1px solid var(--line-2); margin-top: 12px; padding-top: 12px; }
+.msg-text { font-size: 14.5px; line-height: 1.55; color: var(--ink); word-break: break-word; }
+.msg-text a { color: var(--brand-plus); }
+.msg-text img { border-radius: 8px; margin: 6px 0; }
+
 /* Profile page rows */
 .pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }
 .pf-check { color: var(--ink); }
