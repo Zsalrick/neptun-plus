@@ -267,12 +267,22 @@ button.row:active { background: var(--surface-2); }
 .b-time { font-size: 10.5px; margin-top: 6px; opacity: .6; text-align: right; }
 /* Chat composer — a fixed floor bar below the scrolling thread (Messenger-style) */
 #msg-view-scroll { padding-bottom: 10px; }
-.msg-compose { display: flex; align-items: flex-end; gap: 9px;
+.msg-compose { display: flex; flex-direction: column; gap: 8px;
   padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
+.mc-row { display: flex; align-items: flex-end; gap: 9px; }
 .msg-compose textarea.input { flex: 1; resize: none; min-height: 44px; max-height: 140px; line-height: 1.4; padding: 11px 14px; border-radius: 22px; }
-.msg-compose .iconbtn.send { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); border: none; }
+.msg-compose .iconbtn.send, .msg-compose .iconbtn.mc-attach { flex: none; width: 44px; height: 44px; border-radius: 50%; border: none; }
+.msg-compose .iconbtn.send { background: var(--accent); color: var(--accent-ink); }
 .msg-compose .iconbtn.send:disabled { opacity: .5; }
-.msg-compose .iconbtn.send svg.ic { width: 20px; height: 20px; }
+.msg-compose .iconbtn.mc-attach { background: var(--surface-3); color: var(--ink-2); }
+.msg-compose .iconbtn svg.ic { width: 20px; height: 20px; }
+.mc-files { display: flex; flex-wrap: wrap; gap: 6px; }
+.mc-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 6px 5px 9px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line-2); font-size: 12.5px; color: var(--ink); }
+.mc-file svg.ic { width: 14px; height: 14px; color: var(--ink-3); flex: none; }
+.mc-file-n { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-file-x { display: grid; place-items: center; width: 22px; height: 22px; border: 0; background: transparent; color: var(--ink-3); border-radius: 6px; cursor: pointer; }
+.mc-file-x svg.ic { width: 14px; height: 14px; }
 
 /* Profile page rows */
 .pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }

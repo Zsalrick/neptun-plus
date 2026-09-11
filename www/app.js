@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.165";
+const APP_VERSION = "v0.166";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -44,6 +44,7 @@ const P = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
   send: '<path d="M4 12 20 4l-6 16-3-7-7-1Z"/>',
   download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/>',
+  clip: '<path d="M21 11.5 12 20.5a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.6 1.6 0 0 1-2.3-2.3l7.8-7.8"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ""}</svg>`; }
 function renderIcons(root = document) {
@@ -1209,25 +1210,51 @@ async function renderMsgView() {
   if (res.replyEnabled) {
     const last = posts[posts.length - 1] || {};
     const lastPostId = last.postId || last.id || "";
+    const MAX_FILES = 5;
+    const pending = []; // { file, name }
     const bar = document.createElement("div");
     bar.className = "msg-compose";
-    bar.innerHTML = `<textarea class="input" id="msg-reply-text" rows="1" placeholder="Írj üzenetet…"></textarea>`
-      + `<button class="iconbtn send" id="msg-reply-send" type="button" title="Küldés">${icon("send")}</button>`;
+    bar.innerHTML = `<div class="mc-files" id="mc-files" hidden></div>`
+      + `<div class="mc-row">`
+      + `<button class="iconbtn mc-attach" id="msg-attach" type="button" title="Csatolás">${icon("clip")}</button>`
+      + `<textarea class="input" id="msg-reply-text" rows="1" placeholder="Írj üzenetet…"></textarea>`
+      + `<button class="iconbtn send" id="msg-reply-send" type="button" title="Küldés">${icon("send")}</button>`
+      + `</div><input type="file" id="msg-file-input" multiple hidden>`;
     (composeHost || host).appendChild(bar); // pinned to the tab floor, outside the scroll (Messenger-style)
-    const ta = $("msg-reply-text"), send = $("msg-reply-send");
+    const ta = $("msg-reply-text"), send = $("msg-reply-send"), fileInput = $("msg-file-input"), filesWrap = $("mc-files");
     const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 140) + "px"; };
     ta.oninput = grow;
+    const renderPending = () => {
+      filesWrap.hidden = !pending.length;
+      filesWrap.innerHTML = pending.map((p, i) =>
+        `<span class="mc-file">${icon("doc")}<span class="mc-file-n">${esc(p.name)}</span><button class="mc-file-x" data-rm="${i}" type="button">${icon("x")}</button></span>`).join("");
+      filesWrap.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { pending.splice(+b.dataset.rm, 1); renderPending(); });
+    };
+    $("msg-attach").onclick = () => fileInput.click();
+    fileInput.onchange = () => {
+      for (const f of Array.from(fileInput.files || [])) {
+        if (pending.length >= MAX_FILES) { toast("Legfeljebb " + MAX_FILES + " fájl."); break; }
+        pending.push({ file: f, name: f.name });
+      }
+      fileInput.value = ""; renderPending();
+    };
     const doSend = async () => {
       const text = ta.value.trim();
-      if (!text) return;
-      // Confirm-before-send (a security setting, default on; toggle in Beállítások → Védelem).
+      if (!text && !pending.length) return;               // need text or at least a file
       if (secOn("confirmSend")) {
+        const fileList = pending.length ? `<br><b>Csatolmány:</b> ${pending.map((p) => esc(p.name)).join(", ")}` : "";
         const ok = await ask({ title: "Biztosan elküldöd?", okText: "Küldés", cancelText: "Mégse",
-          body: `<b>Címzett:</b> ${esc(party)}<br><br>${esc(text).replace(/\n/g, "<br>")}` });
+          body: `<b>Címzett:</b> ${esc(party)}${fileList}<br><br>${esc(text).replace(/\n/g, "<br>")}` });
         if (!ok) return;
       }
       ta.disabled = send.disabled = true;
-      const r = await apiSendReply(x.id, text, lastPostId);
+      let fileIds = [];
+      try {
+        for (let i = 0; i < pending.length; i++) { send.textContent = ""; toast("Feltöltés… (" + (i + 1) + "/" + pending.length + ")"); fileIds.push(await apiUploadFile(pending[i].file)); }
+      } catch (e) {
+        ta.disabled = send.disabled = false; toast("Feltöltés nem sikerült" + (e && e.message ? ": " + e.message : ".")); return;
+      }
+      const r = await apiSendReply(x.id, text, lastPostId, fileIds);
       if (r.ok) { toast("Elküldve."); renderMsgView(); }               // reload thread → shows the new reply at the bottom
       else { ta.disabled = send.disabled = false; toast("Nem sikerült elküldeni" + (r.detail ? ": " + r.detail : ".")); }
     };
@@ -2757,16 +2784,42 @@ async function apiMarkMessageRead(id, posts) {
 }
 // Send a reply into a message thread: POST Message/ReplyToPost {messageIdToReply, postIdToReply, text,
 // temporaryFileIds}. postId = the post we answer (last one), "" is accepted. Returns {ok, detail}.
-async function apiSendReply(messageId, text, postId) {
+async function apiSendReply(messageId, text, postId, fileIds) {
   const sess = await getApiSession();
   if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
   try {
-    const r = await apiPost(sess, "Message/ReplyToPost", { messageIdToReply: messageId, postIdToReply: postId || "", text: String(text || ""), temporaryFileIds: [] });
+    const r = await apiPost(sess, "Message/ReplyToPost", { messageIdToReply: messageId, postIdToReply: postId || "", text: String(text || ""), temporaryFileIds: fileIds || [] });
     if (r && r.status >= 200 && r.status < 300) return { ok: true };
     let d = r && r.data; if (typeof d === "string") { try { d = JSON.parse(d); } catch (e) {} }
     const msg = d && (d.message || (d.modelStateErrors && d.modelStateErrors[0] && d.modelStateErrors[0].errors && d.modelStateErrors[0].errors[0]));
     return { ok: false, detail: msg || ("hiba (" + (r && r.status) + ")") };
   } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
+}
+// Upload one File to Neptun's temp store → returns its temporaryFileId (guid) or throws. Protocol from
+// the JS bundle: FileUpStart {maxChunkSize,chunkCount,fileName,fileSize,documentationTypeId,languageId,
+// description} → {guid}; FileUp multipart {chunkFile, tempFileGUID} per 1MB chunk; FileUpEnd {tempFileGUID}.
+// The multipart POST uses fetch (CapacitorHttp intercepts fetch → routes native, no CORS).
+const UP_CHUNK = 1048576;
+async function apiUploadFile(file) {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) throw new Error("nincs munkamenet");
+  const auth = "Bearer " + sess.token, base = sess.base;
+  const start = { maxChunkSize: UP_CHUNK, chunkCount: Math.max(1, Math.ceil(file.size / UP_CHUNK)),
+    fileName: file.name, fileSize: file.size, documentationTypeId: null, languageId: null, description: "" };
+  const r0 = await apiPost(sess, "FileHandler/FileUpStart", start);
+  let d0 = r0 && r0.data; if (typeof d0 === "string") { try { d0 = JSON.parse(d0); } catch (e) {} }
+  const guid = d0 && (d0.guid || (d0.data && d0.data.guid));
+  if (!guid) throw new Error("FileUpStart: nincs guid (" + (r0 && r0.status) + ")");
+  for (let pos = 0; pos < file.size || pos === 0; pos += UP_CHUNK) {
+    const fd = new FormData();
+    fd.append("chunkFile", new File([file.slice(pos, pos + UP_CHUNK)], file.name));
+    fd.append("tempFileGUID", guid);
+    const rc = await fetch(base + "FileHandler/FileUp", { method: "POST", headers: { Authorization: auth }, body: fd });
+    if (!rc.ok) throw new Error("FileUp hiba (" + rc.status + ")");
+    if (file.size === 0) break;
+  }
+  await apiPost(sess, "FileHandler/FileUpEnd", { tempFileGUID: guid });
+  return guid;
 }
 function DLP() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Downloads; }
 const MIMES = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
