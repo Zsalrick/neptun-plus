@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.137";
+const APP_VERSION = "v0.138";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2052,40 +2052,47 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "Pénzügy diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, megnyitja a <b>Pénzügyek</b> menüt, és rögzíti az ott lefutó hálózati hívásokat + a <b>teljes JSON választ</b> (Dokumentumok/neptunplus). Csak a pénzügyi részt vizsgálja, ezért gyors." });
+    body: "Bejelentkezik, majd <b>közvetlenül</b> lekéri a pénzügyi végpontokat (natív HTTP, nem a böngészőn át — nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus)." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
+  const results = [];
   let cancelled = false;
-  const fs = FSP();
-  const fileName = BACKUP_DIR + "/apidiag-" + backupTs() + ".json";
-  // Write whatever finance calls we have SO FAR to the file — called after each captured call
-  // (onPartial) and at the end. So even if a later tab hangs and the run times out, the file
-  // already holds every finance call that came back. Throttled to when the call count grows.
-  let best = null, bestCount = -1, writing = false;
-  const writeFinance = async (res, tag) => {
-    if (!res) return;
-    const calls = res.calls || [];
-    if (calls.length <= bestCount && tag !== "final") return; // nothing new
-    best = res; bestCount = calls.length;
-    if (!fs || writing) return; writing = true;
-    try {
-      const json = JSON.stringify({ finance: { base: res.base, calls: res.calls, storage: res.storage, log: res.log } }, null, 2);
-      await fs.writeFile({ path: fileName, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true });
-    } catch (e) { dbg("apidiag write: " + (e && e.message ? e.message : e)); }
-    writing = false;
-  };
-  let sniff = null;
-  try { sniff = await neptunSniffApi((res) => { $("busy-text").textContent = "Rögzített hívás: " + ((res.calls || []).length); writeFinance(res); }); }
-  catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("sniff: " + (e && e.message ? e.message : e)); }
-  await writeFinance(sniff || best, "final"); // final flush (full result on success, last partial on hang/cancel)
+  try {
+    const sess = await getApiSession(true);
+    if (!sess || !sess.token) { hideBusy(); await ask({ title: "Pénzügy diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
+    let termId = "";
+    try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; termId = (t && t.actualTermId) || ""; } catch (e) {}
+    const page = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.pageSize": 50, "sortAndPage.term": termId };
+    // Finance endpoints confirmed from the earlier capture (FinancialDataDashboard = Áttekintés) plus
+    // FinancialBonuses (Ösztöndíjak). Direct GET via CapacitorHttp — no InAppBrowser, so no setTimeout
+    // freeze / hang. Unknown-tab guesses included as best-effort (a 400/404 is just informative).
+    const eps = [
+      ["FinancialDataDashboard/GetDashboardElementsVisibility", null],
+      ["FinancialDataDashboard/GetCollectiveInvoices", null],
+      ["FinancialDataDashboard/GetDashboardImpostionBlockLeft", null],
+      ["FinancialDataDashboard/GetDashboardImpostionBlockRight", null],
+      ["FinancialBonuses/GetStudentFinancialBonuses", page],
+      ["Payment/GetToBePayedItems", page],
+      ["Invoice/GetInvoices", page],
+      ["Transaction/GetTransactions", page],
+    ];
+    for (const [ep, params] of eps) {
+      $("busy-text").textContent = ep.split("/").pop() + "…";
+      try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, params: params || undefined, status: r.status, data: r.data }); }
+      catch (e) { results.push({ ep, error: String(e && e.message || e) }); }
+    }
+  } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("finance diag: " + (e && e.message ? e.message : e)); }
   hideBusy();
-  const fin = sniff ? { base: sniff.base, calls: sniff.calls, storage: sniff.storage } : best;
-  const finCount = fin && fin.calls ? fin.calls.length : 0;
-  if (!finCount) { await ask({ title: "Pénzügy diagnosztika", okText: "OK", body: cancelled ? "Megszakítva, nem jött össze pénzügyi hívás." : "Nem sikerült pénzügyi hívást rögzíteni." }); return; }
-  const eps = Array.from(new Set(fin.calls.map((c) => String(c.url).split("/api/")[1] || c.url).map((u) => u.split("?")[0]))).slice(0, 25).map(esc).join("<br>");
-  await ask({ title: "Pénzügy diagnosztika", okText: "OK", cancelText: "Bezárás",
-    body: `Fájlba mentve: <b>Dokumentumok/${esc(fileName)}</b><br><br><b>Pénzügy:</b> ${finCount} rögzített hívás${cancelled ? " (megszakítva, részleges)" : ""}<br>${eps}` });
+  if (cancelled && !results.length) { toast("Megszakítva"); return; }
+  const fileName = BACKUP_DIR + "/apidiag-" + backupTs() + ".json";
+  const json = JSON.stringify({ base: apiSession && apiSession.base, finance: results }, null, 2);
+  let fileMsg = "";
+  try { const fs = FSP(); if (fs) { await fs.writeFile({ path: fileName, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true }); fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(fileName) + "</b>"; } }
+  catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
+  try { await navigator.clipboard.writeText(json); } catch (e) {}
+  const summary = results.map((r) => `${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
+  await ask({ title: "Pénzügy diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
