@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.169";
+const APP_VERSION = "v0.170";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2547,9 +2547,14 @@ async function runApiDiagnostics() {
     // subjectId) the ICS feed lacks; from one real class event we probe course details + tutors +
     // students + subject details and dump every shape so we can build the redesigned course screen.
     const now = Date.now(), wk = 7 * 864e5;
+    // GetCalendarEvents needs the student's training ids + all visibility flags, else it returns [].
+    let trainIds = [];
+    try { const mt = await apiGet(sess, "MyTrainings"); const list = (mt && mt.data && mt.data.data) || []; trainIds = list.map((t) => t.studentTrainingId).filter(Boolean); } catch (e) {}
+    results.push({ studentTrainingIds: trainIds });
+    const vis = { isClassesVisible: true, isExamsVisible: true, isFinalExamsVisible: true, isOnlineMeetingsVisible: true, isOtherEventsVisible: true, isPeriodsVisible: true, isTasksVisible: true };
     const calVariants = [
-      ["Calendar/GetCalendarEvents", { start: now - wk, end: now + wk }],
-      ["Calendar/GetCalendarEvents", { startDate: new Date(now - wk).toISOString(), endDate: new Date(now + wk).toISOString() }],
+      ["Calendar/GetCalendarEvents", Object.assign({ startDate: new Date(now - wk).toISOString(), endDate: new Date(now + wk).toISOString(), studentTrainingIds: trainIds }, vis)],
+      ["Calendar/GetCalendarEvents", Object.assign({ startDate: new Date(now - wk).toISOString(), endDate: new Date(now + wk).toISOString(), studentTrainingIds: trainIds[0] || "" }, vis)],
     ];
     let ev = null;
     for (const [ep, params] of calVariants) {
