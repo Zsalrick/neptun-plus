@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.162";
+const APP_VERSION = "v0.163";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1191,6 +1191,12 @@ async function renderMsgView() {
     const doSend = async () => {
       const text = ta.value.trim();
       if (!text) return;
+      // Confirm-before-send (a security setting, default on; toggle in Beállítások → Védelem).
+      if (secOn("confirmSend")) {
+        const ok = await ask({ title: "Biztosan elküldöd?", okText: "Küldés", cancelText: "Mégse",
+          body: `<b>Címzett:</b> ${esc(party)}<br><br>${esc(text).replace(/\n/g, "<br>")}` });
+        if (!ok) return;
+      }
       ta.disabled = send.disabled = true;
       const r = await apiSendReply(x.id, text, lastPostId);
       if (r.ok) { toast("Elküldve."); renderMsgView(); }               // reload thread → shows the new reply at the bottom
@@ -3360,7 +3366,7 @@ function addLead(key) {
   openList({ title: "Emlékeztető ennyivel előtte", items: opts.map((m) => ({ value: String(m), label: fmtLead(m) })),
     onPick: (v) => { const m = parseInt(v, 10); if (!m) return; c.leads = (c.leads || []).concat(m).sort((a, b) => a - b).slice(0, 3); saveState(); syncNotifySettings(); rescheduleNotifications(); } });
 }
-const SEC_TOGGLES = [["sec-startup", "startup"], ["sec-resume", "resume"], ["sec-sensitive", "sensitive"], ["sec-actions", "actions"]];
+const SEC_TOGGLES = [["sec-startup", "startup"], ["sec-resume", "resume"], ["sec-sensitive", "sensitive"], ["sec-actions", "actions"], ["sec-confirmsend", "confirmSend"]];
 function syncSecurityToggles() { SEC_TOGGLES.forEach(([id, key]) => { const el = $(id); if (el) el.classList.toggle("on", secOn(key)); }); }
 SEC_TOGGLES.forEach(([id, key]) => {
   $(id).onclick = async () => {
