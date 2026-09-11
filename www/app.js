@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.142";
+const APP_VERSION = "v0.143";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2063,16 +2063,21 @@ async function discoverFinanceEndpoints(base) {
   const FIN = /financ|invoice|payed|paid|payment|imposit|transacti|bonus|scholar|collective|bankaccount|d[ií]j|p[eé]nz|sz[aá]ml/i;
   const found = new Set(), all = new Set(), files = new Set(), fetched = new Set(), dbg = [];
   const toUrl = (f) => f.indexOf("http") === 0 ? f : root + f.replace(/^\//, "");
-  const addFiles = (txt) => { (txt.match(/[A-Za-z0-9._-]+\.js/g) || []).forEach((f) => files.add(f)); };
+  // Only real Angular/esbuild bundle filenames — NOT jQuery-plugin names (widget.js, effect-*.js,
+  // zone.js…) which are false positives that returned index.html and wasted fetch slots.
+  const addFiles = (txt) => { (txt.match(/(?:chunk|main|polyfills|scripts|runtime)-[A-Za-z0-9]{5,}\.js/g) || []).forEach((f) => files.add(f)); };
   const grep = (txt) => { (txt.match(EP) || []).forEach((m) => { all.add(m); if (FIN.test(m)) found.add(m); }); };
   let idxLen = 0; try { const idx = await fetchText(root); idxLen = idx.length; addFiles(idx); } catch (e) { dbg.push({ f: "(index)", err: String(e && e.message || e) }); }
   dbg.push({ f: "(index)", len: idxLen, foundFiles: files.size });
-  // pass 1: the entry bundles (also reveal the lazy-chunk filenames)
-  for (const f of Array.from(files).slice(0, 12)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); dbg.push({ f, len: js.length }); grep(js); addFiles(js); } catch (e) { dbg.push({ f, err: String(e && e.message || e) }); } }
-  // pass 2: the remaining (lazy) chunks
-  const rest = Array.from(files).filter((f) => !fetched.has(toUrl(f)));
-  for (const f of rest.slice(0, 45)) { const url = toUrl(f); if (fetched.has(url)) continue; fetched.add(url); $("busy-text").textContent = "JS: " + f.slice(0, 24); try { const js = await fetchText(url); if (js.length) dbg.push({ f, len: js.length }); grep(js); } catch (e) {} }
-  return { found: Array.from(found), debug: { root, fileCount: files.size, fetched: dbg.slice(0, 60), sample: Array.from(all).slice(0, 60) } };
+  // Two passes: entry bundles first (they reveal lazy-chunk names via addFiles), then everything.
+  for (let pass = 0; pass < 2; pass++) {
+    for (const f of Array.from(files)) {
+      const url = toUrl(f); if (fetched.has(url)) continue; if (fetched.size >= 60) break; fetched.add(url);
+      $("busy-text").textContent = "JS: " + f.slice(0, 24);
+      try { const js = await fetchText(url); dbg.push({ f, len: js.length }); grep(js); addFiles(js); } catch (e) { dbg.push({ f, err: String(e && e.message || e) }); }
+    }
+  }
+  return { found: Array.from(found), debug: { root, fileCount: files.size, fetched: dbg.slice(0, 60), sample: Array.from(all).slice(0, 80) } };
 }
 async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
