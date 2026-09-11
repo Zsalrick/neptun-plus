@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.157";
+const APP_VERSION = "v0.158";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1049,14 +1049,7 @@ async function refreshFinance(viaButton) {
 // ---- Üzenetek: list (Beérkezett / Elküldött) + on-demand message view. All from state.messages. ----
 let msgTab = "received"; // "received" | "sent"
 let msgOpen = null; // the message currently shown in tab-msg-view
-// Sender avatar: initial letter for a person, an icon for system / sent messages.
-function msgAvatar(x, big) {
-  const cls = "msg-avatar" + (big ? " lg" : "") + (x.unread && !x.sent ? " unread" : "");
-  if (x.isSystem) return `<span class="${cls}">${icon("shield")}</span>`;
-  const name = (x.sent ? (x.to || "") : (x.from || "")).trim();
-  if (!name) return `<span class="${cls}">${icon("mail")}</span>`;
-  return `<span class="${cls}">${esc(name[0].toUpperCase())}</span>`;
-}
+let msgQuery = "", msgSem = "all"; // list search text + semester filter (derived from message dates)
 let msgAutoAt = 0; // throttle auto-load retries so a failing fetch can't tight-loop
 function renderMessages() {
   const host = $("messages-scroll"); if (!host) return;
@@ -1078,29 +1071,59 @@ function renderMessages() {
   }
   // Have (possibly stale) data → show it immediately, refresh in the background if older than 3 min.
   if (isNative && canAutoLogin() && !refreshingMsg && (Date.now() - new Date(m.fetchedAt).getTime() > 3 * 60 * 1000)) refreshMessages(false);
-  const list = msgTab === "sent" ? (m.sent || []) : (m.received || []);
+  const baseList = msgTab === "sent" ? (m.sent || []) : (m.received || []);
   const seg = (id, label, n) => `<button class="seg-btn${msgTab === id ? " active" : ""}" data-mtab="${id}" type="button">${label}${n ? ` <span class="seg-n">${n}</span>` : ""}</button>`;
-  let html = `<div class="seg" style="margin-bottom:12px">`
+  const sems = Array.from(new Set(baseList.map((x) => x.date ? semObj(new Date(x.date)).key : null).filter(Boolean)));
+  if (msgSem !== "all" && sems.indexOf(msgSem) < 0) msgSem = "all";
+  let html = `<div class="seg" style="margin-bottom:10px">`
     + seg("received", "Beérkezett", m.unread || 0)
     + seg("sent", "Elküldött", 0) + `</div>`;
-  if (!list.length) { html += `<div class="dash-empty" style="padding:22px 4px">${msgTab === "sent" ? "Nincs elküldött üzenet." : "Nincs beérkezett üzenet."}</div>`; }
-  else {
-    html += `<div class="card">`;
-    list.forEach((x) => {
-      const who = x.sent ? "" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
-      html += `<button class="row msg-row${x.unread ? " unread" : ""}" data-msg="${esc(x.id)}" type="button">`
-        + msgAvatar(x)
-        + `<span class="row-main"><span class="row-title">${esc(x.subject)}</span>`
-        + `<span class="row-sub">${[who, esc(ftDate(x.date))].filter(Boolean).join(" · ")}</span></span>`
-        + `${x.hasAttachment ? `<span class="msg-clip">${icon("doc")}</span>` : ""}`
-        + `<span class="row-chev">${icon("chev")}</span></button>`;
-    });
-    html += `</div>`;
-  }
+  html += `<div class="msg-controls">`
+    + `<div class="uni-search field-ic msg-search"><span class="ic-left" data-icon="search"></span>`
+    +   `<input class="input" id="msg-search" placeholder="Keresés tárgy vagy feladó" autocomplete="off" value="${esc(msgQuery)}" /></div>`
+    + `</div>`;
+  html += `<div id="msg-list"></div>`;
   html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(m.fetchedAt))}</div>`;
   host.innerHTML = html;
-  host.querySelectorAll("[data-mtab]").forEach((b) => b.onclick = () => { msgTab = b.dataset.mtab; renderMessages(); });
-  host.querySelectorAll("[data-msg]").forEach((b) => b.onclick = () => {
+  host.querySelectorAll("[data-mtab]").forEach((b) => b.onclick = () => { msgTab = b.dataset.mtab; msgQuery = ""; msgSem = "all"; renderMessages(); });
+  const search = $("msg-search"); if (search) search.oninput = (e) => { msgQuery = e.target.value; renderMsgList(); };
+  // Semester filter lives in the top bar, next to refresh.
+  const semTop = $("msg-sem-top");
+  if (semTop) {
+    semTop.classList.toggle("on", msgSem !== "all");
+    semTop.onclick = () => openList({ title: "Félév", selected: msgSem,
+      items: [{ value: "all", label: "Minden félév" }].concat(sems.map((s) => ({ value: s, label: s }))),
+      onPick: (v) => { msgSem = v; renderMessages(); } });
+  }
+  const subEl = $("messages-sub"); if (subEl) subEl.textContent = msgSem === "all" ? "Neptun üzenetek" : ("Félév: " + msgSem);
+  renderMsgList();
+}
+// Fill just the list (keeps the search input focused while typing). Reads msgTab/msgQuery/msgSem.
+function renderMsgList() {
+  const wrap = $("msg-list"); if (!wrap) return;
+  const m = state.messages; if (!m) return;
+  let list = msgTab === "sent" ? (m.sent || []) : (m.received || []);
+  const q = msgQuery.trim().toLowerCase();
+  if (q) list = list.filter((x) => (x.subject || "").toLowerCase().includes(q) || (x.from || "").toLowerCase().includes(q));
+  if (msgSem !== "all") list = list.filter((x) => x.date && semObj(new Date(x.date)).key === msgSem);
+  if (!list.length) {
+    const base = msgTab === "sent" ? "Nincs elküldött üzenet." : "Nincs beérkezett üzenet.";
+    wrap.innerHTML = `<div class="dash-empty" style="padding:22px 4px">${(q || msgSem !== "all") ? "Nincs találat." : base}</div>`;
+    return;
+  }
+  let html = `<div class="card">`;
+  list.forEach((x) => {
+    const who = x.sent ? "" : (x.isSystem ? "Rendszerüzenet" : esc(x.from || "Ismeretlen"));
+    html += `<button class="row msg-row${x.unread ? " unread" : ""}" data-msg="${esc(x.id)}" type="button">`
+      + `<span class="msg-dot"></span>`
+      + `<span class="row-main"><span class="row-title">${esc(x.subject)}</span>`
+      + `<span class="row-sub">${[who, esc(ftDate(x.date))].filter(Boolean).join(" · ")}</span></span>`
+      + `${x.hasAttachment ? `<span class="msg-clip">${icon("doc")}</span>` : ""}`
+      + `<span class="row-chev">${icon("chev")}</span></button>`;
+  });
+  html += `</div>`;
+  wrap.innerHTML = html;
+  wrap.querySelectorAll("[data-msg]").forEach((b) => b.onclick = () => {
     msgOpen = list.find((x) => x.id === b.dataset.msg) || null;
     pushScreen("tab-msg-view");
   });
@@ -1144,6 +1167,31 @@ async function renderMsgView() {
     return `<div class="msg-post"><div class="msg-text">${inner}</div>`
       + `${meta ? `<div class="msg-time">${meta}</div>` : ""}</div>`;
   }).join("");
+  // Reply — offered on non-system received messages when Neptun allows communication in the thread.
+  const canReply = !x.sent && !x.isSystem && !!(state.messages && state.messages.canReply);
+  if (canReply) {
+    const last = posts[posts.length - 1] || {};
+    const lastPostId = last.postId || last.id || "";
+    const rc = document.createElement("div");
+    rc.className = "msg-reply";
+    rc.innerHTML = `<button class="btn primary" id="msg-reply-btn" type="button">${icon("mail")} Válasz</button>`;
+    host.appendChild(rc);
+    $("msg-reply-btn").onclick = () => {
+      rc.innerHTML = `<textarea class="input" id="msg-reply-text" rows="4" placeholder="Írd ide a válaszod…"></textarea>`
+        + `<div class="msg-reply-actions"><button class="btn ghost" id="msg-reply-cancel" type="button">Mégse</button>`
+        + `<button class="btn primary" id="msg-reply-send" type="button">${icon("mail")} Küldés</button></div>`;
+      const ta = $("msg-reply-text"); ta.focus();
+      $("msg-reply-cancel").onclick = () => renderMsgView();
+      $("msg-reply-send").onclick = async () => {
+        const text = ta.value.trim();
+        if (!text) { toast("Írj be egy üzenetet."); return; }
+        const send = $("msg-reply-send"); send.disabled = true; send.textContent = "Küldés…";
+        const r = await apiSendReply(x.id, text, lastPostId);
+        if (r.ok) { toast("Válasz elküldve."); renderMsgView(); }        // reload thread → shows the new reply
+        else { send.disabled = false; send.innerHTML = `${icon("mail")} Küldés`; toast("Nem sikerült elküldeni" + (r.detail ? ": " + r.detail : ".")); }
+      };
+    };
+  }
 }
 // Message post bodies are HTML from Neptun. Allow only basic inline formatting; strip scripts/attrs.
 function sanitizeHtml(s) {
@@ -2619,7 +2667,10 @@ async function syncMessages() {
   const sentMsgs = (snt && snt.messages || []).map((m) => norm(m, true));
   const unread = (cnt && typeof cnt.count === "number") ? cnt.count : received.filter((m) => m.unread).length;
   if (!received.length && !sentMsgs.length && !unread) return { ok: false, detail: "nem találtam üzenetet" };
-  state.messages = { fetchedAt: new Date().toISOString(), unread, received, sent: sentMsgs };
+  // Whether replying is allowed at all (Neptun's own flag on the received list; reply is offered on
+  // non-system received messages when this is on).
+  const canReply = !!(rec && rec.isCommunicationEnabled);
+  state.messages = { fetchedAt: new Date().toISOString(), unread, canReply, received, sent: sentMsgs };
   saveState();
   return { ok: true, detail: unread + " olvasatlan · " + received.length + " beérkezett" };
 }
@@ -2645,6 +2696,19 @@ async function apiMarkMessageRead(id, posts) {
     const r = await apiPost(sess, "Messages/" + encodeURIComponent(id) + "/Posts/Processed", { postIds: ids });
     return !!(r && r.status >= 200 && r.status < 300);
   } catch (e) { return false; }
+}
+// Send a reply into a message thread: POST Message/ReplyToPost {messageIdToReply, postIdToReply, text,
+// temporaryFileIds}. postId = the post we answer (last one), "" is accepted. Returns {ok, detail}.
+async function apiSendReply(messageId, text, postId) {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
+  try {
+    const r = await apiPost(sess, "Message/ReplyToPost", { messageIdToReply: messageId, postIdToReply: postId || "", text: String(text || ""), temporaryFileIds: [] });
+    if (r && r.status >= 200 && r.status < 300) return { ok: true };
+    let d = r && r.data; if (typeof d === "string") { try { d = JSON.parse(d); } catch (e) {} }
+    const msg = d && (d.message || (d.modelStateErrors && d.modelStateErrors[0] && d.modelStateErrors[0].errors && d.modelStateErrors[0].errors[0]));
+    return { ok: false, detail: msg || ("hiba (" + (r && r.status) + ")") };
+  } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
 }
 async function syncCourses() {
   // Preferred: direct API — terms, then enrolled subjects per term.

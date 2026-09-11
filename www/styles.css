@@ -227,11 +227,14 @@ button.row:active { background: var(--surface-2); }
 /* Üzenetek */
 .seg-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: 9px; background: var(--brand-plus); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: middle; }
 .msg-row { align-items: center; }
-.msg-avatar { flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; margin-right: 12px;
-  background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink); font-family: var(--font-brand); font-weight: 800; font-size: 16px; }
-.msg-avatar svg.ic { width: 18px; height: 18px; color: var(--ink-2); }
-.msg-avatar.unread { border-color: var(--brand-plus); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-plus) 28%, transparent); }
+.msg-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: transparent; margin-right: 12px; }
+.msg-row.unread .msg-dot { background: var(--brand-plus); }
 .msg-row.unread .row-title { font-weight: 700; color: var(--ink); }
+/* search + semester filter row */
+.msg-controls { display: flex; gap: 10px; margin-bottom: 12px; }
+.msg-controls .msg-search { flex: 1; margin: 0; }
+.msg-controls .msg-search .input { padding-top: 12px; padding-bottom: 12px; }
+#msg-sem-top.on { color: var(--brand-plus); }
 .msg-clip { color: var(--ink-3); display: grid; place-items: center; margin: 0 2px; }
 .msg-clip svg.ic { width: 16px; height: 16px; }
 .msg-head { padding: 18px; }
@@ -244,6 +247,10 @@ button.row:active { background: var(--surface-2); }
 .msg-text { font-size: 14.5px; line-height: 1.55; color: var(--ink); word-break: break-word; }
 .msg-text a { color: var(--brand-plus); }
 .msg-text img { border-radius: 8px; margin: 6px 0; }
+.msg-reply { margin-top: 16px; }
+.msg-reply textarea.input { resize: vertical; min-height: 96px; line-height: 1.5; }
+.msg-reply-actions { display: flex; gap: 10px; margin-top: 10px; }
+.msg-reply-actions .btn { flex: 1; }
 
 /* Profile page rows */
 .pf-badge { font-family: var(--font-brand); font-weight: 800; font-size: 16px; color: var(--ink); }
