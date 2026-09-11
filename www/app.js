@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.175";
+const APP_VERSION = "v0.176";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4193,24 +4193,24 @@ function playBootChime() {
     const snap = (at, bpFreq, bodyFreq, gain) => {
       const s = t0 + at;
       const src = ctx.createBufferSource(); src.buffer = nb;
-      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = bpFreq; bp.Q.value = 1.1;
-      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 700;
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = bpFreq; bp.Q.value = 0.8;
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1700; lp.Q.value = 0.5; // roll off the sharp highs → duller crack
       const ng = ctx.createGain();
       ng.gain.setValueAtTime(0.0001, s);
-      ng.gain.linearRampToValueAtTime(gain, s + 0.001);              // instant crack
-      ng.gain.exponentialRampToValueAtTime(0.0001, s + 0.075);        // crisp short tail
-      src.connect(bp); bp.connect(hp); hp.connect(ng); ng.connect(master);
-      src.start(s); src.stop(s + 0.12);
+      ng.gain.linearRampToValueAtTime(gain, s + 0.004);              // slightly softer crack (less click)
+      ng.gain.exponentialRampToValueAtTime(0.0001, s + 0.10);         // a touch longer, rounder tail
+      src.connect(bp); bp.connect(lp); lp.connect(ng); ng.connect(master);
+      src.start(s); src.stop(s + 0.14);
       const o = ctx.createOscillator(), og = ctx.createGain();        // woody resonance under the crack
-      o.type = "triangle"; o.frequency.setValueAtTime(bodyFreq, s); o.frequency.exponentialRampToValueAtTime(bodyFreq * 0.45, s + 0.06);
-      og.gain.setValueAtTime(0.0001, s); og.gain.linearRampToValueAtTime(gain * 0.7, s + 0.003); og.gain.exponentialRampToValueAtTime(0.0001, s + 0.11);
-      o.connect(og); og.connect(master); o.start(s); o.stop(s + 0.13);
+      o.type = "triangle"; o.frequency.setValueAtTime(bodyFreq, s); o.frequency.exponentialRampToValueAtTime(bodyFreq * 0.45, s + 0.07);
+      og.gain.setValueAtTime(0.0001, s); og.gain.linearRampToValueAtTime(gain * 0.8, s + 0.004); og.gain.exponentialRampToValueAtTime(0.0001, s + 0.12);
+      o.connect(og); og.connect(master); o.start(s); o.stop(s + 0.14);
     };
-    // A crisp snap per letter K r e d i t (CSS delays .10–.45s), slight variation so it feels organic.
+    // A soft-but-present snap per letter K r e d i t (CSS delays .10–.45s), slight variation.
     const times = [0.10, 0.17, 0.24, 0.31, 0.38, 0.45];
-    const bp = [2600, 2400, 2900, 2500, 3000, 2700], body = [330, 300, 360, 320, 380, 340];
+    const bp = [1400, 1300, 1550, 1350, 1600, 1450], body = [320, 290, 350, 310, 370, 330];
     times.forEach((t, i) => snap(t, bp[i], body[i], 0.5));
-    snap(0.60, 2100, 240, 0.75); // the "+" — the big satisfying break
+    snap(0.60, 1200, 230, 0.75); // the "+" — the big satisfying break
   } catch (e) {}
 }
 function bootSoundOn() { return state.bootSound !== false; } // default on
