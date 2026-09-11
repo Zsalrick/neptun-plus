@@ -369,6 +369,13 @@ button.row:active { background: var(--surface-2); }
 .note-x svg.ic { width: 16px; height: 16px; }
 .detail-add { display: flex; gap: 8px; margin-top: 8px; }
 .detail-add .btn { font-size: 12.5px; padding: 11px 8px; }
+.kv { padding: 4px 14px; }
+.kv-row { display: flex; gap: 12px; justify-content: space-between; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.kv-row:first-child { border-top: 0; }
+.kv-k { color: var(--ink-3); flex: none; }
+.kv-v { color: var(--ink); text-align: right; word-break: break-word; }
+.req-row { font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+.req-row + .req-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-2); }
 
 /* ---------- Custom picker buttons ---------- */
 .period-btn { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface-2);

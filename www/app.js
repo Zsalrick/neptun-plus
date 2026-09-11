@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.171";
+const APP_VERSION = "v0.172";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -3208,62 +3208,150 @@ $("exam-save").onclick = () => {
 
 };
 
-// ----- event detail + notes -----
-let detailEvent = null, detailExamMode = false;
+// ----- órarend/course API: match an ICS event to its calendar event (for ids) + fetch the drilldown -----
+let apiEvCache = { at: 0, list: null };
+async function apiCalendarEvents() {
+  if (apiEvCache.list && Date.now() - apiEvCache.at < 5 * 60000) return apiEvCache.list;
+  const sess = await getApiSession(); if (!sess || !sess.token) return [];
+  let ids = []; try { const mt = await apiGet(sess, "MyTrainings"); ids = ((mt.data && mt.data.data) || []).map((t) => t.studentTrainingId).filter(Boolean); } catch (e) {}
+  const now = Date.now(), span = 150 * 864e5;
+  const params = { startDate: new Date(now - span).toISOString(), endDate: new Date(now + span).toISOString(), studentTrainingIds: ids,
+    isClassesVisible: true, isExamsVisible: true, isFinalExamsVisible: true, isOnlineMeetingsVisible: true, isOtherEventsVisible: true, isPeriodsVisible: true, isTasksVisible: true };
+  try { const r = await apiGet(sess, "Calendar/GetCalendarEvents", params); const list = (r.data && r.data.data) || []; apiEvCache = { at: Date.now(), list }; return list; } catch (e) { return []; }
+}
+function matchApiEvent(list, e) {
+  if (!list || !list.length || !e || !e.S) return null;
+  const kk = (d) => d.getFullYear() + "|" + d.getMonth() + "|" + d.getDate() + "|" + d.getHours() + "|" + d.getMinutes();
+  const k = kk(e.S);
+  let cands = list.filter((x) => x.startDate && kk(new Date(x.startDate)) === k);
+  const code = (e.summary && (e.summary.match(/[A-ZÁÉÍÓÖŐÚÜŰ0-9]{3,}_[A-Z0-9]+/) || [])[0]) || "";
+  if (cands.length > 1 && code) { const c2 = cands.filter((x) => (x.courseCode || "") === code); if (c2.length) cands = c2; }
+  return cands[0] || null;
+}
+async function apiCourseBundle(ev) {
+  const sess = await getApiSession(); if (!sess || !sess.token || !ev) return null;
+  const g = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return r && r.data && r.data.data; } catch (e) { return null; } };
+  const course = (await g("Calendar/GetCourseDetails", { classInstanceId: ev.classInstanceId, webexMeetingId: ev.webexMeetingId || "", isInstitutionalCalendar: false })) || {};
+  const termId = course.termId || "";
+  const base = { courseId: ev.courseId, subjectId: ev.subjectId, termId };
+  const [tutors, detail, students, reqs] = await Promise.all([
+    g("SubjectCourse/GetSubjectCourseTutors", base),
+    g("SubjectCourse/GetSubjectDetails", base),
+    g("SubjectCourse/GetSubjectCourseStudents", { courseId: ev.courseId, subjectId: ev.subjectId, selectedTermId: termId, firstRow: 0, lastRow: 500 }),
+    g("SubjectCourse/GetGeneralRequirements", base),
+  ]);
+  return { course, tutors: tutors || [], detail: detail || {}, students: students || [], reqs: reqs || [] };
+}
+
+// ----- event detail + notes (segmented: Tárgy / Oktatók / Diákok / Megjegyzések) -----
+let detailEvent = null, detailExamMode = false, detailSeg = "info", detailCourse = null, detailCourseErr = false;
 function openDetail(e, examMode) {
   if (!e) return;
-  detailEvent = e; detailExamMode = examMode;
+  detailEvent = e; detailExamMode = examMode; detailSeg = "info"; detailCourse = null; detailCourseErr = false;
   renderDetail();
   $("detail-sheet").classList.remove("hidden");
+  // Classes get the API drilldown (oktatók/diákok/tárgy adatai); exams/manual keep the simple view.
+  if (!e.manual && !examMode && isNative) loadDetailCourse(e);
+}
+async function loadDetailCourse(e) {
+  try {
+    const list = await apiCalendarEvents();
+    const ev = matchApiEvent(list, e);
+    detailCourse = ev ? await apiCourseBundle(ev) : null;
+    if (!detailCourse) detailCourseErr = true;
+  } catch (err) { detailCourseErr = true; }
+  if (detailEvent === e && !$("detail-sheet").classList.contains("hidden")) renderDetail();
+}
+function noteAdd(e, kind) {
+  const v = $("dn-input").value.trim(); if (!v) return toast("Írj be megjegyzést.");
+  state.notes = state.notes || [];
+  state.notes.push(kind === "subject" ? { id: uid(), kind: "subject", subject: e.summary, text: v } : { id: uid(), kind: "occurrence", occKey: occKey(e), text: v });
+  saveState(); renderDetail(); refreshAgendas(); toast("Megjegyzés hozzáadva.");
 }
 function renderDetail() {
   const e = detailEvent; if (!e) return;
-  const notes = e.manual ? (e.note ? [{ id: "m", text: e.note, manualNote: true }] : []) : notesForEvent(e);
   let html = `${e.subject ? `<div class="detail-subj">${esc(e.subject)}</div>` : ""}<div class="sheet-title">${esc(e.summary || "Esemény")}</div>
     <div class="detail-meta">${icon("clock")} ${esc(dayHeading(e.S))} · ${hm(e.S)}${e.E > e.S ? "–" + hm(e.E) : ""}${e.location ? ` &nbsp;·&nbsp; ${icon("pin")} ${esc(e.location)}` : ""}</div>`;
-  html += `<div class="detail-notes">`;
-  if (notes.length) notes.forEach((n) => {
-    html += `<div class="note-row"><span>${esc(n.text)}</span>${n.manualNote ? "" : `<button class="note-x" data-nid="${n.id}">${icon("x")}</button>`}</div>`;
-  });
-  else html += `<div class="hint" style="margin:0">Nincs megjegyzés.</div>`;
-  html += `</div>`;
-  if (!e.manual) {
-    html += `<div class="field" style="margin-top:14px"><input class="input" id="dn-input" placeholder="Új megjegyzés, például hozz papírt" autocomplete="off" /></div>
-      <div class="detail-add"><button class="btn outline" id="dn-occ">Csak erre az alkalomra</button><button class="btn outline" id="dn-sub">Minden ilyen órára</button></div>`;
-    // Only classes (not exams) can be hidden — for resolving overlaps ("on paper I have two").
-    if (!detailExamMode) {
-      const hidden = isHiddenOcc(e);
-      html += `<div class="detail-add" style="margin-top:10px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Mégis járok erre az órára" : "Erre az órára nem járok be"}</button></div>
-        <div class="hint" style="margin:8px 2px 0">A félév összes ilyen órájára érvényes (${esc(TT_DAYS[e.S.getDay()])} ${esc(hm(e.S))}).</div>`;
-    }
-  } else {
+  if (e.manual) {
+    const notes = e.note ? [{ text: e.note }] : [];
+    html += `<div class="detail-notes">${notes.length ? notes.map((n) => `<div class="note-row"><span>${esc(n.text)}</span></div>`).join("") : `<div class="hint" style="margin:0">Nincs megjegyzés.</div>`}</div>`;
     html += `<div class="detail-add" style="margin-top:14px"><button class="btn outline" id="dn-edit">Szerkesztés</button><button class="btn danger" id="dn-del">Törlés</button></div>`;
+    $("detail-body").innerHTML = html;
+    $("dn-edit").onclick = () => { $("detail-sheet").classList.add("hidden"); openExamEdit(e); };
+    $("dn-del").onclick = () => { state.manualExams = (state.manualExams || []).filter((m) => m.id !== e.id); saveState(); $("detail-sheet").classList.add("hidden"); renderExams(); renderHome(); toast("Törölve."); };
+    return;
+  }
+  // Segmented sections for a class/exam occurrence.
+  const segs = [["info", "Tárgy"], ["tutors", "Oktatók"], ["students", "Diákok"], ["notes", "Megjegyzések"]];
+  html += `<div class="seg" style="margin-bottom:12px">` + segs.map(([id, l]) => `<button class="seg-btn${detailSeg === id ? " active" : ""}" data-cseg="${id}" type="button">${l}</button>`).join("") + `</div>`;
+  html += `<div id="course-sec"></div>`;
+  if (!detailExamMode) {
+    const hidden = isHiddenOcc(e);
+    html += `<div class="detail-add" style="margin-top:14px"><button class="btn ${hidden ? "outline" : "danger"}" id="dn-hide">${hidden ? "Mégis járok erre az órára" : "Erre az órára nem járok be"}</button></div>
+      <div class="hint" style="margin:8px 2px 0">A félév összes ilyen órájára érvényes (${esc(TT_DAYS[e.S.getDay()])} ${esc(hm(e.S))}).</div>`;
   }
   $("detail-body").innerHTML = html;
-  $("detail-body").querySelectorAll(".note-x").forEach((b) => b.onclick = () => {
-    state.notes = (state.notes || []).filter((n) => n.id !== b.dataset.nid); saveState(); renderDetail(); refreshAgendas();
-  });
-  const add = (kind) => {
-    const v = $("dn-input").value.trim(); if (!v) return toast("Írj be megjegyzést.");
-    state.notes = state.notes || [];
-    state.notes.push(kind === "subject"
-      ? { id: uid(), kind: "subject", subject: e.summary, text: v }
-      : { id: uid(), kind: "occurrence", occKey: occKey(e), text: v });
-    saveState(); renderDetail(); refreshAgendas(); toast("Megjegyzés hozzáadva.");
-  };
-  if ($("dn-occ")) $("dn-occ").onclick = () => add("occurrence");
-  if ($("dn-sub")) $("dn-sub").onclick = () => add("subject");
+  $("detail-body").querySelectorAll("[data-cseg]").forEach((b) => b.onclick = () => { detailSeg = b.dataset.cseg; renderDetail(); });
   if ($("dn-hide")) $("dn-hide").onclick = () => {
     const k = hideKey(e); state.hiddenOcc = state.hiddenOcc || [];
     const was = state.hiddenOcc.indexOf(k) >= 0;
     state.hiddenOcc = was ? state.hiddenOcc.filter((x) => x !== k) : state.hiddenOcc.concat(k);
     saveState(); renderDetail(); refreshAgendas(); toast(was ? "Újra látható." : "Elrejtve a félév ilyen óráira.");
   };
-  if ($("dn-edit")) $("dn-edit").onclick = () => { $("detail-sheet").classList.add("hidden"); openExamEdit(e); };
-  if ($("dn-del")) $("dn-del").onclick = () => {
-    state.manualExams = (state.manualExams || []).filter((m) => m.id !== e.id); saveState();
-    $("detail-sheet").classList.add("hidden"); renderExams(); renderHome(); toast("Törölve.");
-  };
+  renderCourseSeg(e);
+}
+function renderCourseSeg(e) {
+  const host = $("course-sec"); if (!host) return;
+  const loading = !detailCourse && !detailCourseErr && !e.manual && !detailExamMode && isNative;
+  const c = detailCourse || {};
+  if (detailSeg === "notes") {
+    const notes = notesForEvent(e);
+    let h = `<div class="detail-notes">`;
+    h += notes.length ? notes.map((n) => `<div class="note-row"><span>${esc(n.text)}</span><button class="note-x" data-nid="${n.id}">${icon("x")}</button></div>`).join("") : `<div class="hint" style="margin:0">Nincs megjegyzés.</div>`;
+    h += `</div><div class="field" style="margin-top:14px"><input class="input" id="dn-input" placeholder="Új megjegyzés, például hozz papírt" autocomplete="off" /></div>`
+      + `<div class="detail-add"><button class="btn outline" id="dn-occ">Csak erre az alkalomra</button><button class="btn outline" id="dn-sub">Minden ilyen órára</button></div>`;
+    host.innerHTML = h;
+    host.querySelectorAll(".note-x").forEach((b) => b.onclick = () => { state.notes = (state.notes || []).filter((n) => n.id !== b.dataset.nid); saveState(); renderDetail(); refreshAgendas(); });
+    $("dn-occ").onclick = () => noteAdd(e, "occurrence");
+    $("dn-sub").onclick = () => noteAdd(e, "subject");
+    return;
+  }
+  if (loading) { host.innerHTML = `<div class="dash-empty" style="padding:18px 2px">Betöltés…</div>`; return; }
+  if (detailSeg === "tutors") {
+    const list = c.tutors || [];
+    host.innerHTML = list.length ? `<div class="card">` + list.map((t) => `<div class="row"><span class="row-ic">${icon("user")}</span><span class="row-main"><span class="row-title">${esc(t.printname || t.nickname || "Oktató")}</span>${t.nickname && t.nickname !== t.printname ? `<span class="row-sub">${esc(t.nickname)}</span>` : ""}</span></div>`).join("") + `</div>`
+      : `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni." : (c.course && c.course.courseTutor ? esc(c.course.courseTutor) : "Nincs megadott oktató.")}</div>`;
+    return;
+  }
+  if (detailSeg === "students") {
+    const list = c.students || [];
+    if (!list.length) { host.innerHTML = `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni." : "Nincs elérhető hallgatói névsor."}</div>`; return; }
+    host.innerHTML = `<div class="hint" style="margin:0 2px 8px">${list.length} hallgató</div><div class="card">`
+      + list.map((s) => { const nm = s.printname || s.name || s.studentName || s.fullName || s.nickname || "Hallgató"; return `<div class="row"><span class="row-ic">${icon("user")}</span><span class="row-main"><span class="row-title">${esc(nm)}</span></span></div>`; }).join("") + `</div>`;
+    return;
+  }
+  // "info" — subject + course data
+  const d = c.detail || {}, co = c.course || {};
+  const rows = [];
+  const room = co.room || e.location, tutor = co.courseTutor;
+  if (tutor) rows.push(["Oktató", tutor]);
+  if (room) rows.push(["Terem", room]);
+  if (co.courseType) rows.push(["Típus", co.courseType]);
+  if (co.teachingMethod) rows.push(["Oktatás módja", co.teachingMethod]);
+  if (co.language) rows.push(["Nyelv", co.language]);
+  if (co.strength != null || co.maxLimit != null) rows.push(["Létszám", (co.strength != null ? co.strength : "?") + (co.maxLimit ? " / " + co.maxLimit : "")]);
+  if (d.credit != null) rows.push(["Kredit", String(d.credit)]);
+  if (d.requirementType) rows.push(["Számonkérés", d.requirementType]);
+  if (d.recommendedTerm) rows.push(["Ajánlott félév", String(d.recommendedTerm)]);
+  if (d.preRequirement) rows.push(["Előkövetelmény", d.preRequirement]);
+  if (d.ownerPrintName) rows.push(["Tárgyfelelős", d.ownerPrintName]);
+  if (co.termName) rows.push(["Félév", co.termName]);
+  let h = rows.length ? `<div class="card kv">` + rows.map(([k, v]) => `<div class="kv-row"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(v)}</span></div>`).join("") + `</div>` : "";
+  const reqs = (c.reqs || []).filter((r) => r && r.description);
+  if (reqs.length) h += `<div class="dash-label">Követelmények</div><div class="card"><div class="card-pad">` + reqs.map((r) => `<div class="req-row">${esc(r.description)}</div>`).join("") + `</div></div>`;
+  if (d.description || d.note) h += `<div class="dash-label">Leírás</div><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.description || d.note)}</div></div>`;
+  if (!h) h = `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni a tárgy adatait." : "Nincs több adat."}</div>`;
+  host.innerHTML = h;
 }
 function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); rescheduleNotifications(); }
 
