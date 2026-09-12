@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.191";
+const APP_VERSION = "v0.192";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1420,12 +1420,14 @@ async function refreshCredit(viaButton) {
 }
 // ---- Jegyek: átlagok/indexek + félévenként a jegyek ----
 let gradesFilter = "all"; // "all" or a termName
-// A square grade box, coloured by how good the grade is (1 red → 5 green). Non-numeric results
-// (aláírás/megfelelt) show a check; missing grade shows a dash.
+// A grade badge coloured by how good the grade is (1 red → 5 green). Shows the NUMBER for any graded
+// subject; only signature/"megfelelt" results (no numeric grade) show a check. Recomputes the number
+// from the result text if it wasn't stored, so older reads render correctly too.
+function isSignatureResult(r) { return /alá[ií]r|megfelelt|teljes[ií]t/i.test(String(r || "")); }
 function gradeBox(e) {
-  const v = e.value;
+  const v = (e.value != null) ? e.value : gradeValue(e.result);
   const g = (v >= 1 && v <= 5) ? v : 0;
-  const inner = (v != null) ? String(v) : (e.passed ? icon("check") : (e.result ? esc(e.result[0]) : "–"));
+  const inner = (v != null) ? String(v) : (isSignatureResult(e.result) || e.passed ? icon("check") : (e.result ? esc(e.result[0].toUpperCase()) : "–"));
   return `<span class="grade-box g${g}" title="${esc(e.result || "")}">${inner}</span>`;
 }
 function renderGrades() {
@@ -3072,13 +3074,14 @@ async function syncFinance() {
 // stable {id, from, subject, date, unread, hasAttachment, isSystem, sent} shape; body loaded on demand.
 // Grade text ("Jeles"/"Jó"/"Kiválóan megfelelt (5)"/…) → numeric 1-5, or null for pass-only (aláírás).
 function gradeValue(text) {
-  const t = String(text || "").toLowerCase();
-  const m = t.match(/\((\d)\)/); if (m && +m[1] >= 1 && +m[1] <= 5) return +m[1];
-  if (/kivál|jeles/.test(t)) return 5;
-  if (/\bjó\b|\bjo\b/.test(t)) return 4;
-  if (/közepes/.test(t)) return 3;
-  if (/elégséges|elegséges|elegseges/.test(t)) return 2;
+  const t = String(text || "").trim().toLowerCase();
+  const m = t.match(/\((\d)\)/); if (m && +m[1] >= 1 && +m[1] <= 5) return +m[1]; // e.g. "Kiválóan megfelelt (5)"
+  // Order matters. Note: \b fails around accented letters (ó), so match "jó" via a manual boundary.
   if (/elégtelen|elegtelen/.test(t)) return 1;
+  if (/elégséges|elegséges|elegseges/.test(t)) return 2;
+  if (/közepes|kozepes/.test(t)) return 3;
+  if (/(^|[^a-z])j[óo]([^a-z]|$)/.test(t)) return 4; // "jó" / "jo" standalone
+  if (/jeles|kivál/.test(t)) return 5;
   return null;
 }
 // Jegyek + átlagok. FINAL grades per subject come from the leckekönyv (RegistrySheet/
