@@ -313,6 +313,9 @@ button.row:active { background: var(--surface-2); }
 .svc.soon { cursor: default; box-shadow: none; }
 .svc.soon .svc-ic, .svc.soon .svc-t, .svc.soon .svc-b { opacity: .5; }
 .svc.soon:active { transform: none; background: var(--surface); }
+.svc-row { width: 100%; }
+.svc-row.soon { opacity: .55; }
+.svc-row .svc-badge { position: static; margin-left: auto; flex: none; }
 .svc-badge { position: absolute; top: 12px; right: 12px; font-size: 9px; font-weight: 700; letter-spacing: .06em;
   text-transform: uppercase; color: var(--brand-plus); border: 1px solid rgba(245,178,33,.4);
   border-radius: 999px; padding: 3px 7px; }

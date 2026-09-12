@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.185";
+const APP_VERSION = "v0.186";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -999,7 +999,13 @@ function renderMoreCat() {
   const t = $("more-cat-title"); if (t) t.textContent = g;
   const items = MORE_SERVICES.filter((s) => s.group === g);
   const sub = $("more-cat-sub"); if (sub) sub.textContent = items.length + " elem";
-  host.innerHTML = `<div class="svc-grid">${items.map(svcTile).join("")}</div>`;
+  // Full-width row buttons — easier to read and reach than a grid of small tiles.
+  const row = (s) => `<button class="row svc-row${s.soon ? " soon" : ""}" data-svc="${s.id}"${s.soon ? " disabled" : ""} type="button">`
+    + `<span class="row-ic">${icon(s.icon)}</span>`
+    + `<span class="row-main"><span class="row-title">${esc(s.label)}</span><span class="row-sub">${esc(typeof s.sub === "function" ? s.sub() : s.sub)}</span></span>`
+    + (s.soon ? `<span class="svc-badge">Hamarosan</span>` : `<span class="row-chev">${icon("chev")}</span>`)
+    + `</button>`;
+  host.innerHTML = `<div class="card">${items.map(row).join("")}</div>`;
   wireSvc(host);
 }
 // Full-screen Kredit page (own page, not a popup).
