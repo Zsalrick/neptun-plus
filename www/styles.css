@@ -241,6 +241,12 @@ button.row:active { background: var(--surface-2); }
 .grade-box.g1 { background: #d15b5b; }
 .grade-box.g0 { background: var(--surface-3); color: var(--ink-2); border: 1px solid var(--line-2); }
 .grade-box.g0 svg.ic { color: var(--ink-2); }
+button.grade-row { width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+button.grade-row:active { background: var(--surface-2); }
+.grade-final { display: flex; align-items: center; gap: 14px; margin: 6px 0 4px; }
+.grade-final .grade-box { width: 52px; height: 52px; font-size: 24px; border-radius: 13px; }
+.gf-t { font-size: 12px; color: var(--ink-3); }
+.gf-v { font-size: 18px; font-weight: 700; color: var(--ink); margin-top: 2px; }
 
 /* Üzenetek */
 .seg-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: 9px; background: var(--brand-plus); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: middle; }

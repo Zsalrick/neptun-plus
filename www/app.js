@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.189";
+const APP_VERSION = "v0.190";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1451,22 +1451,42 @@ function renderGrades() {
   // Per-term averages map for headers
   const avgByTerm = {}; perTerm.forEach((t) => { avgByTerm[t.termName] = t; });
   const norm = (s) => String(s || "").replace(/\s*\(.*\)\s*$/, "").trim();
+  const attempts = gr.attempts || {};
   (gr.terms || []).forEach((t) => {
     const a = avgByTerm[norm(t.termName)];
     const avgTxt = a ? [a.average != null ? "átlag " + a.average : "", a.creditIndex != null ? "kreditindex " + a.creditIndex : ""].filter(Boolean).join(" · ") : "";
     html += `<div class="dash-label" style="display:flex;justify-content:space-between;align-items:baseline"><span>${esc(t.termName)}</span>${avgTxt ? `<span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-3)">${esc(avgTxt)}</span>` : ""}</div>`;
-    if (!t.exams.length) { html += `<div class="dash-empty" style="padding:10px 4px">Nincs jegy ebben a félévben.</div>`; return; }
-    html += `<div class="card">` + t.exams.map((e) => `<div class="row grade-row">`
-      + `<span class="row-main"><span class="row-title">${esc(e.subject)}</span><span class="row-sub">${[esc(e.code), esc(e.type), e.date ? esc(ftDate(e.date)) : ""].filter(Boolean).join(" · ")}</span></span>`
-      + gradeBox(e) + `</div>`).join("") + `</div>`;
+    if (!t.subjects.length) { html += `<div class="dash-empty" style="padding:10px 4px">Nincs tárgy ebben a félévben.</div>`; return; }
+    html += `<div class="card">` + t.subjects.map((s) => {
+      const n = (attempts[s.subjectId] || []).length;
+      const sub = [esc(s.code), s.credits ? esc(s.credits + " kr") : "", n > 1 ? esc(n + " jegy") : ""].filter(Boolean).join(" · ");
+      return `<button class="row grade-row" data-sid="${esc(s.subjectId)}" type="button">`
+        + `<span class="row-main"><span class="row-title">${esc(s.subject)}</span><span class="row-sub">${sub}</span></span>`
+        + gradeBox(s) + `</button>`;
+    }).join("") + `</div>`;
   });
-  // Averages-only terms (no exam rows) — still show their average
-  perTerm.forEach((t) => { if (!(gr.terms || []).some((x) => norm(x.termName) === t.termName)) {
-    const avgTxt = [t.average != null ? "átlag " + t.average : "", t.creditIndex != null ? "kreditindex " + t.creditIndex : ""].filter(Boolean).join(" · ");
-    if (avgTxt) html += `<div class="dash-label">${esc(t.termName)}</div><div class="card"><div class="row"><span class="row-main"><span class="row-sub">${esc(avgTxt)}</span></span></div></div>`;
-  } });
   html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(gr.fetchedAt))}</div>`;
   host.innerHTML = html;
+  host.querySelectorAll("[data-sid]").forEach((b) => b.onclick = () => openGradeDetail(b.dataset.sid));
+}
+// Tap a subject → sheet with its final grade + every recorded grade (exam attempts, retakes…).
+function openGradeDetail(subjectId) {
+  const gr = state.grades; if (!gr) return;
+  let subj = null; (gr.terms || []).forEach((t) => t.subjects.forEach((s) => { if (s.subjectId === subjectId) subj = Object.assign({ termName: t.termName }, s); }));
+  if (!subj) return;
+  const list = (gr.attempts && gr.attempts[subjectId]) || [];
+  let h = `<div class="sheet-title">${esc(subj.subject)}</div>`
+    + `<div class="detail-meta">${[esc(subj.code), subj.credits ? esc(subj.credits + " kredit") : "", esc(subj.termName)].filter(Boolean).join(" · ")}</div>`;
+  h += `<div class="grade-final">${gradeBox(subj)}<div><div class="gf-t">Végleges jegy</div><div class="gf-v">${esc(subj.result || (subj.passed ? "Teljesítve" : "—"))}</div></div></div>`;
+  if (list.length) {
+    h += `<div class="dash-label" style="margin-top:8px">Összes bejegyzett jegy</div><div class="card">`
+      + list.map((e) => `<div class="row grade-row"><span class="row-main"><span class="row-title">${esc(e.result || "—")}</span><span class="row-sub">${[esc(e.type), e.date ? esc(ftDate(e.date)) : ""].filter(Boolean).join(" · ")}</span></span>${gradeBox(e)}</div>`).join("")
+      + `</div>`;
+  } else {
+    h += `<div class="hint" style="margin-top:12px">Ehhez a tárgyhoz nincs külön vizsgabejegyzés — a leckekönyvi végleges jegy látszik.</div>`;
+  }
+  $("grade-body").innerHTML = h;
+  $("grade-sheet").classList.remove("hidden");
 }
 let refreshingGrades = false;
 async function refreshGrades(viaButton) {
@@ -2943,7 +2963,7 @@ const DATA_TASKS = [
     has: () => !!(state.finance && state.finance.fetchedAt), run: syncFinance },
   { id: "messages", label: "Üzenetek", sub: "Beérkezett és elküldött üzenetek, olvasatlan darabszám",
     has: () => !!(state.messages && state.messages.fetchedAt), run: syncMessages },
-  { id: "grades", label: "Jegyek", sub: "Vizsgajegyek félévenként és az átlagok, kreditindex",
+  { id: "grades", label: "Jegyek", sub: "Végleges jegyek tárgyanként, félévenként, átlagok és kreditindex",
     has: () => !!(state.grades && state.grades.fetchedAt), run: syncGrades },
 ];
 function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
@@ -3040,38 +3060,64 @@ async function syncFinance() {
 // Üzenetek (discovered v0.149, direct API). Message list endpoints use FLAT firstRow/lastRow paging
 // (NOT sortAndPage.*). Received list is data.receivedMessages, sent is data.messages. Normalized to a
 // stable {id, from, subject, date, unread, hasAttachment, isSystem, sent} shape; body loaded on demand.
-// Jegyek + átlagok (discovered v0.187). Grades come from ExamResults/GetExamResultsList (grouped by
-// term); per-term averages from Advancement/GetTermAveragesByTraining; the current indices (korrigált
-// kreditindex / kreditindex / ösztöndíjindex) from Dashboard/GetAverages. Normalized to state.grades.
+// Grade text ("Jeles"/"Jó"/"Kiválóan megfelelt (5)"/…) → numeric 1-5, or null for pass-only (aláírás).
+function gradeValue(text) {
+  const t = String(text || "").toLowerCase();
+  const m = t.match(/\((\d)\)/); if (m && +m[1] >= 1 && +m[1] <= 5) return +m[1];
+  if (/kivál|jeles/.test(t)) return 5;
+  if (/\bjó\b|\bjo\b/.test(t)) return 4;
+  if (/közepes/.test(t)) return 3;
+  if (/elégséges|elegséges|elegseges/.test(t)) return 2;
+  if (/elégtelen|elegtelen/.test(t)) return 1;
+  return null;
+}
+// Jegyek + átlagok. FINAL grades per subject come from the leckekönyv (RegistrySheet/
+// GetStudentTakenSubjectsByTerm per studentTrainingTermDataId) — one row per subject with its final
+// result. All exam attempts (ExamResults) are kept per subjectId for the tap-through detail. Averages/
+// indices from Advancement/GetTermAveragesByTraining + Dashboard/GetAverages.
 async function syncGrades() {
   const sess = await getApiSession();
   if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
   const g = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return r && r.data && r.data.data; } catch (e) { return null; } };
   let stid = ""; try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; stid = (t && t.studentTrainingId) || ""; } catch (e) {}
-  const exData = await g("ExamResults/GetExamResultsList", { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 });
-  const terms = (Array.isArray(exData) ? exData : []).map((t) => ({
-    termId: t.termId, termName: t.termName || "",
-    exams: (t.examResultsList || []).map((e) => ({
-      subject: e.subjectName || "", code: e.subjectCode || "", type: e.typeName || e.examType || "",
-      result: e.resultName || "", value: (e.resultValue != null ? e.resultValue : null),
-      passed: !!e.passed, fail: e.resultColor === 1 || e.resultValue === 1,
-      date: e.gradeEnteredDate || e.toDate || null, tutors: e.examTutors || "",
-    })),
-  }));
   const ta = stid ? await g("Advancement/GetTermAveragesByTraining", { studentTrainingId: stid }) : null;
   const termText = {}; if (ta && ta.terms) ta.terms.forEach((x) => { termText[x.value] = String(x.text || "").replace(/\s*\(.*\)\s*$/, "").trim(); });
-  const perTerm = ((ta && ta.termAveragesByTrainings) || []).map((x) => ({
-    termName: termText[x.termId] || String(x.termId), average: x.average, creditIndex: x.creditIndex, sumAverage: x.sumAverage,
-  })).filter((x) => x.average != null || x.creditIndex != null);
+  const sttList = ((ta && ta.termAveragesByTrainings) || []).map((x) => ({ stt: x.studentTrainingTermId, termName: termText[x.termId] || "", average: x.average, creditIndex: x.creditIndex, sumAverage: x.sumAverage }));
+  // Leckekönyv: one final grade per subject, per term.
+  const byTerm = {};
+  for (const s of sttList) {
+    if (!s.stt) continue;
+    const subs = await g("RegistrySheet/GetStudentTakenSubjectsByTerm", { studentTrainingTermDataId: s.stt });
+    (Array.isArray(subs) ? subs : []).forEach((x) => {
+      const tn = x.termName || s.termName || "";
+      if (!byTerm[tn]) byTerm[tn] = { termId: x.termId || "", termName: tn, subjects: [] };
+      byTerm[tn].subjects.push({
+        subjectId: x.subjectId || "", subject: x.subjectName || "", code: x.subjectCode || "",
+        credits: x.subjectCredits || 0, type: x.signupType || "", result: x.result || "",
+        value: gradeValue(x.result), passed: !!(x.uiDisplayState && x.uiDisplayState.reasons && x.uiDisplayState.reasons[0] === "Teljesítve"),
+      });
+    });
+  }
+  const terms = Object.values(byTerm).sort((a, b) => (b.termName > a.termName ? 1 : b.termName < a.termName ? -1 : 0));
+  // All exam attempts per subjectId — for the tap-through "összes jegy" detail.
+  const exData = await g("ExamResults/GetExamResultsList", { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 });
+  const attempts = {};
+  (Array.isArray(exData) ? exData : []).forEach((t) => (t.examResultsList || []).forEach((e) => {
+    (attempts[e.subjectId] = attempts[e.subjectId] || []).push({
+      type: e.typeName || e.examType || "", result: e.resultName || "", value: (e.resultValue != null ? e.resultValue : null),
+      passed: !!e.passed, date: e.gradeEnteredDate || e.toDate || null, term: e.termName || "",
+    });
+  }));
+  Object.keys(attempts).forEach((k) => attempts[k].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)));
+  const perTerm = sttList.filter((s) => s.average != null || s.creditIndex != null).map((s) => ({ termName: s.termName, average: s.average, creditIndex: s.creditIndex, sumAverage: s.sumAverage }));
   const dash = await g("Dashboard/GetAverages");
   const idx = {}; if (dash && dash.dashboardAverageItems) dash.dashboardAverageItems.forEach((it) => { idx[it.extraFieldTranslation] = it.index; });
   const indices = dash ? { termName: dash.termName || "", korrigalt: idx.KorrigaltKreditIndex, kreditIndex: idx.KreditIndex, osztondij: idx.SchoolarshipKey } : null;
-  if (!terms.length && !perTerm.length && !(indices && (indices.korrigalt != null || indices.kreditIndex != null))) return { ok: false, detail: "nem találtam jegyet" };
-  state.grades = { fetchedAt: new Date().toISOString(), terms, averages: { perTerm, indices } };
+  const totalSub = terms.reduce((s, t) => s + t.subjects.length, 0);
+  if (!totalSub && !perTerm.length && !(indices && (indices.korrigalt != null || indices.kreditIndex != null))) return { ok: false, detail: "nem találtam jegyet" };
+  state.grades = { fetchedAt: new Date().toISOString(), terms, attempts, averages: { perTerm, indices } };
   saveState();
-  const total = terms.reduce((s, t) => s + t.exams.length, 0);
-  const head = indices && indices.korrigalt != null ? ("kreditindex " + indices.korrigalt) : (perTerm[0] && perTerm[0].average != null ? ("átlag " + perTerm[0].average) : "");
-  return { ok: true, detail: total + " jegy" + (head ? " · " + head : "") };
+  return { ok: true, detail: totalSub + " tárgy" + (indices && indices.korrigalt != null ? " · kreditindex " + indices.korrigalt : "") };
 }
 async function syncMessages() {
   const sess = await getApiSession();
@@ -3729,6 +3775,7 @@ function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); resc
 const DLC_INDEX_URL = "https://raw.githubusercontent.com/Zsalrick/neptun-plus/main/dlc/index.json";
 let dlcIndex = null;
 $("dlc-close").onclick = () => $("dlc-sheet").classList.add("hidden");
+{ const gc = $("grade-close"); if (gc) gc.onclick = () => $("grade-sheet").classList.add("hidden"); }
 $("acc-close").onclick = () => $("accounts-sheet").classList.add("hidden");
 async function openDlc() {
   $("dlc-sheet").classList.remove("hidden");
