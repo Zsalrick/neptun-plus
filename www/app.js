@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.176";
+const APP_VERSION = "v0.177";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -843,9 +843,26 @@ function renderHome() {
   renderNextClass();
   renderNextExam();
   renderSyncCard();
+  renderHubStats();
   const noUpcoming = ["current-class", "next-class", "next-exam"].every((id) => $(id).classList.contains("hidden"));
   const emptyEl = $("upcoming-empty"); if (emptyEl) emptyEl.hidden = !noUpcoming;
   const lbl = $("dash-overview-lbl"); if (lbl) lbl.hidden = noUpcoming;
+}
+// Glanceable dashboard tiles (Kredit / Üzenetek / Egyenleg) — only the ones with data, tap to open.
+function renderHubStats() {
+  const wrap = $("hub-stats"), lbl = $("stats-lbl"); if (!wrap) return;
+  const tiles = [];
+  const p = state.progress;
+  if (p && p.total) tiles.push({ lbl: "Kredit", val: `${p.done}/${p.total}`, sub: `${Math.round(p.done / p.total * 100)}% teljesítve`, go: () => pushScreen("tab-credit") });
+  const m = state.messages;
+  if (m && m.fetchedAt) tiles.push({ lbl: "Üzenetek", val: String(m.unread || 0), sub: m.unread ? "olvasatlan" : "elolvasva", go: () => pushScreen("tab-messages") });
+  const f = state.finance;
+  if (f && f.accounts) { const a = f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]; if (a && a.balance != null) tiles.push({ lbl: "Egyenleg", val: a.balance.toLocaleString("hu"), sub: "Ft", go: () => pushScreen("tab-finance") }); }
+  const show = tiles.length > 0;
+  wrap.hidden = !show; if (lbl) lbl.hidden = !show;
+  if (!show) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = tiles.map((t, i) => `<button class="stat-tile" data-si="${i}" type="button"><div class="stat-lbl">${esc(t.lbl)}</div><div class="stat-val">${esc(t.val)}</div><div class="stat-sub">${esc(t.sub)}</div></button>`).join("");
+  wrap.querySelectorAll("[data-si]").forEach((b) => b.onclick = tiles[+b.dataset.si].go);
 }
 // Hub card that opens the unified data read. Prominent when data is missing; a quiet
 // "refresh" entry once everything is in.
@@ -871,16 +888,18 @@ function renderSyncCard() {
 // =====================================================================
 //  MORE (services grid) — scales to the features coming later
 // =====================================================================
+// Grouped so the hub is scannable (no flat wall of tiles). "Adatok frissítése" lives ONLY on the
+// Kezdőlap sync card + the per-screen refresh — not duplicated here.
 const MORE_SERVICES = [
-  { id: "courses", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => pushScreen("tab-courses") },
-  { id: "credit", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => pushScreen("tab-credit") },
-  { id: "dlc", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
-  { id: "sync", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
-  { id: "finance", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
-  { id: "messages", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
+  { id: "courses", group: "Tanulmányok", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => pushScreen("tab-courses") },
+  { id: "credit", group: "Tanulmányok", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => pushScreen("tab-credit") },
+  { id: "finance", group: "Szolgáltatások", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
+  { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
+  { id: "dlc", group: "Szolgáltatások", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "reg-course", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
   { id: "reg-exam", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
 ];
+const MORE_GROUPS = ["Tanulmányok", "Szolgáltatások"];
 function renderMore() {
   const host = $("more-scroll"); if (!host) return;
   const tile = (s) => `<button class="svc${s.soon ? " soon" : ""}" data-svc="${s.id}"${s.soon ? " disabled" : ""} type="button">`
@@ -889,10 +908,14 @@ function renderMore() {
     + `<span class="svc-b">${esc(typeof s.sub === "function" ? s.sub() : s.sub)}</span>`
     + (s.soon ? `<span class="svc-badge">Hamarosan</span>` : "")
     + `</button>`;
-  const avail = MORE_SERVICES.filter((s) => !s.soon);
+  let html = "";
+  MORE_GROUPS.forEach((g) => {
+    const items = MORE_SERVICES.filter((s) => !s.soon && s.group === g);
+    if (items.length) html += `<div class="dash-label">${esc(g)}</div><div class="svc-grid">${items.map(tile).join("")}</div>`;
+  });
   const soon = MORE_SERVICES.filter((s) => s.soon);
-  host.innerHTML = `<div class="svc-grid">${avail.map(tile).join("")}</div>`
-    + `<div class="dash-label">Hamarosan</div><div class="svc-grid">${soon.map(tile).join("")}</div>`;
+  if (soon.length) html += `<div class="dash-label">Hamarosan</div><div class="svc-grid">${soon.map(tile).join("")}</div>`;
+  host.innerHTML = html;
   host.querySelectorAll("[data-svc]").forEach((b) => { const s = MORE_SERVICES.find((x) => x.id === b.dataset.svc); if (s && s.go) b.onclick = s.go; });
 }
 // Full-screen Kredit page (own page, not a popup).
