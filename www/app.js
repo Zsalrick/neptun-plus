@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.198";
+const APP_VERSION = "v0.199";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1592,8 +1592,8 @@ function renderPeriods() {
     g.items.forEach((p) => {
       const st = periodState(p, now), cls = st === 0 ? "on" : st === 1 ? "soon" : "off";
       html += `<div class="card period ${cls}">`
-        + `<div class="period-top"><span class="period-name">${esc(p.name || p.type || "Időszak")}</span>`
-        + (p.type && p.name && p.type !== p.name ? `<span class="period-type">${esc(p.type)}</span>` : "") + `</div>`
+        + (p.type ? `<div class="period-type-lbl">${esc(p.type)}</div>` : "")
+        + `<div class="period-name">${esc(p.name || p.type || "Időszak")}</div>`
         + `<div class="period-dates">${icon("clock")}<span>${ftDateTime(p.from)} – ${ftDateTime(p.to)}</span></div>`
         + (p.org ? `<div class="period-org">${esc(p.org)}</div>` : "")
         + `</div>`;
@@ -3283,20 +3283,27 @@ async function apiOfferedGradeDecision(id, accept) {
     return { ok: false, detail: msg || ("hiba (" + (r && r.status) + ")") };
   } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
 }
-// Időszakok (registration / exam-signup / course-take periods): Periods/GetPeriods (GET, paged table).
-// Params are flattened nested keys: request.termId="" (all terms), sortAndPage.firstRow/lastRow.
-// Response body.data = { items:[{ periodId, periodName, periodType, fromDate, toDate, administrationOrganizations }] }.
+// Időszakok (beiratkozás / tárgyfelvétel / vizsgajelentkezés / szorgalmi / vizsga-időszak…):
+// Periods/GetPeriods (GET) REQUIRES a non-empty request.termId (empty → 400). So we fetch the term list
+// (Periods/GetTerms) and query periods per term, then merge (dedupe by periodId). Response body.data is a
+// plain array of { periodId, periodName, periodType, fromDate, toDate, administrationOrganizations, termName }.
 async function syncPeriods() {
   const sess = await getApiSession();
   if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
   const g = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return r && r.data && r.data.data; } catch (e) { return null; } };
-  const pd = await g("Periods/GetPeriods", { "request.termId": "", "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 });
-  const rows = (pd && Array.isArray(pd.items)) ? pd.items : (Array.isArray(pd) ? pd : []);
-  const items = rows.map((x) => ({
-    id: x.periodId || x.id || "", name: x.periodName || x.name || "", type: x.periodType || x.typeName || "",
-    from: x.fromDate || x.startDate || null, to: x.toDate || x.endDate || null,
-    org: x.administrationOrganizations || x.administrationOrganizationName || "",
-  })).filter((x) => x.name || x.type || x.from);
+  const terms = await g("Periods/GetTerms");
+  const termIds = (Array.isArray(terms) ? terms : []).map((t) => t.value).filter(Boolean);
+  if (!termIds.length) return { ok: false, detail: "nem találtam félévet" };
+  const byId = {};
+  for (const tid of termIds) {
+    const rows = await g("Periods/GetPeriods", { "request.termId": tid, "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 });
+    (Array.isArray(rows) ? rows : []).forEach((x) => {
+      const id = x.periodId || x.id; if (!id || byId[id]) return;
+      byId[id] = { id, name: x.periodName || "", type: x.periodType || "", from: x.fromDate || null, to: x.toDate || null,
+        org: x.administrationOrganizations || "", term: x.termName || "" };
+    });
+  }
+  const items = Object.values(byId);
   if (!items.length) return { ok: false, detail: "nem találtam időszakot" };
   state.periods = { fetchedAt: new Date().toISOString(), items };
   saveState();
