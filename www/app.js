@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.193";
+const APP_VERSION = "v0.194";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1442,6 +1442,17 @@ function renderGrades() {
   }
   const idx = gr.averages && gr.averages.indices, perTerm = (gr.averages && gr.averages.perTerm) || [];
   let html = "";
+  // Megajánlott jegyek — accept/reject right here.
+  const offered = gr.offered || [];
+  if (offered.length) {
+    html += `<div class="dash-label">Megajánlott jegyek</div>`;
+    offered.forEach((o) => {
+      html += `<div class="card offer-card"><div class="offer-top">`
+        + `<div class="row-main"><span class="row-title">${esc(o.subject || o.code || "Tárgy")}</span><span class="row-sub">${[esc(o.code), o.deadline ? "határidő " + esc(ftDate(o.deadline)) : ""].filter(Boolean).join(" · ")}</span></div>`
+        + gradeBox({ value: gradeValue(o.result), result: o.result }) + `</div>`
+        + `<div class="offer-actions"><button class="btn outline" data-offrej="${esc(o.id)}" type="button">Elutasítás</button><button class="btn primary" data-offacc="${esc(o.id)}" type="button">Elfogadás</button></div></div>`;
+    });
+  }
   // Semester filter (Összes félév / one term).
   const terms = gr.terms || [];
   const termNames = terms.map((t) => t.termName).filter(Boolean);
@@ -1478,6 +1489,20 @@ function renderGrades() {
     items: [{ value: "all", label: "Összes félév" }].concat(termNames.map((n) => ({ value: n, label: n }))),
     onPick: (v) => { gradesFilter = v; renderGrades(); } });
   host.querySelectorAll("[data-sid]").forEach((b) => b.onclick = () => openGradeDetail(b.dataset.sid));
+  host.querySelectorAll("[data-offacc]").forEach((b) => b.onclick = () => offeredDecide(b.dataset.offacc, true));
+  host.querySelectorAll("[data-offrej]").forEach((b) => b.onclick = () => offeredDecide(b.dataset.offrej, false));
+}
+async function offeredDecide(id, accept) {
+  const gr = state.grades; const o = (gr && gr.offered || []).find((x) => x.id === id); if (!o) return;
+  const ok = await ask({ title: accept ? "Megajánlott jegy elfogadása" : "Megajánlott jegy elutasítása", okText: accept ? "Elfogadom" : "Elutasítom", cancelText: "Mégse",
+    body: `<b>${esc(o.subject || o.code)}</b><br>Megajánlott jegy: <b>${esc(o.result || "—")}</b><br><br>${accept ? "Elfogadás után bekerül a leckekönyvbe." : "Elutasítás után vizsgáznod kell a tárgyból."}` });
+  if (!ok) return;
+  showBusy(accept ? "Elfogadás…" : "Elutasítás…", true);
+  let r; try { r = await apiOfferedGradeDecision(id, accept); } catch (e) { r = { ok: false }; }
+  if (r.ok) { try { await syncGrades(); } catch (e) {} }
+  hideBusy();
+  renderGrades();
+  toast(r.ok ? (accept ? "Jegy elfogadva." : "Jegy elutasítva.") : ("Nem sikerült" + (r.detail ? ": " + r.detail : ".")));
 }
 // Tap a subject → sheet with its final grade + every recorded grade (exam attempts, retakes…).
 function openGradeDetail(subjectId) {
@@ -3124,11 +3149,29 @@ async function syncGrades() {
   const dash = await g("Dashboard/GetAverages");
   const idx = {}; if (dash && dash.dashboardAverageItems) dash.dashboardAverageItems.forEach((it) => { idx[it.extraFieldTranslation] = it.index; });
   const indices = dash ? { termName: dash.termName || "", korrigalt: idx.KorrigaltKreditIndex, kreditIndex: idx.KreditIndex, osztondij: idx.SchoolarshipKey } : null;
+  // Offered grades (megajánlott jegy) awaiting accept/reject.
+  const offRaw = await g("OfferedGrades/GetOfferedGrades");
+  const offered = (Array.isArray(offRaw) ? offRaw : (offRaw && offRaw.offeredGrades) || []).map((x) => ({
+    id: x.id || x.indexLineEntryId || x.offeredGradeId || "", subject: x.subjectName || "", code: x.subjectCode || "",
+    course: x.courseCode || "", result: x.resultName || x.offeredResult || x.gradeName || "", deadline: x.deadline || x.acceptanceDeadline || null,
+  })).filter((x) => x.id);
   const totalSub = terms.reduce((s, t) => s + t.subjects.length, 0);
-  if (!totalSub && !perTerm.length && !(indices && (indices.korrigalt != null || indices.kreditIndex != null))) return { ok: false, detail: "nem találtam jegyet" };
-  state.grades = { fetchedAt: new Date().toISOString(), terms, attempts, averages: { perTerm, indices } };
+  if (!totalSub && !perTerm.length && !offered.length && !(indices && (indices.korrigalt != null || indices.kreditIndex != null))) return { ok: false, detail: "nem találtam jegyet" };
+  state.grades = { fetchedAt: new Date().toISOString(), terms, attempts, offered, averages: { perTerm, indices } };
   saveState();
-  return { ok: true, detail: totalSub + " tárgy" + (indices && indices.korrigalt != null ? " · kreditindex " + indices.korrigalt : "") };
+  return { ok: true, detail: totalSub + " tárgy" + (offered.length ? " · " + offered.length + " megajánlott" : "") + (indices && indices.korrigalt != null ? " · kreditindex " + indices.korrigalt : "") };
+}
+// Accept or reject an offered grade: POST OfferedGrades/AcceptOrRejectOfferedGrade {accept, indexLineEntryId}.
+async function apiOfferedGradeDecision(id, accept) {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
+  try {
+    const r = await apiPost(sess, "OfferedGrades/AcceptOrRejectOfferedGrade", { accept: !!accept, indexLineEntryId: id });
+    if (r && r.status >= 200 && r.status < 300) return { ok: true };
+    let d = r && r.data; if (typeof d === "string") { try { d = JSON.parse(d); } catch (e) {} }
+    const msg = d && (d.message || (d.modelStateErrors && d.modelStateErrors[0] && d.modelStateErrors[0].errors && d.modelStateErrors[0].errors[0]));
+    return { ok: false, detail: msg || ("hiba (" + (r && r.status) + ")") };
+  } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
 }
 async function syncMessages() {
   const sess = await getApiSession();

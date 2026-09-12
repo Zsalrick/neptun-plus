@@ -249,6 +249,11 @@ button.grade-row:active { background: var(--surface-2); }
 .grade-final .grade-box { width: 54px; height: 54px; font-size: 22px; border-width: 2px; }
 .gf-t { font-size: 12px; color: var(--ink-3); }
 .gf-v { font-size: 18px; font-weight: 700; color: var(--ink); margin-top: 2px; }
+/* Offered grade card */
+.offer-card { padding: 14px 15px; border-color: color-mix(in srgb, var(--brand-plus) 40%, var(--line)); }
+.offer-top { display: flex; align-items: center; gap: 13px; }
+.offer-actions { display: flex; gap: 10px; margin-top: 13px; }
+.offer-actions .btn { flex: 1; width: auto; }
 
 /* Üzenetek */
 .seg-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: 9px; background: var(--brand-plus); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: middle; }
