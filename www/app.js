@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.179";
+const APP_VERSION = "v0.180";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -510,6 +510,7 @@ function renderForTab(id) {
   else if (id === "tab-exams") renderExams();
   else if (id === "tab-more") renderMore();
   else if (id === "tab-courses") renderCourses();
+  else if (id === "tab-subject") renderSubject();
   else if (id === "tab-credit") renderCreditPage();
   else if (id === "tab-finance") renderFinance();
   else if (id === "tab-fin-topay") renderFinTopay();
@@ -1720,10 +1721,13 @@ function renderTimetableWeek() {
   evs.forEach((e) => { minH = Math.min(minH, e.S.getHours()); maxH = Math.max(maxH, e.E.getHours() + (e.E.getMinutes() > 0 ? 1 : 0)); });
   const rowH = 46, hours = maxH - minH, today = new Date(), now = Date.now();
   const wkEnd = new Date(weekStart); wkEnd.setDate(wkEnd.getDate() + nDays - 1);
-  const wkLabel = `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}. – ${TT_MON[wkEnd.getMonth()]} ${wkEnd.getDate()}.`;
+  const wkLabel = weekStart.getMonth() === wkEnd.getMonth()
+    ? `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}–${wkEnd.getDate()}.`
+    : `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}. – ${TT_MON[wkEnd.getMonth()]} ${wkEnd.getDate()}.`;
+  const TT_DAY_SHORT = ["V", "H", "K", "Sze", "Cs", "P", "Szo"]; // getDay() 0=V..6=Szo — distinct (Szerda≠Szombat)
   let daysHead = "";
   for (let d = 0; d < nDays; d++) { const dd = new Date(weekStart); dd.setDate(dd.getDate() + d);
-    daysHead += `<div class="wk-day${sameDay(dd, today) ? " today" : ""}"><span class="wk-day-n">${esc(TT_DAYS[dd.getDay()].slice(0, 2))}</span><span class="wk-day-d">${dd.getDate()}</span></div>`; }
+    daysHead += `<div class="wk-day${sameDay(dd, today) ? " today" : ""}"><span class="wk-day-n">${esc(TT_DAY_SHORT[dd.getDay()])}</span><span class="wk-day-d">${dd.getDate()}</span></div>`; }
   let times = ""; for (let h = minH; h < maxH; h++) times += `<div class="wk-hour" style="height:${rowH}px">${h}:00</div>`;
   let cols = "";
   for (let d = 0; d < nDays; d++) {
@@ -1759,7 +1763,7 @@ function renderTimetableWeek() {
 }
 function renderTimetable() {
   if (ttView === "week") return renderTimetableWeek();
-  renderAgenda($("tt-scroll"), $("tt-sub"), $("tt-refresh"), false, ttFilter, (k) => { ttFilter = k; renderTimetable(); }, viewToggleHtml());
+  renderAgenda($("tt-scroll"), $("tt-sub"), $("tt-refresh"), false, ttFilter, (k) => { ttFilter = k; renderTimetable(); }, viewBtn());
 }
 function renderExams() { renderAgenda($("ex-scroll"), $("ex-sub"), $("ex-refresh"), true, exFilter, (k) => { exFilter = k; renderExams(); }); }
 
@@ -1768,11 +1772,13 @@ let coFilter = null;
 let coSeg = "aktualis"; // aktualis | osszes | szabad
 const CO_SEGS = ["aktualis", "osszes", "szabad"];
 const CO_SEG_LABEL = { aktualis: "Aktuális", osszes: "Összes", szabad: "Szabadon vál." };
+let courseRowSeq = 0, courseRowMap = {}; // tap-target lookup: rows carry an id → the course object
 function courseRow(c) {
-  return `<div class="course-row">
+  const rid = "cr" + (++courseRowSeq); courseRowMap[rid] = c;
+  return `<button class="course-row" data-crid="${rid}" type="button">
     <span class="cr-check ${c.completed ? "on" : ""}">${c.completed ? icon("check") : ""}</span>
     <div class="cr-main"><div class="cr-name">${esc(c.name || c.code || "Tárgy")}</div><div class="cr-sub">${esc(c.code || "")}${c.teacher ? " · " + esc(c.teacher) : ""}${c.type ? " · " + esc(c.type) : ""}</div></div>
-    <span class="cr-cr">${esc(String(c.credits || 0))} kr</span></div>`;
+    <span class="cr-cr">${esc(String(c.credits || 0))} kr</span><span class="row-chev">${icon("chev")}</span></button>`;
 }
 function creditCard(done, total, doneN, totalN) {
   return `<div class="card cred"><div class="cred-row"><div><div class="cred-big">${done} / ${total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${doneN}/${totalN} tárgy</div></div><div class="cred-bar"><div class="cred-fill" style="width:${total ? Math.round(done / total * 100) : 0}%"></div></div></div>`;
@@ -1786,6 +1792,7 @@ function coEmpty(scroll, title, text, btnText, onRead) {
 function renderCourses() {
   const scroll = $("co-scroll"); if (!scroll) return;
   recomputeCourseCompletion(); // keep enrolled-subject checkmarks in sync with the curriculum
+  courseRowMap = {}; // fresh tap-target lookup for this render
   // segmented control (same look as the hub)
   let html = `<div class="seg seg-3" id="co-seg">` + CO_SEGS.map((s) => `<button class="seg-btn ${s === coSeg ? "active" : ""}" data-coseg="${s}" type="button">${CO_SEG_LABEL[s]}</button>`).join("") + `</div>`;
   scroll.innerHTML = html;
@@ -1793,6 +1800,52 @@ function renderCourses() {
 
   if (coSeg === "aktualis") renderCoAktualis(scroll);
   else renderCoCurriculum(scroll, coSeg === "szabad");
+  scroll.querySelectorAll("[data-crid]").forEach((b) => b.onclick = () => { const c = courseRowMap[b.dataset.crid]; if (c) openSubject(c); });
+}
+// ----- subject detail page (general info: credit, term, requirement, prerequisites, description) -----
+let subjectCtx = null, subjectData = null, subjectErr = false;
+function openSubject(c) {
+  subjectCtx = c; subjectData = null; subjectErr = false;
+  pushScreen("tab-subject"); renderSubject();
+  if (isNative && c && c.subjectId) loadSubject(c);
+}
+async function loadSubject(c) {
+  try { subjectData = await apiSubjectDetail(c.subjectId, c.termId); if (!subjectData || !subjectData.detail) subjectErr = true; }
+  catch (e) { subjectErr = true; }
+  if (subjectCtx === c && document.querySelector(".tabscreen.active#tab-subject")) renderSubject();
+}
+function renderSubject() {
+  const host = $("subject-scroll"); if (!host) return;
+  const c = subjectCtx; if (!c) { host.innerHTML = ""; return; }
+  const sub = $("subject-sub"); if (sub) sub.textContent = c.code || "Tárgy adatai";
+  const d = (subjectData && subjectData.detail) || {};
+  const loading = !subjectData && !subjectErr && isNative && c.subjectId;
+  const rows = [];
+  const req = d.requirementType || c.type;
+  rows.push(["Kredit", String(d.credit != null ? d.credit : (c.credits || 0))]);
+  if (req) rows.push(["Követelmény", req]);
+  const recTerm = d.recommendedTerm || c.term;
+  if (recTerm) rows.push(["Ajánlott félév", String(recTerm)]);
+  if (d.signupType) rows.push(["Felvétel típusa", d.signupType]);
+  if (d.ownerPrintName) rows.push(["Tárgyfelelős", d.ownerPrintName]);
+  if (d.administrativeOrganization) rows.push(["Szervezet", d.administrativeOrganization]);
+  if (d.classesPerWeek) rows.push(["Heti óraszám", String(d.classesPerWeek)]);
+  if (d.classesPerTerm) rows.push(["Féléves óraszám", String(d.classesPerTerm)]);
+  if (d.subjectResult) rows.push(["Eredmény", d.subjectResult]);
+  else if (c.completed) rows.push(["Státusz", "Teljesítve"]);
+  let h = `<div class="detail-subj" style="margin:2px 2px 4px">${esc(c.code || "")}</div><div class="sheet-title" style="margin:0 2px 14px">${esc(d.subjectName || c.name || "Tárgy")}</div>`;
+  h += `<div class="card kv">` + rows.map(([k, v]) => `<div class="kv-row"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(v)}</span></div>`).join("") + `</div>`;
+  if (loading) h += `<div class="dash-empty" style="padding:14px 2px">További adatok betöltése…</div>`;
+  // Prerequisites
+  const pre = (subjectData && subjectData.prereqs || []).map((p) => p && (p.subjectName || p.name || p.description)).filter(Boolean);
+  if (d.preRequirement) pre.unshift(d.preRequirement);
+  if (pre.length) h += `<div class="dash-label">Előkövetelmények</div><div class="card"><div class="card-pad">` + pre.map((p) => `<div class="req-row">${esc(p)}</div>`).join("") + `</div></div>`;
+  if (d.finalRequirement) h += `<div class="dash-label">Számonkérés / követelmény</div><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.finalRequirement)}</div></div>`;
+  const reqs = (subjectData && subjectData.reqs || []).filter((r) => r && r.description);
+  if (reqs.length) h += `<div class="dash-label">Általános követelmények</div><div class="card"><div class="card-pad">` + reqs.map((r) => `<div class="req-row">${esc(r.description)}</div>`).join("") + `</div></div>`;
+  if (d.description || d.note) h += `<div class="dash-label">Leírás</div><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.description || d.note)}</div></div>`;
+  if (subjectErr && !subjectData) h += `<div class="hint center" style="margin-top:14px">A további tárgyadatok nem tölthetők be.</div>`;
+  host.innerHTML = h;
 }
 function renderCoAktualis(scroll) {
   const list = (state.courses && state.courses.list) || [];
@@ -2237,7 +2290,7 @@ async function apiReadCurriculum(sess) {
     (dd.mandatorySubjects || []).forEach((s) => {
       const key = s.code || s.subjectId; if (key && seen[key]) return; if (key) seen[key] = 1;
       const st = s.curriculumStatuses || {};
-      required.push({ code: s.code || "", name: s.name || "", credits: parseInt(s.credit, 10) || 0, completed: !!st.isSuccessful, type: s.requirementType || "", term: s.recommendedTerm || 0 });
+      required.push({ code: s.code || "", name: s.name || "", credits: parseInt(s.credit, 10) || 0, completed: !!st.isSuccessful, type: s.requirementType || "", term: s.recommendedTerm || 0, subjectId: s.subjectId || "" });
     });
     for (const g of (dd.subjectGroups || [])) { const gid = g.advancementRowId || g.parentAdvancementRowId || g.childAdvancementRowId; if (gid) await walk(gid, depth + 1); }
   }
@@ -2246,7 +2299,7 @@ async function apiReadCurriculum(sess) {
   try {
     const o = await apiGet(sess, "Curriculum/GetOptionalSubjectsWithoutCurriculum", { advancementRowId: row.advancementRowId });
     const list = o && o.data && o.data.data;
-    if (Array.isArray(list)) free = list.map((x) => ({ code: x.subjectCode || "", name: x.subjectName || "", credits: (+x.credit) || 0, completed: true, type: x.subjectRequirement || "" }));
+    if (Array.isArray(list)) free = list.map((x) => ({ code: x.subjectCode || "", name: x.subjectName || "", credits: (+x.credit) || 0, completed: true, type: x.subjectRequirement || "", subjectId: x.subjectId || "" }));
   } catch (e) { /* free electives optional */ }
   return { program, required, free };
 }
@@ -2264,7 +2317,7 @@ async function apiReadTakenAll(sess, terms) {
   for (const t of terms) {
     let r; try { r = await apiGet(sess, "TakenSubjects/GetTakenSubjects", { termId: t.id }); } catch (e) { continue; }
     const arr = r && r.data && r.data.data; if (!Array.isArray(arr)) continue;
-    arr.forEach((s) => { out.push({ code: s.subjectCode || "", name: s.subjectName || "", credits: +s.subjectCredit || 0, completed: false, semester: t.label, teacher: "", type: s.requirementType || "" }); });
+    arr.forEach((s) => { out.push({ code: s.subjectCode || "", name: s.subjectName || "", credits: +s.subjectCredit || 0, completed: false, semester: t.label, teacher: "", type: s.requirementType || "", subjectId: s.subjectId || "", termId: t.id }); });
   }
   return out;
 }
@@ -3313,6 +3366,26 @@ async function apiCourseBundle(ev) {
     g("SubjectCourse/GetGeneralRequirements", base),
   ]);
   return { course, tutors: tutors || [], detail: detail || {}, students: students || [], reqs: reqs || [] };
+}
+// Subject-level detail for the Tárgyak list (no course context): GetSubjectDetails + prerequisites +
+// general requirements. termId defaults to the actual term. Returns { detail, prereqs, reqs } or null.
+let actualTermId = "";
+async function getActualTermId(sess) {
+  if (actualTermId) return actualTermId;
+  try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; actualTermId = (t && t.actualTermId) || ""; } catch (e) {}
+  return actualTermId;
+}
+async function apiSubjectDetail(subjectId, termId) {
+  const sess = await getApiSession(); if (!sess || !sess.token || !subjectId) return null;
+  const tid = termId || await getActualTermId(sess);
+  const g = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return r && r.data && r.data.data; } catch (e) { return null; } };
+  const base = { subjectId: subjectId, termId: tid };
+  const [detail, prereqs, reqs] = await Promise.all([
+    g("SubjectCourse/GetSubjectDetails", base),
+    g("SubjectCourse/GetSubjectPrerequirements", base),
+    g("SubjectCourse/GetGeneralRequirements", base),
+  ]);
+  return { detail: detail || null, prereqs: prereqs || [], reqs: reqs || [] };
 }
 
 // ----- event detail + notes (segmented: Tárgy / Oktatók / Diákok / Megjegyzések) -----
