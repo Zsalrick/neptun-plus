@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.183";
+const APP_VERSION = "v0.184";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -38,6 +38,7 @@ const P = {
   down: '<path d="m6 9 6 6 6-6"/>',
   up: '<path d="m6 15 6-6 6 6"/>',
   pencil: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 17z"/><path d="m13.5 6.5 3 3"/>',
+  grip: '<circle cx="9" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.5" fill="currentColor" stroke="none"/>',
   note: '<path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M9 9h6M9 13h4"/>',
   book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 0-2 2z"/><path d="M5 4v16M18 20a2 2 0 0 1 2 2"/>',
   grid: '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>',
@@ -705,7 +706,7 @@ document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pus
 { const cr = $("credit-refresh"); if (cr) cr.onclick = () => refreshCredit(true); }
 { const fr = $("finance-refresh"); if (fr) fr.onclick = () => refreshFinance(true); }
 { const mr = $("messages-refresh"); if (mr) mr.onclick = () => refreshMessages(true); }
-{ const he = $("hub-edit"); if (he) he.onclick = () => pushScreen("tab-hub-edit"); }
+{ const he = $("hub-edit"); if (he) he.onclick = () => { hubEdit = hubLayout().slice(); pushScreen("tab-hub-edit"); }; }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
 // Interactive pager: pages follow the finger, and the nav indicator tracks the drag.
@@ -870,36 +871,73 @@ function renderHub() {
   hubLayout().forEach((id) => { const w = HUB_WIDGETS.find((x) => x.id === id); try { if (w) w.render(host); } catch (e) {} });
   if (!host.children.length) host.innerHTML = `<div class="dash-empty" style="padding:24px 20px 6px">Nincs megjeleníthető adat. Olvasd be a Neptunból, vagy szabd testre a kezdőlapot.</div>`;
 }
+// Staged editing: `hubEdit` is a working copy; only Save writes state.hubLayout. Reorder by dragging
+// the grip; a floating Mégse/Mentés bar appears while the working copy differs from what's saved.
+let hubEdit = null;
+function hubDirty() { return JSON.stringify(hubEdit || []) !== JSON.stringify(hubLayout()); }
+function updateHubBar() { const b = $("hub-savebar"); if (b) b.hidden = !hubDirty(); }
 function renderHubEdit() {
   const host = $("hub-edit-scroll"); if (!host) return;
-  const layout = hubLayout();
-  const enabled = layout.map((id) => HUB_WIDGETS.find((w) => w.id === id)).filter(Boolean);
-  const disabled = HUB_WIDGETS.filter((w) => layout.indexOf(w.id) < 0);
+  if (!hubEdit) hubEdit = hubLayout().slice();
+  const enabled = hubEdit.map((id) => HUB_WIDGETS.find((w) => w.id === id)).filter(Boolean);
+  const disabled = HUB_WIDGETS.filter((w) => hubEdit.indexOf(w.id) < 0);
   const descLine = (w) => w.desc ? `<span class="row-sub hub-ed-desc">${esc(w.desc)}</span>` : "";
-  let h = `<p class="hub-ed-intro">Válaszd ki, mit láss a kezdőlapon, és milyen sorrendben. A módosítások azonnal mentődnek.</p>`;
+  let h = `<p class="hub-ed-intro">Húzd a fogantyúnál a sorrend átrendezéséhez. A módosítások a Mentés gombbal véglegesednek.</p>`;
   h += `<div class="dash-label">Megjelenő elemek</div>`;
   if (!enabled.length) h += `<div class="dash-empty" style="padding:16px 4px">Nincs bekapcsolt elem. Adj hozzá lentről egyet.</div>`;
   else {
-    h += `<div class="card">`;
-    enabled.forEach((w, i) => { h += `<div class="row hub-ed">`
+    h += `<div class="card" id="hub-enabled">`;
+    enabled.forEach((w) => { h += `<div class="row hub-ed" data-id="${esc(w.id)}">`
+      + `<span class="heb-grip" data-grip title="Húzd az átrendezéshez">${icon("grip")}</span>`
       + `<span class="row-main"><span class="row-title">${esc(w.label)}</span>${descLine(w)}</span>`
-      + `<span class="hub-ed-ctrls">`
-      +   `<button class="iconbtn plain heb" data-up="${i}"${i === 0 ? " disabled" : ""} title="Feljebb">${icon("up")}</button>`
-      +   `<button class="iconbtn plain heb" data-down="${i}"${i === enabled.length - 1 ? " disabled" : ""} title="Lejjebb">${icon("down")}</button>`
-      +   `<button class="iconbtn plain heb heb-off" data-off="${w.id}" title="Elrejtés">${icon("x")}</button>`
-      + `</span></div>`; });
+      + `<button class="iconbtn plain heb heb-off" data-off="${esc(w.id)}" title="Elrejtés">${icon("x")}</button>`
+      + `</div>`; });
     h += `</div>`;
   }
   if (disabled.length) { h += `<div class="dash-label">Hozzáadható elemek</div><div class="card">`
-    + disabled.map((w) => `<button class="row" data-on="${w.id}" type="button"><span class="row-ic">${icon("plus")}</span><span class="row-main"><span class="row-title">${esc(w.label)}</span>${descLine(w)}</span><span class="row-chev">${icon("chev")}</span></button>`).join("")
+    + disabled.map((w) => `<button class="row" data-on="${esc(w.id)}" type="button"><span class="row-ic">${icon("plus")}</span><span class="row-main"><span class="row-title">${esc(w.label)}</span>${descLine(w)}</span><span class="row-chev">${icon("chev")}</span></button>`).join("")
     + `</div>`; }
   host.innerHTML = h;
-  const save = (l) => { state.hubLayout = l; saveState(); renderHubEdit(); renderHub(); };
-  host.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => { const i = +b.dataset.up, l = layout.slice(); const t = l[i - 1]; l[i - 1] = l[i]; l[i] = t; save(l); });
-  host.querySelectorAll("[data-down]").forEach((b) => b.onclick = () => { const i = +b.dataset.down, l = layout.slice(); const t = l[i + 1]; l[i + 1] = l[i]; l[i] = t; save(l); });
-  host.querySelectorAll("[data-off]").forEach((b) => b.onclick = () => save(layout.filter((id) => id !== b.dataset.off)));
-  host.querySelectorAll("[data-on]").forEach((b) => b.onclick = () => save(layout.concat(b.dataset.on)));
+  host.querySelectorAll("[data-off]").forEach((b) => b.onclick = () => { hubEdit = hubEdit.filter((id) => id !== b.dataset.off); renderHubEdit(); updateHubBar(); });
+  host.querySelectorAll("[data-on]").forEach((b) => b.onclick = () => { hubEdit = hubEdit.concat(b.dataset.on); renderHubEdit(); updateHubBar(); });
+  const card = $("hub-enabled"); if (card) attachHubDrag(card);
+  updateHubBar();
 }
+// Touch drag-to-reorder within the enabled card. Grabbing the grip lifts the row and live-swaps it
+// past neighbours as the finger crosses their midpoints; on release the working copy is rebuilt.
+function attachHubDrag(card) {
+  card.querySelectorAll("[data-grip]").forEach((grip) => {
+    grip.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) return;
+      const row = grip.closest(".hub-ed"); if (!row) return;
+      e.preventDefault();
+      let startY = e.touches[0].clientY;
+      row.classList.add("drag-lift");
+      const move = (ev) => {
+        ev.preventDefault();
+        const y = ev.touches[0].clientY;
+        row.style.transform = "translateY(" + (y - startY) + "px)";
+        for (const sib of card.querySelectorAll(".hub-ed")) {
+          if (sib === row) continue;
+          const r = sib.getBoundingClientRect(), mid = r.top + r.height / 2;
+          const after = row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING;
+          if (after && y > mid) { card.insertBefore(row, sib.nextSibling); startY = y; row.style.transform = ""; break; }
+          if (!after && y < mid) { card.insertBefore(row, sib); startY = y; row.style.transform = ""; break; }
+        }
+      };
+      const end = () => {
+        document.removeEventListener("touchmove", move); document.removeEventListener("touchend", end); document.removeEventListener("touchcancel", end);
+        row.classList.remove("drag-lift"); row.style.transform = "";
+        hubEdit = [...card.querySelectorAll(".hub-ed")].map((r) => r.dataset.id);
+        updateHubBar();
+      };
+      document.addEventListener("touchmove", move, { passive: false });
+      document.addEventListener("touchend", end); document.addEventListener("touchcancel", end);
+    }, { passive: false });
+  });
+}
+{ const c = $("hub-cancel"); if (c) c.onclick = () => { hubEdit = hubLayout().slice(); renderHubEdit(); updateHubBar(); }; }
+{ const s = $("hub-save"); if (s) s.onclick = () => { if (hubEdit) { state.hubLayout = hubEdit.slice(); saveState(); renderHub(); } updateHubBar(); toast("Kezdőlap elmentve."); }; }
 // =====================================================================
 //  MORE (services grid) — scales to the features coming later
 // =====================================================================
