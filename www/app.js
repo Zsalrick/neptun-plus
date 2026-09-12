@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.190";
+const APP_VERSION = "v0.191";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1419,6 +1419,7 @@ async function refreshCredit(viaButton) {
   toast(r && r.ok ? "Kredit frissítve." : "Nem sikerült frissíteni.");
 }
 // ---- Jegyek: átlagok/indexek + félévenként a jegyek ----
+let gradesFilter = "all"; // "all" or a termName
 // A square grade box, coloured by how good the grade is (1 red → 5 green). Non-numeric results
 // (aláírás/megfelelt) show a check; missing grade shows a dash.
 function gradeBox(e) {
@@ -1448,11 +1449,16 @@ function renderGrades() {
     html += `<div class="card grade-idx">` + kv.map(([k, v], i) => `<div class="gi-cell${i ? " gi-div" : ""}"><div class="gi-v">${esc(String(v))}</div><div class="gi-k">${esc(k)}</div></div>`).join("") + `</div>`;
     if (idx.termName) html += `<div class="hint center" style="margin:-4px 2px 4px">${esc(idx.termName)} félév</div>`;
   }
+  // Semester filter (Összes félév / one term).
+  const terms = gr.terms || [];
+  const termNames = terms.map((t) => t.termName).filter(Boolean);
+  if (gradesFilter !== "all" && termNames.indexOf(gradesFilter) < 0) gradesFilter = "all";
+  html += `<div class="controls" style="margin-bottom:12px"><button class="period-btn" id="grades-period" type="button"><span>${gradesFilter === "all" ? "Összes félév" : esc(gradesFilter)}</span>${icon("down")}</button></div>`;
   // Per-term averages map for headers
   const avgByTerm = {}; perTerm.forEach((t) => { avgByTerm[t.termName] = t; });
   const norm = (s) => String(s || "").replace(/\s*\(.*\)\s*$/, "").trim();
   const attempts = gr.attempts || {};
-  (gr.terms || []).forEach((t) => {
+  (gradesFilter === "all" ? terms : terms.filter((t) => t.termName === gradesFilter)).forEach((t) => {
     const a = avgByTerm[norm(t.termName)];
     const avgTxt = a ? [a.average != null ? "átlag " + a.average : "", a.creditIndex != null ? "kreditindex " + a.creditIndex : ""].filter(Boolean).join(" · ") : "";
     html += `<div class="dash-label" style="display:flex;justify-content:space-between;align-items:baseline"><span>${esc(t.termName)}</span>${avgTxt ? `<span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-3)">${esc(avgTxt)}</span>` : ""}</div>`;
@@ -1467,6 +1473,10 @@ function renderGrades() {
   });
   html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(gr.fetchedAt))}</div>`;
   host.innerHTML = html;
+  const pb = $("grades-period");
+  if (pb) pb.onclick = () => openList({ title: "Félév", selected: gradesFilter,
+    items: [{ value: "all", label: "Összes félév" }].concat(termNames.map((n) => ({ value: n, label: n }))),
+    onPick: (v) => { gradesFilter = v; renderGrades(); } });
   host.querySelectorAll("[data-sid]").forEach((b) => b.onclick = () => openGradeDetail(b.dataset.sid));
 }
 // Tap a subject → sheet with its final grade + every recorded grade (exam attempts, retakes…).

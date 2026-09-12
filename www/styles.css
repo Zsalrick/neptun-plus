@@ -231,20 +231,22 @@ button.row:active { background: var(--surface-2); }
 .gi-v { font-family: var(--font-mono); font-weight: 600; font-size: 22px; color: var(--ink); letter-spacing: -.01em; }
 .gi-k { font-size: 11px; color: var(--ink-3); margin-top: 4px; line-height: 1.25; }
 .grade-row { align-items: center; }
-.grade-box { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
-  font-family: var(--font-mono); font-weight: 700; font-size: 18px; color: #14150f; }
-.grade-box svg.ic { width: 20px; height: 20px; color: #14150f; }
-.grade-box.g5 { background: #37b26b; }
-.grade-box.g4 { background: #6fbf5b; }
-.grade-box.g3 { background: #d9b53c; }
-.grade-box.g2 { background: #e08b3a; }
-.grade-box.g1 { background: #d15b5b; }
-.grade-box.g0 { background: var(--surface-3); color: var(--ink-2); border: 1px solid var(--line-2); }
-.grade-box.g0 svg.ic { color: var(--ink-2); }
+/* Modern grade badge: a mono number in a ring, tinted by how good the grade is (subtle, not neon). */
+.grade-box { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  font-family: var(--font-mono); font-weight: 600; font-size: 17px; letter-spacing: -.02em;
+  color: var(--gb-c, var(--ink-2)); border: 1.5px solid var(--gb-c, var(--line-2));
+  background: color-mix(in srgb, var(--gb-c, var(--surface-3)) 13%, transparent); }
+.grade-box svg.ic { width: 19px; height: 19px; color: currentColor; }
+.grade-box.g5 { --gb-c: #43c68c; }
+.grade-box.g4 { --gb-c: #8ac56a; }
+.grade-box.g3 { --gb-c: #e2b552; }
+.grade-box.g2 { --gb-c: #e0955a; }
+.grade-box.g1 { --gb-c: #e0685c; }
+.grade-box.g0 { color: var(--ink-2); }
 button.grade-row { width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; }
 button.grade-row:active { background: var(--surface-2); }
 .grade-final { display: flex; align-items: center; gap: 14px; margin: 6px 0 4px; }
-.grade-final .grade-box { width: 52px; height: 52px; font-size: 24px; border-radius: 13px; }
+.grade-final .grade-box { width: 54px; height: 54px; font-size: 22px; border-width: 2px; }
 .gf-t { font-size: 12px; color: var(--ink-3); }
 .gf-v { font-size: 18px; font-weight: 700; color: var(--ink); margin-top: 2px; }
 
