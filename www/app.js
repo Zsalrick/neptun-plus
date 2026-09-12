@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.196";
+const APP_VERSION = "v0.197";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -58,7 +58,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -534,6 +534,7 @@ function renderForTab(id) {
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-subject") renderSubject();
   else if (id === "tab-grades") renderGrades();
+  else if (id === "tab-periods") renderPeriods();
   else if (id === "tab-credit") renderCreditPage();
   else if (id === "tab-finance") renderFinance();
   else if (id === "tab-fin-topay") renderFinTopay();
@@ -725,6 +726,7 @@ document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pus
 { const fr = $("finance-refresh"); if (fr) fr.onclick = () => refreshFinance(true); }
 { const mr = $("messages-refresh"); if (mr) mr.onclick = () => refreshMessages(true); }
 { const gr = $("grades-refresh"); if (gr) gr.onclick = () => refreshGrades(true); }
+{ const pr = $("periods-refresh"); if (pr) pr.onclick = () => refreshPeriods(true); }
 { const he = $("hub-edit"); if (he) he.onclick = () => { hubEdit = hubLayout().slice(); pushScreen("tab-hub-edit"); }; }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
@@ -984,6 +986,7 @@ const MORE_SERVICES = [
   { id: "grades", group: "Tanulmányok", label: "Jegyek", sub: () => { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; return i && i.korrigalt != null ? "Kreditindex " + i.korrigalt : "Jegyek és átlagok"; }, icon: "note", go: () => pushScreen("tab-grades") },
   { id: "finance", group: "Szolgáltatások", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
+  { id: "periods", group: "Tanulmányok", label: "Időszakok", sub: () => { const p = state.periods; const a = p && activePeriods(p.items).length; return a ? a + " aktív időszak" : "Mikor mettől meddig"; }, icon: "clock", go: () => pushScreen("tab-periods") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", group: "Eszközök", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "reg-course", group: "Ügyintézés", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
@@ -1549,6 +1552,63 @@ async function refreshGrades(viaButton) {
   finally { refreshingGrades = false; if (viaButton) hideBusy(); }
   renderGrades();
   toast(r && r.ok ? "Jegyek frissítve." : "Nem sikerült frissíteni.");
+}
+// ---------- Időszakok (periods) ----------
+let refreshingPeriods = false;
+function periodState(p, now) { // -1 lezárult, 0 aktív, 1 közelgő
+  const f = p.from ? new Date(p.from).getTime() : null, t = p.to ? new Date(p.to).getTime() : null;
+  if (t != null && !isNaN(t) && now > t) return -1;
+  if (f != null && !isNaN(f) && now < f) return 1;
+  return 0;
+}
+function activePeriods(items) { const now = Date.now(); return (items || []).filter((p) => periodState(p, now) === 0); }
+function ftDateTime(v) {
+  if (!v) return "—";
+  const d = new Date(v); if (isNaN(d)) return esc(String(v));
+  const day = TT_MON[d.getMonth()] + " " + d.getDate() + "., " + d.getFullYear();
+  const hm = d.getHours() || d.getMinutes() ? " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") : "";
+  return day + hm;
+}
+function renderPeriods() {
+  const host = $("periods-scroll"); if (!host) return;
+  const data = state.periods;
+  if (!data || !data.items || !data.items.length) {
+    host.innerHTML = `<div class="empty" style="flex:none;padding:52px 32px 8px"><div class="empty-ic">${icon("clock")}</div>`
+      + `<h2>Nincsenek időszakok</h2><p>Olvasd be a Neptunból, hogy lásd mikor mettől meddig tartanak a beiratkozási, tárgyfelvételi és vizsgajelentkezési időszakok.</p>`
+      + `<button class="btn primary narrow" id="periods-read" style="margin-top:4px">${icon("clock")} Beolvasás</button></div>`;
+    const b = $("periods-read"); if (b) b.onclick = () => openDataSync(["periods"]);
+    return;
+  }
+  const now = Date.now();
+  const groups = [{ key: 0, label: "Aktív" }, { key: 1, label: "Közelgő" }, { key: -1, label: "Lezárult" }].map((g) => ({ ...g, items: [] }));
+  data.items.forEach((p) => { const g = groups.find((x) => x.key === periodState(p, now)); if (g) g.items.push(p); });
+  groups[0].items.sort((a, b) => new Date(a.to || 0) - new Date(b.to || 0));       // aktív: ami előbb zárul, elöl
+  groups[1].items.sort((a, b) => new Date(a.from || 0) - new Date(b.from || 0));    // közelgő: ami előbb indul, elöl
+  groups[2].items.sort((a, b) => new Date(b.to || 0) - new Date(a.to || 0));        // lezárult: legutóbbi elöl
+  let html = "";
+  groups.forEach((g) => {
+    if (!g.items.length) return;
+    html += `<div class="dash-label">${esc(g.label)} · ${g.items.length}</div>`;
+    g.items.forEach((p) => {
+      const st = periodState(p, now), cls = st === 0 ? "on" : st === 1 ? "soon" : "off";
+      html += `<div class="card period ${cls}">`
+        + `<div class="period-top"><span class="period-name">${esc(p.name || p.type || "Időszak")}</span>`
+        + (p.type && p.name && p.type !== p.name ? `<span class="period-type">${esc(p.type)}</span>` : "") + `</div>`
+        + `<div class="period-dates">${icon("clock")}<span>${ftDateTime(p.from)} – ${ftDateTime(p.to)}</span></div>`
+        + (p.org ? `<div class="period-org">${esc(p.org)}</div>` : "")
+        + `</div>`;
+    });
+  });
+  host.innerHTML = html;
+}
+async function refreshPeriods(viaButton) {
+  if (refreshingPeriods) return;
+  refreshingPeriods = true;
+  if (viaButton) showBusy("Időszakok frissítése…", true);
+  let r; try { await totpTick(); r = await syncPeriods(); } catch (e) { r = { ok: false }; }
+  finally { refreshingPeriods = false; if (viaButton) hideBusy(); }
+  renderPeriods();
+  toast(r && r.ok ? "Időszakok frissítve." : "Nem sikerült frissíteni.");
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
@@ -3036,6 +3096,8 @@ const DATA_TASKS = [
     has: () => !!(state.messages && state.messages.fetchedAt), run: syncMessages },
   { id: "grades", label: "Jegyek", sub: "Végleges jegyek tárgyanként, félévenként, átlagok és kreditindex",
     has: () => !!(state.grades && state.grades.fetchedAt), run: syncGrades },
+  { id: "periods", label: "Időszakok", sub: "Beiratkozási, tárgyfelvételi, vizsgajelentkezési időszakok",
+    has: () => !!(state.periods && state.periods.fetchedAt), run: syncPeriods },
 ];
 function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
 function missingTaskIds() { return DATA_TASKS.filter((t) => !t.has()).map((t) => t.id); }
@@ -3208,6 +3270,25 @@ async function apiOfferedGradeDecision(id, accept) {
     const msg = d && (d.message || (d.modelStateErrors && d.modelStateErrors[0] && d.modelStateErrors[0].errors && d.modelStateErrors[0].errors[0]));
     return { ok: false, detail: msg || ("hiba (" + (r && r.status) + ")") };
   } catch (e) { return { ok: false, detail: String(e && e.message || e) }; }
+}
+// Időszakok (registration / exam-signup / course-take periods): Periods/GetPeriods (GET, paged table).
+// Params are flattened nested keys: request.termId="" (all terms), sortAndPage.firstRow/lastRow.
+// Response body.data = { items:[{ periodId, periodName, periodType, fromDate, toDate, administrationOrganizations }] }.
+async function syncPeriods() {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
+  const g = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return r && r.data && r.data.data; } catch (e) { return null; } };
+  const pd = await g("Periods/GetPeriods", { "request.termId": "", "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 });
+  const rows = (pd && Array.isArray(pd.items)) ? pd.items : (Array.isArray(pd) ? pd : []);
+  const items = rows.map((x) => ({
+    id: x.periodId || x.id || "", name: x.periodName || x.name || "", type: x.periodType || x.typeName || "",
+    from: x.fromDate || x.startDate || null, to: x.toDate || x.endDate || null,
+    org: x.administrationOrganizations || x.administrationOrganizationName || "",
+  })).filter((x) => x.name || x.type || x.from);
+  if (!items.length) return { ok: false, detail: "nem találtam időszakot" };
+  state.periods = { fetchedAt: new Date().toISOString(), items };
+  saveState();
+  return { ok: true, detail: items.length + " időszak" };
 }
 async function syncMessages() {
   const sess = await getApiSession();
@@ -4624,6 +4705,7 @@ attachPTR($("credit-scroll"), $("credit-ptr"), () => refreshCredit(false));     
 attachPTR($("finance-scroll"), $("finance-ptr"), () => refreshFinance(false)); // finance-only
 attachPTR($("messages-scroll"), $("messages-ptr"), () => refreshMessages(false)); // messages-only
 attachPTR($("grades-scroll"), $("grades-ptr"), () => refreshGrades(false)); // grades-only
+attachPTR($("periods-scroll"), $("periods-ptr"), () => refreshPeriods(false)); // periods-only
 // Swipe left/right inside a sub-screen with tabs → move to the prev/next segment. Sub-screens aren't
 // paged by the main-tab pager (it only handles MAIN_TABS), so horizontal swipes here are free to use.
 function attachSegSwipe(el, order, getCur, setCur) {
