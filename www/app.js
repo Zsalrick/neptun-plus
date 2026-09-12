@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.182";
+const APP_VERSION = "v0.183";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -37,6 +37,7 @@ const P = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   up: '<path d="m6 15 6-6 6 6"/>',
+  pencil: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 17z"/><path d="m13.5 6.5 3 3"/>',
   note: '<path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M9 9h6M9 13h4"/>',
   book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 0-2 2z"/><path d="M5 4v16M18 20a2 2 0 0 1 2 2"/>',
   grid: '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>',
@@ -851,16 +852,16 @@ function renderHome() {
 function hubCard(cls) { const b = document.createElement("button"); b.type = "button"; b.className = "card " + (cls || ""); return b; }
 function openTab(tab) { if (typeof MAIN_TABS !== "undefined" && MAIN_TABS.includes(tab)) navTo(tab); else pushScreen(tab); }
 const HUB_WIDGETS = [
-  { id: "current-class", label: "Jelenlegi óra", render(host) { const e = currentClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Jelenlegi óra", "tab-timetable", true); } },
-  { id: "next-class", label: "Következő óra", render(host) { const e = nextClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Következő óra", "tab-timetable"); } },
-  { id: "next-exam", label: "Következő számonkérés", render(host) { const e = nextAssessment(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Következő számonkérés", "tab-exams"); } },
-  { id: "credit", label: "Kredit‑mérő", render(host) { const p = state.progress; if (!p || !p.total) return; const pct = Math.round(p.done / p.total * 100); const el = hubCard("cred clickable"); el.onclick = () => pushScreen("tab-credit"); el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div><div class="cred-bar"><div class="cred-fill" style="width:${pct}%"></div></div>`; host.appendChild(el); } },
-  { id: "messages", label: "Olvasatlan üzenetek", render(host) { const m = state.messages; if (!m || !m.fetchedAt) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-messages"); el.innerHTML = `<span class="hs-ic">${icon("mail")}</span><span class="hs-main"><span class="hs-val">${m.unread || 0}</span><span class="hs-lbl">olvasatlan üzenet</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
-  { id: "balance", label: "Egyenleg", render(host) { const f = state.finance; const a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); if (!a || a.balance == null) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-finance"); el.innerHTML = `<span class="hs-ic">${icon("wallet")}</span><span class="hs-main"><span class="hs-val">${a.balance.toLocaleString("hu")} Ft</span><span class="hs-lbl">gyűjtőszámla egyenleg</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
-  { id: "sync", label: "Adatok állapota", render(host) { if (!canAutoLogin()) return; const missing = DATA_TASKS.filter((t) => !t.has()); const el = hubCard("next-card"); if (missing.length) { el.classList.add("sync-cta"); el.innerHTML = `<div class="nc-head">${icon("down")} Szükséges adatok beolvasása</div><div class="nc-title" style="margin-top:8px">Hiányzik: ${esc(missing.map((t) => t.label).join(", "))}</div><div class="nc-meta">Beolvasás egyben a Neptunból.</div>`; el.onclick = () => openDataSync(missing.map((t) => t.id)); } else { el.innerHTML = `<div class="nc-head">${icon("refresh")} Adatok frissítése</div><div class="nc-title" style="margin-top:8px">Órarend, félévek, kredit, tárgyak</div><div class="nc-meta">Válaszd ki, mit olvassak be újra.</div>`; el.onclick = () => openDataSync(null); } host.appendChild(el); } },
+  { id: "current-class", label: "Jelenlegi óra", desc: "A most zajló órád, amíg tart.", render(host) { const e = currentClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Jelenlegi óra", "tab-timetable", true); } },
+  { id: "next-class", label: "Következő óra", desc: "A soron következő órád ideje és terme.", render(host) { const e = nextClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Következő óra", "tab-timetable"); } },
+  { id: "next-exam", label: "Következő számonkérés", desc: "A legközelebbi ZH vagy vizsga.", render(host) { const e = nextAssessment(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Következő számonkérés", "tab-exams"); } },
+  { id: "credit", label: "Kreditek", desc: "Teljesített kreditek aránya és mérősávja.", render(host) { const p = state.progress; if (!p || !p.total) return; const pct = Math.round(p.done / p.total * 100); const el = hubCard("cred clickable"); el.onclick = () => pushScreen("tab-credit"); el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div><div class="cred-bar"><div class="cred-fill" style="width:${pct}%"></div></div>`; host.appendChild(el); } },
+  { id: "messages", label: "Olvasatlan üzenetek", desc: "Hány olvasatlan Neptun üzeneted van.", render(host) { const m = state.messages; if (!m || !m.fetchedAt) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-messages"); el.innerHTML = `<span class="hs-ic">${icon("mail")}</span><span class="hs-main"><span class="hs-val">${m.unread || 0}</span><span class="hs-lbl">olvasatlan üzenet</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
+  { id: "balance", label: "Egyenleg", desc: "A gyűjtőszámlád aktuális egyenlege.", render(host) { const f = state.finance; const a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); if (!a || a.balance == null) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-finance"); el.innerHTML = `<span class="hs-ic">${icon("wallet")}</span><span class="hs-main"><span class="hs-val">${a.balance.toLocaleString("hu")} Ft</span><span class="hs-lbl">gyűjtőszámla egyenleg</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
+  { id: "sync", label: "Adatok állapota", desc: "Jelzi, ha adat hiányzik, és egy gombbal frissít.", render(host) { if (!canAutoLogin()) return; const missing = DATA_TASKS.filter((t) => !t.has()); const el = hubCard("next-card"); if (missing.length) { el.classList.add("sync-cta"); el.innerHTML = `<div class="nc-head">${icon("down")} Szükséges adatok beolvasása</div><div class="nc-title" style="margin-top:8px">Hiányzik: ${esc(missing.map((t) => t.label).join(", "))}</div><div class="nc-meta">Beolvasás egyben a Neptunból.</div>`; el.onclick = () => openDataSync(missing.map((t) => t.id)); } else { el.innerHTML = `<div class="nc-head">${icon("refresh")} Adatok frissítése</div><div class="nc-title" style="margin-top:8px">Órarend, félévek, kredit, tárgyak</div><div class="nc-meta">Válaszd ki, mit olvassak be újra.</div>`; el.onclick = () => openDataSync(null); } host.appendChild(el); } },
 ];
 [["courses", "Tárgyak", "book", "tab-courses"], ["timetable", "Órarend", "calendar", "tab-timetable"], ["credit", "Kredit", "chart", "tab-credit"], ["messages", "Üzenetek", "mail", "tab-messages"], ["finance", "Pénzügyek", "wallet", "tab-finance"]]
-  .forEach(([id, label, ic, tab]) => HUB_WIDGETS.push({ id: "sc-" + id, label: "Gomb: " + label, render(host) { const el = hubCard("hub-shortcut"); el.onclick = () => openTab(tab); el.innerHTML = `<span class="row-ic">${icon(ic)}</span><span class="row-title">${esc(label)}</span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } }));
+  .forEach(([id, label, ic, tab]) => HUB_WIDGETS.push({ id: "sc-" + id, label: label + " gomb", desc: "Gyors ugrás a " + label + " oldalra.", render(host) { const el = hubCard("hub-shortcut"); el.onclick = () => openTab(tab); el.innerHTML = `<span class="row-ic">${icon(ic)}</span><span class="row-title">${esc(label)}</span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } }));
 const DEFAULT_HUB = ["current-class", "next-class", "next-exam", "sync"];
 function hubLayout() { const l = Array.isArray(state.hubLayout) ? state.hubLayout : DEFAULT_HUB; return l.filter((id) => HUB_WIDGETS.some((w) => w.id === id)); }
 function renderHub() {
@@ -872,20 +873,28 @@ function renderHub() {
 function renderHubEdit() {
   const host = $("hub-edit-scroll"); if (!host) return;
   const layout = hubLayout();
-  const enabled = layout.map((id) => HUB_WIDGETS.find((w) => w.id === id));
+  const enabled = layout.map((id) => HUB_WIDGETS.find((w) => w.id === id)).filter(Boolean);
   const disabled = HUB_WIDGETS.filter((w) => layout.indexOf(w.id) < 0);
-  let h = `<div class="dash-label">Megjelenő elemek</div><div class="card">`;
-  if (!enabled.length) h += `<div class="dash-empty" style="padding:16px 4px">Nincs bekapcsolt elem.</div>`;
-  enabled.forEach((w, i) => { h += `<div class="row hub-ed"><span class="row-main"><span class="row-title">${esc(w.label)}</span></span>`
-    + `<button class="iconbtn plain heb" data-up="${i}"${i === 0 ? " disabled" : ""}>${icon("up")}</button>`
-    + `<button class="iconbtn plain heb" data-down="${i}"${i === enabled.length - 1 ? " disabled" : ""}>${icon("down")}</button>`
-    + `<button class="iconbtn plain heb heb-off" data-off="${w.id}" title="Elrejtés">${icon("x")}</button></div>`; });
-  h += `</div>`;
+  const descLine = (w) => w.desc ? `<span class="row-sub hub-ed-desc">${esc(w.desc)}</span>` : "";
+  let h = `<p class="hub-ed-intro">Válaszd ki, mit láss a kezdőlapon, és milyen sorrendben. A módosítások azonnal mentődnek.</p>`;
+  h += `<div class="dash-label">Megjelenő elemek</div>`;
+  if (!enabled.length) h += `<div class="dash-empty" style="padding:16px 4px">Nincs bekapcsolt elem. Adj hozzá lentről egyet.</div>`;
+  else {
+    h += `<div class="card">`;
+    enabled.forEach((w, i) => { h += `<div class="row hub-ed">`
+      + `<span class="row-main"><span class="row-title">${esc(w.label)}</span>${descLine(w)}</span>`
+      + `<span class="hub-ed-ctrls">`
+      +   `<button class="iconbtn plain heb" data-up="${i}"${i === 0 ? " disabled" : ""} title="Feljebb">${icon("up")}</button>`
+      +   `<button class="iconbtn plain heb" data-down="${i}"${i === enabled.length - 1 ? " disabled" : ""} title="Lejjebb">${icon("down")}</button>`
+      +   `<button class="iconbtn plain heb heb-off" data-off="${w.id}" title="Elrejtés">${icon("x")}</button>`
+      + `</span></div>`; });
+    h += `</div>`;
+  }
   if (disabled.length) { h += `<div class="dash-label">Hozzáadható elemek</div><div class="card">`
-    + disabled.map((w) => `<button class="row" data-on="${w.id}" type="button"><span class="row-ic">${icon("plus")}</span><span class="row-main"><span class="row-title">${esc(w.label)}</span></span><span class="row-chev">${icon("chev")}</span></button>`).join("") + `</div>`; }
-  h += `<div class="hint center" style="margin-top:12px">A változások azonnal mentődnek.</div>`;
+    + disabled.map((w) => `<button class="row" data-on="${w.id}" type="button"><span class="row-ic">${icon("plus")}</span><span class="row-main"><span class="row-title">${esc(w.label)}</span>${descLine(w)}</span><span class="row-chev">${icon("chev")}</span></button>`).join("")
+    + `</div>`; }
   host.innerHTML = h;
-  const save = (l) => { state.hubLayout = l; saveState(); renderHubEdit(); };
+  const save = (l) => { state.hubLayout = l; saveState(); renderHubEdit(); renderHub(); };
   host.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => { const i = +b.dataset.up, l = layout.slice(); const t = l[i - 1]; l[i - 1] = l[i]; l[i] = t; save(l); });
   host.querySelectorAll("[data-down]").forEach((b) => b.onclick = () => { const i = +b.dataset.down, l = layout.slice(); const t = l[i + 1]; l[i + 1] = l[i]; l[i] = t; save(l); });
   host.querySelectorAll("[data-off]").forEach((b) => b.onclick = () => save(layout.filter((id) => id !== b.dataset.off)));
