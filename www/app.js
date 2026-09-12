@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.178";
+const APP_VERSION = "v0.179";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1582,19 +1582,18 @@ function classInfoHtml(e, examMode) {
   if (e.location) h += `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>`;
   return h;
 }
-function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, topExtra) {
+function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, extraCtrl) {
   if (!scroll) return;
-  topExtra = topExtra || "";
+  extraCtrl = extraCtrl || "";
   const hasFeed = !!state.icsUrl;
   if (refreshBtn) refreshBtn.hidden = !hasFeed;
   // Classes need the feed; exams can also come from manual entries.
   if (!examMode && !hasFeed) {
     subEl.textContent = "Feliratkozási link szükséges";
-    scroll.innerHTML = topExtra + `<div class="empty"><div class="empty-ic">${icon("calendar")}</div>
+    scroll.innerHTML = `<div class="empty"><div class="empty-ic">${icon("calendar")}</div>
       <h2>Órarend</h2><p>Add meg egyszer a Neptun feliratkozási linkjét, és onnantól egy gombbal frissül.</p>
       <button class="btn primary ics-setup" style="width:auto">Feliratkozási link megadása</button></div>`;
     const b = scroll.querySelector(".ics-setup"); if (b) b.onclick = openIcs;
-    wireViewToggle(scroll);
     return;
   }
   const items = examMode ? examEvents() : classEvents();
@@ -1623,7 +1622,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, top
     }
   }
 
-  let html = topExtra + `<div class="controls">${periodBtn(filter)}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
+  let html = `<div class="controls">${periodBtn(filter)}${extraCtrl}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
   if (hasFeed) html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${state.ics && state.ics.fetchedAt ? fmtWhen(state.ics.fetchedAt) : "még soha"}</div>`;
   else html += `<div style="height:10px"></div>`;
   if (!list.length) {
@@ -1674,16 +1673,19 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, top
     onPick: (v) => onFilter(v) });
   const add = scroll.querySelector("#add-exam"); if (add) add.onclick = openExamSheet;
   scroll.querySelectorAll(".tt-event").forEach((el) => el.onclick = () => openDetail(list[+el.dataset.idx], examMode));
-  wireViewToggle(scroll);
+  wireViewBtn(scroll);
 }
-// ---- View toggle (Lista / Hét) — timetable only ----
+// ---- View selector (Lista / Heti) — a dropdown next to the period one, timetable only ----
 let ttView = "list", ttWeekStart = null; // ttWeekStart = Monday 00:00 of the shown week
-function viewToggleHtml() {
-  return `<div class="seg tt-view" style="margin-bottom:12px">`
-    + `<button class="seg-btn${ttView === "list" ? " active" : ""}" data-ttview="list" type="button">Lista</button>`
-    + `<button class="seg-btn${ttView === "week" ? " active" : ""}" data-ttview="week" type="button">Hét</button></div>`;
+function viewBtn() {
+  return `<button class="period-btn view-btn" id="tt-viewbtn" type="button"><span>${ttView === "week" ? "Heti" : "Lista"}</span>${icon("down")}</button>`;
 }
-function wireViewToggle(scroll) { scroll.querySelectorAll("[data-ttview]").forEach((b) => b.onclick = () => { ttView = b.dataset.ttview; renderTimetable(); }); }
+function wireViewBtn(scroll) {
+  const b = scroll.querySelector("#tt-viewbtn"); if (!b) return;
+  b.onclick = () => openList({ title: "Nézet", selected: ttView,
+    items: [{ value: "list", label: "Lista" }, { value: "week", label: "Heti" }],
+    onPick: (v) => { ttView = v; renderTimetable(); } });
+}
 function mondayOf(d) { const x = new Date(d); const off = (x.getDay() + 6) % 7; x.setDate(x.getDate() - off); x.setHours(0, 0, 0, 0); return x; }
 // Assign side-by-side columns to overlapping events within one day (interval graph, per cluster).
 function layoutOverlaps(dayEvs) {
@@ -1703,11 +1705,10 @@ function renderTimetableWeek() {
   if (refreshBtn) refreshBtn.hidden = !hasFeed;
   if (!hasFeed) {
     subEl.textContent = "Feliratkozási link szükséges";
-    scroll.innerHTML = viewToggleHtml() + `<div class="empty"><div class="empty-ic">${icon("calendar")}</div>`
+    scroll.innerHTML = `<div class="empty"><div class="empty-ic">${icon("calendar")}</div>`
       + `<h2>Órarend</h2><p>Add meg egyszer a Neptun feliratkozási linkjét, és onnantól egy gombbal frissül.</p>`
       + `<button class="btn primary ics-setup" style="width:auto">Feliratkozási link megadása</button></div>`;
-    const b = scroll.querySelector(".ics-setup"); if (b) b.onclick = openIcs;
-    wireViewToggle(scroll); return;
+    const b = scroll.querySelector(".ics-setup"); if (b) b.onclick = openIcs; return;
   }
   if (!ttWeekStart) ttWeekStart = mondayOf(new Date());
   const weekStart = ttWeekStart, weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
@@ -1742,14 +1743,15 @@ function renderTimetableWeek() {
     const dd = new Date(weekStart); dd.setDate(dd.getDate() + d);
     cols += `<div class="wk-col${sameDay(dd, today) ? " today" : ""}" style="height:${hours * rowH}px">${blocks}</div>`;
   }
-  scroll.innerHTML = viewToggleHtml()
+  scroll.innerHTML = `<div class="controls">`
     + `<div class="wk-nav"><button class="wk-navbtn" id="wk-prev" type="button">${icon("back")}</button>`
-    + `<button class="wk-today" id="wk-today" type="button">${esc(wkLabel)}</button>`
-    + `<button class="wk-navbtn" id="wk-next" type="button">${icon("chev")}</button></div>`
+    +   `<button class="wk-today" id="wk-today" type="button">${esc(wkLabel)}</button>`
+    +   `<button class="wk-navbtn" id="wk-next" type="button">${icon("chev")}</button></div>`
+    + viewBtn() + `</div>`
     + `<div class="wk-head"><div class="wk-head-corner"></div><div class="wk-head-days" style="grid-template-columns:repeat(${nDays},1fr)">${daysHead}</div></div>`
     + `<div class="wk-grid"><div class="wk-times">${times}</div>`
     + `<div class="wk-body" style="grid-template-columns:repeat(${nDays},1fr);background-image:repeating-linear-gradient(to bottom,var(--line) 0,var(--line) 1px,transparent 1px,transparent ${rowH}px)">${cols}</div></div>`;
-  wireViewToggle(scroll);
+  wireViewBtn(scroll);
   $("wk-prev").onclick = () => { const s = new Date(weekStart); s.setDate(s.getDate() - 7); ttWeekStart = s; renderTimetable(); };
   $("wk-next").onclick = () => { const s = new Date(weekStart); s.setDate(s.getDate() + 7); ttWeekStart = s; renderTimetable(); };
   $("wk-today").onclick = () => { ttWeekStart = mondayOf(new Date()); renderTimetable(); };
@@ -4198,6 +4200,28 @@ attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
 attachPTR($("credit-scroll"), $("credit-ptr"), () => refreshCredit(false));       // credit-only refresh
 attachPTR($("finance-scroll"), $("finance-ptr"), () => refreshFinance(false)); // finance-only
 attachPTR($("messages-scroll"), $("messages-ptr"), () => refreshMessages(false)); // messages-only
+// Swipe left/right inside a sub-screen with tabs → move to the prev/next segment. Sub-screens aren't
+// paged by the main-tab pager (it only handles MAIN_TABS), so horizontal swipes here are free to use.
+function attachSegSwipe(el, order, getCur, setCur) {
+  if (!el) return;
+  let x0 = 0, y0 = 0, ok = false;
+  el.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || (e.target.closest && e.target.closest("input,textarea,.seg,.wk-grid,.controls"))) { ok = false; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; ok = true;
+  }, { passive: true });
+  el.addEventListener("touchend", (e) => {
+    if (!ok) return; ok = false;
+    const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+    if (Math.abs(dx) < 65 || Math.abs(dx) < Math.abs(dy) * 1.8) return; // must be a clear horizontal swipe
+    const list = typeof order === "function" ? order() : order;
+    const i = list.indexOf(getCur()), n = i + (dx < 0 ? 1 : -1);
+    if (i >= 0 && n >= 0 && n < list.length) setCur(list[n]);
+  }, { passive: true });
+  el.addEventListener("touchcancel", () => { ok = false; }, { passive: true });
+}
+attachSegSwipe($("co-scroll"), () => CO_SEGS, () => coSeg, (v) => { coSeg = v; renderCourses(); });
+attachSegSwipe($("messages-scroll"), ["received", "sent"], () => msgTab, (v) => { msgTab = v; msgQuery = ""; msgSem = "all"; renderMessages(); });
+attachSegSwipe(document.querySelector("#detail-sheet .sheet"), ["info", "tutors", "students", "notes"], () => detailSeg, (v) => { detailSeg = v; renderDetail(); });
 if (isNative) { document.body.classList.add("native"); document.querySelectorAll("[data-preview-only]").forEach((el) => el.remove()); }
 initOnboarding();
 
