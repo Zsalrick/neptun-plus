@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.192";
+const APP_VERSION = "v0.193";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1442,28 +1442,26 @@ function renderGrades() {
   }
   const idx = gr.averages && gr.averages.indices, perTerm = (gr.averages && gr.averages.perTerm) || [];
   let html = "";
-  // Current indices hero
-  if (idx && (idx.korrigalt != null || idx.kreditIndex != null || idx.osztondij != null)) {
-    const kv = [];
-    if (idx.korrigalt != null) kv.push(["Korrigált kreditindex", idx.korrigalt]);
-    if (idx.kreditIndex != null) kv.push(["Kreditindex", idx.kreditIndex]);
-    if (idx.osztondij != null) kv.push(["Ösztöndíjindex", idx.osztondij]);
-    html += `<div class="card grade-idx">` + kv.map(([k, v], i) => `<div class="gi-cell${i ? " gi-div" : ""}"><div class="gi-v">${esc(String(v))}</div><div class="gi-k">${esc(k)}</div></div>`).join("") + `</div>`;
-    if (idx.termName) html += `<div class="hint center" style="margin:-4px 2px 4px">${esc(idx.termName)} félév</div>`;
-  }
   // Semester filter (Összes félév / one term).
   const terms = gr.terms || [];
   const termNames = terms.map((t) => t.termName).filter(Boolean);
   if (gradesFilter !== "all" && termNames.indexOf(gradesFilter) < 0) gradesFilter = "all";
-  html += `<div class="controls" style="margin-bottom:12px"><button class="period-btn" id="grades-period" type="button"><span>${gradesFilter === "all" ? "Összes félév" : esc(gradesFilter)}</span>${icon("down")}</button></div>`;
-  // Per-term averages map for headers
+  html += `<div class="controls" style="margin-bottom:6px"><button class="period-btn" id="grades-period" type="button"><span>${gradesFilter === "all" ? "Összes félév" : esc(gradesFilter)}</span>${icon("down")}</button></div>`;
+  // Per-term averages map for the per-term stat headers.
   const avgByTerm = {}; perTerm.forEach((t) => { avgByTerm[t.termName] = t; });
   const norm = (s) => String(s || "").replace(/\s*\(.*\)\s*$/, "").trim();
   const attempts = gr.attempts || {};
   (gradesFilter === "all" ? terms : terms.filter((t) => t.termName === gradesFilter)).forEach((t) => {
     const a = avgByTerm[norm(t.termName)];
-    const avgTxt = a ? [a.average != null ? "átlag " + a.average : "", a.creditIndex != null ? "kreditindex " + a.creditIndex : ""].filter(Boolean).join(" · ") : "";
-    html += `<div class="dash-label" style="display:flex;justify-content:space-between;align-items:baseline"><span>${esc(t.termName)}</span>${avgTxt ? `<span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-3)">${esc(avgTxt)}</span>` : ""}</div>`;
+    // Highlighted header for this term with its stats (átlag / súlyozott / kreditindex).
+    html += `<div class="dash-label" style="margin-top:18px">${esc(t.termName)}</div>`;
+    if (a && (a.average != null || a.sumAverage != null || a.creditIndex != null)) {
+      const cells = [];
+      if (a.average != null) cells.push(["Átlag", a.average]);
+      if (a.sumAverage != null) cells.push(["Súlyozott", a.sumAverage]);
+      if (a.creditIndex != null) cells.push(["Kreditindex", a.creditIndex]);
+      html += `<div class="card grade-idx">` + cells.map(([k, v], i) => `<div class="gi-cell${i ? " gi-div" : ""}"><div class="gi-v">${esc(String(v))}</div><div class="gi-k">${esc(k)}</div></div>`).join("") + `</div>`;
+    }
     if (!t.subjects.length) { html += `<div class="dash-empty" style="padding:10px 4px">Nincs tárgy ebben a félévben.</div>`; return; }
     html += `<div class="card">` + t.subjects.map((s) => {
       const n = (attempts[s.subjectId] || []).length;
