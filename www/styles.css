@@ -367,7 +367,7 @@ button.row:active { background: var(--surface-2); }
 .heb-grip { flex: none; align-self: center; display: grid; place-items: center; width: 30px; height: 34px; margin-left: -4px;
   color: var(--ink-3); cursor: grab; touch-action: none; }
 .heb-grip svg.ic { width: 20px; height: 20px; }
-.hub-ed { transition: background .12s; }
+.hub-ed { transition: background .12s; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .hub-ed.drag-lift { background: var(--surface-3); border-radius: 12px; box-shadow: var(--shadow); position: relative; z-index: 5; cursor: grabbing; }
 #hub-enabled { overflow: visible; }
 .heb { width: 34px; height: 34px; flex: none; border-radius: 9px; color: var(--ink-3); }

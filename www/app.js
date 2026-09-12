@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.184";
+const APP_VERSION = "v0.185";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -903,36 +903,51 @@ function renderHubEdit() {
   const card = $("hub-enabled"); if (card) attachHubDrag(card);
   updateHubBar();
 }
-// Touch drag-to-reorder within the enabled card. Grabbing the grip lifts the row and live-swaps it
-// past neighbours as the finger crosses their midpoints; on release the working copy is rebuilt.
+// Touch drag-to-reorder within the enabled card. Start a drag either by grabbing the grip (immediate)
+// or by LONG-PRESSING anywhere on the row (~350ms; cancelled if the finger moves first, so normal
+// scrolling still works). The lifted row live-swaps past neighbours as the finger crosses their
+// midpoints; on release the working copy is rebuilt from the DOM order.
 function attachHubDrag(card) {
-  card.querySelectorAll("[data-grip]").forEach((grip) => {
-    grip.addEventListener("touchstart", (e) => {
-      if (e.touches.length !== 1) return;
-      const row = grip.closest(".hub-ed"); if (!row) return;
-      e.preventDefault();
-      let startY = e.touches[0].clientY;
-      row.classList.add("drag-lift");
-      const move = (ev) => {
-        ev.preventDefault();
-        const y = ev.touches[0].clientY;
-        row.style.transform = "translateY(" + (y - startY) + "px)";
-        for (const sib of card.querySelectorAll(".hub-ed")) {
-          if (sib === row) continue;
-          const r = sib.getBoundingClientRect(), mid = r.top + r.height / 2;
-          const after = row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING;
-          if (after && y > mid) { card.insertBefore(row, sib.nextSibling); startY = y; row.style.transform = ""; break; }
-          if (!after && y < mid) { card.insertBefore(row, sib); startY = y; row.style.transform = ""; break; }
-        }
-      };
-      const end = () => {
-        document.removeEventListener("touchmove", move); document.removeEventListener("touchend", end); document.removeEventListener("touchcancel", end);
-        row.classList.remove("drag-lift"); row.style.transform = "";
-        hubEdit = [...card.querySelectorAll(".hub-ed")].map((r) => r.dataset.id);
-        updateHubBar();
-      };
-      document.addEventListener("touchmove", move, { passive: false });
-      document.addEventListener("touchend", end); document.addEventListener("touchcancel", end);
+  let active = false, startY = 0, row = null, moveDoc = null, endDoc = null;
+  const swap = (y) => {
+    for (const sib of card.querySelectorAll(".hub-ed")) {
+      if (sib === row) continue;
+      const r = sib.getBoundingClientRect(), mid = r.top + r.height / 2;
+      const after = row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING;
+      if (after && y > mid) { card.insertBefore(row, sib.nextSibling); startY = y; row.style.transform = ""; break; }
+      if (!after && y < mid) { card.insertBefore(row, sib); startY = y; row.style.transform = ""; break; }
+    }
+  };
+  const finish = () => {
+    if (moveDoc) document.removeEventListener("touchmove", moveDoc, { passive: false });
+    document.removeEventListener("touchend", endDoc); document.removeEventListener("touchcancel", endDoc);
+    if (row) { row.classList.remove("drag-lift"); row.style.transform = ""; }
+    if (active) { hubEdit = [...card.querySelectorAll(".hub-ed")].map((r) => r.dataset.id); updateHubBar(); }
+    active = false; row = null; moveDoc = null; endDoc = null;
+  };
+  const begin = (r, y) => {
+    if (active) return;
+    active = true; row = r; startY = y; r.classList.add("drag-lift");
+    try { navigator.vibrate && navigator.vibrate(12); } catch (e) {}
+    moveDoc = (ev) => { ev.preventDefault(); const cy = ev.touches[0].clientY; row.style.transform = "translateY(" + (cy - startY) + "px)"; swap(cy); };
+    endDoc = finish;
+    document.addEventListener("touchmove", moveDoc, { passive: false });
+    document.addEventListener("touchend", endDoc); document.addEventListener("touchcancel", endDoc);
+  };
+  card.querySelectorAll(".hub-ed").forEach((r) => {
+    r.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1 || active) return;
+      const grip = e.target.closest && e.target.closest("[data-grip]");
+      if (grip) { e.preventDefault(); begin(r, e.touches[0].clientY); return; }
+      if (e.target.closest && e.target.closest("[data-off]")) return; // let the × button work
+      // Long-press anywhere else on the row starts the drag; a finger move first cancels it (= scroll).
+      const sx = e.touches[0].clientX, sy = e.touches[0].clientY;
+      let timer = setTimeout(() => { timer = 0; cleanup(); begin(r, sy); }, 350);
+      const onMove = (ev) => { const t = ev.touches[0]; if (Math.abs(t.clientY - sy) > 10 || Math.abs(t.clientX - sx) > 10) { if (timer) { clearTimeout(timer); timer = 0; } cleanup(); } };
+      const cleanup = () => { r.removeEventListener("touchmove", onMove); r.removeEventListener("touchend", onEnd); r.removeEventListener("touchcancel", onEnd); };
+      const onEnd = () => { if (timer) { clearTimeout(timer); timer = 0; } cleanup(); };
+      r.addEventListener("touchmove", onMove, { passive: true });
+      r.addEventListener("touchend", onEnd); r.addEventListener("touchcancel", onEnd);
     }, { passive: false });
   });
 }
