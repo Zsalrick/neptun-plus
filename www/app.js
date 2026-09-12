@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.180";
+const APP_VERSION = "v0.181";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -509,6 +509,7 @@ function renderForTab(id) {
   else if (id === "tab-timetable") renderTimetable();
   else if (id === "tab-exams") renderExams();
   else if (id === "tab-more") renderMore();
+  else if (id === "tab-more-cat") renderMoreCat();
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-subject") renderSubject();
   else if (id === "tab-credit") renderCreditPage();
@@ -858,27 +859,42 @@ const MORE_SERVICES = [
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", group: "Eszközök", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
-  { id: "reg-course", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
-  { id: "reg-exam", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
+  { id: "reg-course", group: "Ügyintézés", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
+  { id: "reg-exam", group: "Ügyintézés", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
 ];
-const MORE_GROUPS = ["Tanulmányok", "Szolgáltatások", "Eszközök"];
-function renderMore() {
-  const host = $("more-scroll"); if (!host) return;
-  const tile = (s) => `<button class="svc${s.soon ? " soon" : ""}" data-svc="${s.id}"${s.soon ? " disabled" : ""} type="button">`
+// Több is now a two-level hub: category rows → a category page with that group's tiles.
+const MORE_GROUPS = ["Tanulmányok", "Szolgáltatások", "Eszközök", "Ügyintézés"];
+const MORE_GROUP_ICON = { "Tanulmányok": "book", "Szolgáltatások": "grid", "Eszközök": "refresh", "Ügyintézés": "clipboard" };
+let moreCat = null;
+function svcTile(s) {
+  return `<button class="svc${s.soon ? " soon" : ""}" data-svc="${s.id}"${s.soon ? " disabled" : ""} type="button">`
     + `<span class="svc-ic">${icon(s.icon)}</span>`
     + `<span class="svc-t">${esc(s.label)}</span>`
     + `<span class="svc-b">${esc(typeof s.sub === "function" ? s.sub() : s.sub)}</span>`
-    + (s.soon ? `<span class="svc-badge">Hamarosan</span>` : "")
-    + `</button>`;
-  let html = "";
-  MORE_GROUPS.forEach((g) => {
-    const items = MORE_SERVICES.filter((s) => !s.soon && s.group === g);
-    if (items.length) html += `<div class="dash-label">${esc(g)}</div><div class="svc-grid">${items.map(tile).join("")}</div>`;
-  });
-  const soon = MORE_SERVICES.filter((s) => s.soon);
-  if (soon.length) html += `<div class="dash-label">Hamarosan</div><div class="svc-grid">${soon.map(tile).join("")}</div>`;
-  host.innerHTML = html;
-  host.querySelectorAll("[data-svc]").forEach((b) => { const s = MORE_SERVICES.find((x) => x.id === b.dataset.svc); if (s && s.go) b.onclick = s.go; });
+    + (s.soon ? `<span class="svc-badge">Hamarosan</span>` : "") + `</button>`;
+}
+function wireSvc(host) { host.querySelectorAll("[data-svc]").forEach((b) => { const s = MORE_SERVICES.find((x) => x.id === b.dataset.svc); if (s && s.go) b.onclick = s.go; }); }
+function renderMore() {
+  const host = $("more-scroll"); if (!host) return;
+  const rows = MORE_GROUPS.map((g) => {
+    const items = MORE_SERVICES.filter((s) => s.group === g); if (!items.length) return "";
+    return `<button class="row" data-cat="${esc(g)}" type="button">`
+      + `<span class="row-ic">${icon(MORE_GROUP_ICON[g] || "grid")}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(g)}</span><span class="row-sub">${esc(items.map((s) => s.label).join(" · "))}</span></span>`
+      + `<span class="row-chev">${icon("chev")}</span></button>`;
+  }).join("");
+  host.innerHTML = `<div class="card">${rows}</div>`;
+  host.querySelectorAll("[data-cat]").forEach((b) => b.onclick = () => { moreCat = b.dataset.cat; pushScreen("tab-more-cat"); });
+}
+// Full-screen category page: the tiles of the chosen Több category.
+function renderMoreCat() {
+  const host = $("more-cat-scroll"); if (!host) return;
+  const g = MORE_GROUPS.indexOf(moreCat) >= 0 ? moreCat : MORE_GROUPS[0];
+  const t = $("more-cat-title"); if (t) t.textContent = g;
+  const items = MORE_SERVICES.filter((s) => s.group === g);
+  const sub = $("more-cat-sub"); if (sub) sub.textContent = items.length + " elem";
+  host.innerHTML = `<div class="svc-grid">${items.map(svcTile).join("")}</div>`;
+  wireSvc(host);
 }
 // Full-screen Kredit page (own page, not a popup).
 function renderCreditPage() {
