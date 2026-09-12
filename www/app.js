@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.195";
+const APP_VERSION = "v0.196";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -860,7 +860,7 @@ function renderHome() {
   const ready = !!(state.username && state.password);
   $("btn-login").disabled = !ready;
   const warm = isNative && apiSessionValid(60000);
-  $("home-sub").textContent = semLoading ? "Félévek beolvasása…" : warming ? "Munkamenet előkészítése…" : warm ? "Aktív munkamenet" : (ready ? "Készen áll" : "Állítsd be a belépést");
+  $("home-sub").textContent = autoRefreshing ? "Adatok frissítése…" : semLoading ? "Félévek beolvasása…" : warming ? "Munkamenet előkészítése…" : warm ? "Aktív munkamenet" : (ready ? "Készen áll" : "Állítsd be a belépést");
   $("login-hint").textContent = !isNative ? "Előnézet. Az alkalmazásban ez automatikusan belép."
     : warm ? "Aktív munkamenet, a belépés azonnali." : "Egy érintés, a többit az alkalmazás elvégzi.";
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
@@ -2491,6 +2491,8 @@ async function warmSession(reason) {
   if (warming || flowActive) return;             // don't stack onto a running flow
   if (Date.now() - lastWarmAt < 45000) return;   // throttle repeated resume events
   warming = true; lastWarmAt = Date.now();
+  try { renderHome(); } catch (e) {}             // show the "Munkamenet előkészítése…" loading state
+  if (reason === "resume") toast("Munkamenet frissítése…", 1800); // visible on any tab, not just Home
   try { await totpTick(); await getApiSession(true); }
   catch (e) { dbg("warmSession: " + (e && e.message ? e.message : e)); }
   finally { warming = false; }
@@ -2505,6 +2507,23 @@ async function keepAlive() {
   try { await getApiSession(true); } catch (e) { /* try again next tick */ }
 }
 setInterval(keepAlive, 30000);
+// Full silent refresh of every data topic. Runs on cold start so the app opens fresh without the user
+// having to pull-to-refresh anything. Non-blocking (no modal, no result dialog) — re-renders as each
+// topic lands, and shows "Adatok frissítése…" in the Home subtitle while it works.
+let autoRefreshing = false;
+async function autoRefreshAll(reason) {
+  if (!isNative || !state.setupComplete || !canAutoLogin()) return;
+  if (autoRefreshing || flowActive) return;
+  autoRefreshing = true; try { renderHome(); } catch (e) {}
+  try {
+    const sess = await getApiSession(); if (!sess) return; // no token → nothing to read
+    for (const t of DATA_TASKS) {
+      try { await totpTick(); await t.run(); } catch (e) { dbg("autoRefresh " + t.id + ": " + (e && e.message ? e.message : e)); }
+      try { renderHome(); } catch (e) {}
+    }
+    try { refreshAgendas(); } catch (e) {}
+  } finally { autoRefreshing = false; try { renderHome(); } catch (e) {} }
+}
 // GET a Neptun API endpoint (native HTTP → no CORS). Returns { status, data } with data parsed.
 // Pass query params via `params` (object) — CapacitorHttp doesn't reliably forward a query
 // string embedded in the URL, so let it build the query itself.
@@ -4743,8 +4762,8 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     const ln = LN();
     if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
     rescheduleNotifications(); // refresh reminders on every launch
-    setTimeout(maybeOfferDataSync, 1600); // offer the data read if something is still missing
-    if (state.setupComplete) { setTimeout(dailyBackup, 2500); setTimeout(() => warmSession("start"), 1200); } // warm the Neptun session so login/reads are instant
+    if (state.setupComplete) { setTimeout(dailyBackup, 2500); setTimeout(() => autoRefreshAll("start"), 1200); } // cold start → refresh every topic silently, no manual update needed
+    else setTimeout(maybeOfferDataSync, 1600); // first launch (pre-setup path): offer the read once set up
   }
   // Keep the splash up long enough for the logo animation to play (min ~3000ms), then reveal the app/login.
   setTimeout(hideBoot, Math.max(0, 3000 - (Date.now() - bootTs)));
