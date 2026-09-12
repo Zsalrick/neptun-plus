@@ -218,10 +218,8 @@
                   <div class="hint center" id="login-hint" style="margin-bottom:0"></div>
                 </div>
 
-                <button class="card next-card hidden" id="current-class" type="button"></button>
-                <button class="card next-card hidden" id="next-class" type="button"></button>
-                <button class="card next-card hidden" id="next-exam" type="button"></button>
-                <div class="dash-empty" id="upcoming-empty" hidden>Nincs közelgő óra vagy számonkérés.</div>
+                <div id="hub-widgets"></div>
+                <button class="hub-edit-btn" id="hub-edit" type="button"><span data-icon="gear"></span> Kezdőlap testreszabása</button>
 
                 <div class="version-tag" id="version-tag"></div>
               </div>
@@ -241,6 +239,14 @@
                 <div style="flex:1"><div class="wordmark" id="more-cat-title">Több</div><div class="topbar-sub" id="more-cat-sub"></div></div>
               </header>
               <div class="scroll" id="more-cat-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-hub-edit">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Kezdőlap</div><div class="topbar-sub">Testreszabás — mit láss és milyen sorrendben</div></div>
+              </header>
+              <div class="scroll" id="hub-edit-scroll"></div>
             </section>
 
             <section class="tabscreen" id="tab-timetable">
