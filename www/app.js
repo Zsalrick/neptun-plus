@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.187";
+const APP_VERSION = "v0.188";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -58,7 +58,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -516,6 +516,7 @@ function renderForTab(id) {
   else if (id === "tab-hub-edit") renderHubEdit();
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-subject") renderSubject();
+  else if (id === "tab-grades") renderGrades();
   else if (id === "tab-credit") renderCreditPage();
   else if (id === "tab-finance") renderFinance();
   else if (id === "tab-fin-topay") renderFinTopay();
@@ -706,6 +707,7 @@ document.querySelectorAll("[data-setpage]").forEach((b) => b.onclick = () => pus
 { const cr = $("credit-refresh"); if (cr) cr.onclick = () => refreshCredit(true); }
 { const fr = $("finance-refresh"); if (fr) fr.onclick = () => refreshFinance(true); }
 { const mr = $("messages-refresh"); if (mr) mr.onclick = () => refreshMessages(true); }
+{ const gr = $("grades-refresh"); if (gr) gr.onclick = () => refreshGrades(true); }
 { const he = $("hub-edit"); if (he) he.onclick = () => { hubEdit = hubLayout().slice(); pushScreen("tab-hub-edit"); }; }
 window.addEventListener("resize", () => { const a = document.querySelector(".tabscreen.active"); if (a) moveNavIndicator(a.id); updateScrollPad(); });
 
@@ -859,6 +861,7 @@ const HUB_WIDGETS = [
   { id: "credit", label: "Kreditek", desc: "Teljesített kreditek aránya és mérősávja.", render(host) { const p = state.progress; if (!p || !p.total) return; const pct = Math.round(p.done / p.total * 100); const el = hubCard("cred clickable"); el.onclick = () => pushScreen("tab-credit"); el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div><div class="cred-bar"><div class="cred-fill" style="width:${pct}%"></div></div>`; host.appendChild(el); } },
   { id: "messages", label: "Olvasatlan üzenetek", desc: "Hány olvasatlan Neptun üzeneted van.", render(host) { const m = state.messages; if (!m || !m.fetchedAt) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-messages"); el.innerHTML = `<span class="hs-ic">${icon("mail")}</span><span class="hs-main"><span class="hs-val">${m.unread || 0}</span><span class="hs-lbl">olvasatlan üzenet</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
   { id: "balance", label: "Egyenleg", desc: "A gyűjtőszámlád aktuális egyenlege.", render(host) { const f = state.finance; const a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); if (!a || a.balance == null) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-finance"); el.innerHTML = `<span class="hs-ic">${icon("wallet")}</span><span class="hs-main"><span class="hs-val">${a.balance.toLocaleString("hu")} Ft</span><span class="hs-lbl">gyűjtőszámla egyenleg</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
+  { id: "grades", label: "Átlag / kreditindex", desc: "A korrigált kreditindexed egy pillantásra.", render(host) { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; if (!i || i.korrigalt == null) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-grades"); el.innerHTML = `<span class="hs-ic">${icon("note")}</span><span class="hs-main"><span class="hs-val">${esc(String(i.korrigalt))}</span><span class="hs-lbl">korrigált kreditindex${i.termName ? " · " + esc(i.termName) : ""}</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
   { id: "sync", label: "Adatok állapota", desc: "Jelzi, ha adat hiányzik, és egy gombbal frissít.", render(host) { if (!canAutoLogin()) return; const missing = DATA_TASKS.filter((t) => !t.has()); const el = hubCard("next-card"); if (missing.length) { el.classList.add("sync-cta"); el.innerHTML = `<div class="nc-head">${icon("down")} Szükséges adatok beolvasása</div><div class="nc-title" style="margin-top:8px">Hiányzik: ${esc(missing.map((t) => t.label).join(", "))}</div><div class="nc-meta">Beolvasás egyben a Neptunból.</div>`; el.onclick = () => openDataSync(missing.map((t) => t.id)); } else { el.innerHTML = `<div class="nc-head">${icon("refresh")} Adatok frissítése</div><div class="nc-title" style="margin-top:8px">Órarend, félévek, kredit, tárgyak</div><div class="nc-meta">Válaszd ki, mit olvassak be újra.</div>`; el.onclick = () => openDataSync(null); } host.appendChild(el); } },
 ];
 [["courses", "Tárgyak", "book", "tab-courses"], ["timetable", "Órarend", "calendar", "tab-timetable"], ["credit", "Kredit", "chart", "tab-credit"], ["messages", "Üzenetek", "mail", "tab-messages"], ["finance", "Pénzügyek", "wallet", "tab-finance"]]
@@ -961,6 +964,7 @@ function attachHubDrag(card) {
 const MORE_SERVICES = [
   { id: "courses", group: "Tanulmányok", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => pushScreen("tab-courses") },
   { id: "credit", group: "Tanulmányok", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => pushScreen("tab-credit") },
+  { id: "grades", group: "Tanulmányok", label: "Jegyek", sub: () => { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; return i && i.korrigalt != null ? "Kreditindex " + i.korrigalt : "Jegyek és átlagok"; }, icon: "note", go: () => pushScreen("tab-grades") },
   { id: "finance", group: "Szolgáltatások", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
@@ -1413,6 +1417,62 @@ async function refreshCredit(viaButton) {
   finally { refreshingCredit = false; if (viaButton) hideBusy(); }
   renderCreditPage(); renderProgress();
   toast(r && r.ok ? "Kredit frissítve." : "Nem sikerült frissíteni.");
+}
+// ---- Jegyek: átlagok/indexek + félévenként a vizsgajegyek ----
+function gradePill(e) {
+  const cls = e.fail ? "gr-fail" : (e.value >= 4 ? "gr-good" : "gr-ok");
+  return `<span class="grade-pill ${cls}">${esc(e.result || "")}${e.value != null ? ` <b>${e.value}</b>` : ""}</span>`;
+}
+function renderGrades() {
+  const host = $("grades-scroll"); if (!host) return;
+  const gr = state.grades;
+  if (!gr || !gr.fetchedAt) {
+    host.innerHTML = `<div class="empty" style="flex:none;padding:52px 32px 8px"><div class="empty-ic">${icon("note")}</div>`
+      + `<h2>Nincs még jegy</h2><p>Olvasd be a vizsgajegyeidet és az átlagaidat a Neptunból.</p>`
+      + `<button class="btn primary narrow" id="grades-read" style="margin-top:4px">${icon("note")} Beolvasás</button></div>`;
+    const b = $("grades-read"); if (b) b.onclick = () => openDataSync(["grades"]);
+    return;
+  }
+  const idx = gr.averages && gr.averages.indices, perTerm = (gr.averages && gr.averages.perTerm) || [];
+  let html = "";
+  // Current indices hero
+  if (idx && (idx.korrigalt != null || idx.kreditIndex != null || idx.osztondij != null)) {
+    const kv = [];
+    if (idx.korrigalt != null) kv.push(["Korrigált kreditindex", idx.korrigalt]);
+    if (idx.kreditIndex != null) kv.push(["Kreditindex", idx.kreditIndex]);
+    if (idx.osztondij != null) kv.push(["Ösztöndíjindex", idx.osztondij]);
+    html += `<div class="card grade-idx">` + kv.map(([k, v], i) => `<div class="gi-cell${i ? " gi-div" : ""}"><div class="gi-v">${esc(String(v))}</div><div class="gi-k">${esc(k)}</div></div>`).join("") + `</div>`;
+    if (idx.termName) html += `<div class="hint center" style="margin:-4px 2px 4px">${esc(idx.termName)} félév</div>`;
+  }
+  // Per-term averages map for headers
+  const avgByTerm = {}; perTerm.forEach((t) => { avgByTerm[t.termName] = t; });
+  const norm = (s) => String(s || "").replace(/\s*\(.*\)\s*$/, "").trim();
+  (gr.terms || []).forEach((t) => {
+    const a = avgByTerm[norm(t.termName)];
+    const avgTxt = a ? [a.average != null ? "átlag " + a.average : "", a.creditIndex != null ? "kreditindex " + a.creditIndex : ""].filter(Boolean).join(" · ") : "";
+    html += `<div class="dash-label" style="display:flex;justify-content:space-between;align-items:baseline"><span>${esc(t.termName)}</span>${avgTxt ? `<span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-3)">${esc(avgTxt)}</span>` : ""}</div>`;
+    if (!t.exams.length) { html += `<div class="dash-empty" style="padding:10px 4px">Nincs jegy ebben a félévben.</div>`; return; }
+    html += `<div class="card">` + t.exams.map((e) => `<div class="row grade-row">`
+      + `<span class="row-main"><span class="row-title">${esc(e.subject)}</span><span class="row-sub">${[esc(e.code), esc(e.type), e.date ? esc(ftDate(e.date)) : ""].filter(Boolean).join(" · ")}</span></span>`
+      + gradePill(e) + `</div>`).join("") + `</div>`;
+  });
+  // Averages-only terms (no exam rows) — still show their average
+  perTerm.forEach((t) => { if (!(gr.terms || []).some((x) => norm(x.termName) === t.termName)) {
+    const avgTxt = [t.average != null ? "átlag " + t.average : "", t.creditIndex != null ? "kreditindex " + t.creditIndex : ""].filter(Boolean).join(" · ");
+    if (avgTxt) html += `<div class="dash-label">${esc(t.termName)}</div><div class="card"><div class="row"><span class="row-main"><span class="row-sub">${esc(avgTxt)}</span></span></div></div>`;
+  } });
+  html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(gr.fetchedAt))}</div>`;
+  host.innerHTML = html;
+}
+let refreshingGrades = false;
+async function refreshGrades(viaButton) {
+  if (refreshingGrades) return;
+  refreshingGrades = true;
+  if (viaButton) showBusy("Jegyek frissítése…", true);
+  let r; try { await totpTick(); r = await syncGrades(); } catch (e) { r = { ok: false }; }
+  finally { refreshingGrades = false; if (viaButton) hideBusy(); }
+  renderGrades();
+  toast(r && r.ok ? "Jegyek frissítve." : "Nem sikerült frissíteni.");
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
@@ -2878,6 +2938,8 @@ const DATA_TASKS = [
     has: () => !!(state.finance && state.finance.fetchedAt), run: syncFinance },
   { id: "messages", label: "Üzenetek", sub: "Beérkezett és elküldött üzenetek, olvasatlan darabszám",
     has: () => !!(state.messages && state.messages.fetchedAt), run: syncMessages },
+  { id: "grades", label: "Jegyek", sub: "Vizsgajegyek félévenként és az átlagok, kreditindex",
+    has: () => !!(state.grades && state.grades.fetchedAt), run: syncGrades },
 ];
 function dataTask(id) { return DATA_TASKS.find((t) => t.id === id); }
 function missingTaskIds() { return DATA_TASKS.filter((t) => !t.has()).map((t) => t.id); }
@@ -2973,6 +3035,39 @@ async function syncFinance() {
 // Üzenetek (discovered v0.149, direct API). Message list endpoints use FLAT firstRow/lastRow paging
 // (NOT sortAndPage.*). Received list is data.receivedMessages, sent is data.messages. Normalized to a
 // stable {id, from, subject, date, unread, hasAttachment, isSystem, sent} shape; body loaded on demand.
+// Jegyek + átlagok (discovered v0.187). Grades come from ExamResults/GetExamResultsList (grouped by
+// term); per-term averages from Advancement/GetTermAveragesByTraining; the current indices (korrigált
+// kreditindex / kreditindex / ösztöndíjindex) from Dashboard/GetAverages. Normalized to state.grades.
+async function syncGrades() {
+  const sess = await getApiSession();
+  if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
+  const g = async (ep, params) => { try { const r = await apiGet(sess, ep, params); return r && r.data && r.data.data; } catch (e) { return null; } };
+  let stid = ""; try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; stid = (t && t.studentTrainingId) || ""; } catch (e) {}
+  const exData = await g("ExamResults/GetExamResultsList", { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 });
+  const terms = (Array.isArray(exData) ? exData : []).map((t) => ({
+    termId: t.termId, termName: t.termName || "",
+    exams: (t.examResultsList || []).map((e) => ({
+      subject: e.subjectName || "", code: e.subjectCode || "", type: e.typeName || e.examType || "",
+      result: e.resultName || "", value: (e.resultValue != null ? e.resultValue : null),
+      passed: !!e.passed, fail: e.resultColor === 1 || e.resultValue === 1,
+      date: e.gradeEnteredDate || e.toDate || null, tutors: e.examTutors || "",
+    })),
+  }));
+  const ta = stid ? await g("Advancement/GetTermAveragesByTraining", { studentTrainingId: stid }) : null;
+  const termText = {}; if (ta && ta.terms) ta.terms.forEach((x) => { termText[x.value] = String(x.text || "").replace(/\s*\(.*\)\s*$/, "").trim(); });
+  const perTerm = ((ta && ta.termAveragesByTrainings) || []).map((x) => ({
+    termName: termText[x.termId] || String(x.termId), average: x.average, creditIndex: x.creditIndex, sumAverage: x.sumAverage,
+  })).filter((x) => x.average != null || x.creditIndex != null);
+  const dash = await g("Dashboard/GetAverages");
+  const idx = {}; if (dash && dash.dashboardAverageItems) dash.dashboardAverageItems.forEach((it) => { idx[it.extraFieldTranslation] = it.index; });
+  const indices = dash ? { termName: dash.termName || "", korrigalt: idx.KorrigaltKreditIndex, kreditIndex: idx.KreditIndex, osztondij: idx.SchoolarshipKey } : null;
+  if (!terms.length && !perTerm.length && !(indices && (indices.korrigalt != null || indices.kreditIndex != null))) return { ok: false, detail: "nem találtam jegyet" };
+  state.grades = { fetchedAt: new Date().toISOString(), terms, averages: { perTerm, indices } };
+  saveState();
+  const total = terms.reduce((s, t) => s + t.exams.length, 0);
+  const head = indices && indices.korrigalt != null ? ("kreditindex " + indices.korrigalt) : (perTerm[0] && perTerm[0].average != null ? ("átlag " + perTerm[0].average) : "");
+  return { ok: true, detail: total + " jegy" + (head ? " · " + head : "") };
+}
 async function syncMessages() {
   const sess = await getApiSession();
   if (!sess || !sess.token) return { ok: false, detail: "nincs munkamenet" };
@@ -4386,6 +4481,7 @@ attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
 attachPTR($("credit-scroll"), $("credit-ptr"), () => refreshCredit(false));       // credit-only refresh
 attachPTR($("finance-scroll"), $("finance-ptr"), () => refreshFinance(false)); // finance-only
 attachPTR($("messages-scroll"), $("messages-ptr"), () => refreshMessages(false)); // messages-only
+attachPTR($("grades-scroll"), $("grades-ptr"), () => refreshGrades(false)); // grades-only
 // Swipe left/right inside a sub-screen with tabs → move to the prev/next segment. Sub-screens aren't
 // paged by the main-tab pager (it only handles MAIN_TABS), so horizontal swipes here are free to use.
 function attachSegSwipe(el, order, getCur, setCur) {
