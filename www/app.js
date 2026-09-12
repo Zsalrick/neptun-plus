@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.199";
+const APP_VERSION = "v0.200";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1569,6 +1569,26 @@ function ftDateTime(v) {
   const hm = d.getHours() || d.getMinutes() ? " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") : "";
   return day + hm;
 }
+let periodsStatus = "active-soon", periodsTerm = "all";
+const PERIOD_STATUS = { "active-soon": "Aktív és közelgő", active: "Aktív", soon: "Közelgő", off: "Lezárult", all: "Összes" };
+function periodTermOf(p) { const m = String(p.name || "").match(/(\d{4}\/\d{2}\/\d)/); return m ? m[1] : null; }
+// Neptun period names arrive ALL CAPS ("MEGAJÁNLOTT JEGYEK BEÍRÁSA…") — soften to sentence case if shouty.
+function periodSentence(s) {
+  s = String(s || "").trim(); if (!s) return s;
+  const letters = (s.match(/\p{L}/gu) || []).length, uppers = (s.match(/\p{Lu}/gu) || []).length;
+  if (letters && uppers / letters > 0.6) s = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  return s;
+}
+function periodShortRange(p) {
+  const fmt = (v) => { if (!v) return "—"; const d = new Date(v); return isNaN(d) ? "—" : TT_MON[d.getMonth()] + " " + d.getDate() + "."; };
+  return fmt(p.from) + " – " + fmt(p.to);
+}
+function periodBadge(p, st, now) {
+  const DAY = 86400000;
+  if (st === 0 && p.to) { const d = Math.ceil((new Date(p.to).getTime() - now) / DAY); return d <= 0 ? "ma zárul" : "még " + d + " nap"; }
+  if (st === 1 && p.from) { const d = Math.ceil((new Date(p.from).getTime() - now) / DAY); return d <= 0 ? "ma indul" : d + " nap múlva"; }
+  return "";
+}
 function renderPeriods() {
   const host = $("periods-scroll"); if (!host) return;
   const data = state.periods;
@@ -1580,26 +1600,40 @@ function renderPeriods() {
     return;
   }
   const now = Date.now();
+  const terms = Array.from(new Set(data.items.map(periodTermOf).filter(Boolean)));
+  if (periodsTerm !== "all" && terms.indexOf(periodsTerm) < 0) periodsTerm = "all";
+  const allow = (st) => periodsStatus === "all" ? true : periodsStatus === "active-soon" ? (st === 0 || st === 1)
+    : periodsStatus === "active" ? st === 0 : periodsStatus === "soon" ? st === 1 : st === -1;
+  const items = data.items.filter((p) => allow(periodState(p, now)) && (periodsTerm === "all" || periodTermOf(p) === periodsTerm));
   const groups = [{ key: 0, label: "Aktív" }, { key: 1, label: "Közelgő" }, { key: -1, label: "Lezárult" }].map((g) => ({ ...g, items: [] }));
-  data.items.forEach((p) => { const g = groups.find((x) => x.key === periodState(p, now)); if (g) g.items.push(p); });
-  groups[0].items.sort((a, b) => new Date(a.to || 0) - new Date(b.to || 0));       // aktív: ami előbb zárul, elöl
-  groups[1].items.sort((a, b) => new Date(a.from || 0) - new Date(b.from || 0));    // közelgő: ami előbb indul, elöl
-  groups[2].items.sort((a, b) => new Date(b.to || 0) - new Date(a.to || 0));        // lezárult: legutóbbi elöl
-  let html = "";
+  items.forEach((p) => { const g = groups.find((x) => x.key === periodState(p, now)); if (g) g.items.push(p); });
+  groups[0].items.sort((a, b) => new Date(a.to || 0) - new Date(b.to || 0));
+  groups[1].items.sort((a, b) => new Date(a.from || 0) - new Date(b.from || 0));
+  groups[2].items.sort((a, b) => new Date(b.to || 0) - new Date(a.to || 0));
+  let html = `<div class="controls" style="margin-bottom:12px">`
+    + `<button class="period-btn" id="per-status" type="button"><span>${esc(PERIOD_STATUS[periodsStatus])}</span>${icon("down")}</button>`
+    + (terms.length ? `<button class="period-btn view-btn" id="per-term" type="button"><span>${periodsTerm === "all" ? "Minden félév" : esc(periodsTerm)}</span>${icon("down")}</button>` : "")
+    + `</div>`;
+  if (!items.length) html += `<div class="dash-empty" style="padding:24px 4px">Nincs a szűrőnek megfelelő időszak.</div>`;
   groups.forEach((g) => {
     if (!g.items.length) return;
-    html += `<div class="dash-label">${esc(g.label)} · ${g.items.length}</div>`;
+    html += `<div class="dash-label">${esc(g.label)} · ${g.items.length}</div><div class="card">`;
     g.items.forEach((p) => {
-      const st = periodState(p, now), cls = st === 0 ? "on" : st === 1 ? "soon" : "off";
-      html += `<div class="card period ${cls}">`
-        + (p.type ? `<div class="period-type-lbl">${esc(p.type)}</div>` : "")
-        + `<div class="period-name">${esc(p.name || p.type || "Időszak")}</div>`
-        + `<div class="period-dates">${icon("clock")}<span>${ftDateTime(p.from)} – ${ftDateTime(p.to)}</span></div>`
-        + (p.org ? `<div class="period-org">${esc(p.org)}</div>` : "")
-        + `</div>`;
+      const st = periodState(p, now), cls = st === 0 ? "on" : st === 1 ? "soon" : "off", badge = periodBadge(p, st, now);
+      html += `<div class="period-row ${cls}"><span class="pd-dot"></span>`
+        + `<span class="pd-main"><span class="pd-name">${esc(periodSentence(p.name || p.type || "Időszak"))}</span>`
+        + `<span class="pd-dates">${esc(periodShortRange(p))}</span></span>`
+        + (badge ? `<span class="pd-badge">${esc(badge)}</span>` : "") + `</div>`;
     });
+    html += `</div>`;
   });
   host.innerHTML = html;
+  const ps = $("per-status");
+  if (ps) ps.onclick = () => openList({ title: "Állapot", selected: periodsStatus,
+    items: Object.keys(PERIOD_STATUS).map((k) => ({ value: k, label: PERIOD_STATUS[k] })), onPick: (v) => { periodsStatus = v; renderPeriods(); } });
+  const pt = $("per-term");
+  if (pt) pt.onclick = () => openList({ title: "Félév", selected: periodsTerm,
+    items: [{ value: "all", label: "Minden félév" }].concat(terms.map((t) => ({ value: t, label: t }))), onPick: (v) => { periodsTerm = v; renderPeriods(); } });
 }
 async function refreshPeriods(viaButton) {
   if (refreshingPeriods) return;
