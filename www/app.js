@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.188";
+const APP_VERSION = "v0.189";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1418,10 +1418,14 @@ async function refreshCredit(viaButton) {
   renderCreditPage(); renderProgress();
   toast(r && r.ok ? "Kredit frissítve." : "Nem sikerült frissíteni.");
 }
-// ---- Jegyek: átlagok/indexek + félévenként a vizsgajegyek ----
-function gradePill(e) {
-  const cls = e.fail ? "gr-fail" : (e.value >= 4 ? "gr-good" : "gr-ok");
-  return `<span class="grade-pill ${cls}">${esc(e.result || "")}${e.value != null ? ` <b>${e.value}</b>` : ""}</span>`;
+// ---- Jegyek: átlagok/indexek + félévenként a jegyek ----
+// A square grade box, coloured by how good the grade is (1 red → 5 green). Non-numeric results
+// (aláírás/megfelelt) show a check; missing grade shows a dash.
+function gradeBox(e) {
+  const v = e.value;
+  const g = (v >= 1 && v <= 5) ? v : 0;
+  const inner = (v != null) ? String(v) : (e.passed ? icon("check") : (e.result ? esc(e.result[0]) : "–"));
+  return `<span class="grade-box g${g}" title="${esc(e.result || "")}">${inner}</span>`;
 }
 function renderGrades() {
   const host = $("grades-scroll"); if (!host) return;
@@ -1454,7 +1458,7 @@ function renderGrades() {
     if (!t.exams.length) { html += `<div class="dash-empty" style="padding:10px 4px">Nincs jegy ebben a félévben.</div>`; return; }
     html += `<div class="card">` + t.exams.map((e) => `<div class="row grade-row">`
       + `<span class="row-main"><span class="row-title">${esc(e.subject)}</span><span class="row-sub">${[esc(e.code), esc(e.type), e.date ? esc(ftDate(e.date)) : ""].filter(Boolean).join(" · ")}</span></span>`
-      + gradePill(e) + `</div>`).join("") + `</div>`;
+      + gradeBox(e) + `</div>`).join("") + `</div>`;
   });
   // Averages-only terms (no exam rows) — still show their average
   perTerm.forEach((t) => { if (!(gr.terms || []).some((x) => norm(x.termName) === t.termName)) {
@@ -2863,24 +2867,25 @@ async function runApiDiagnostics() {
     const stid = trainIds[0] || "";
     results.push({ studentTrainingIds: trainIds, actualTermId: termId });
     const p500 = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 };
+    // Complete grades discovery: the leckekönyv (certificate) results + per-term taken subjects with
+    // results + offered grades + mid-term task results (to cover gyakorlati/megajánlott/etc. grades).
+    let termGuids = [];
+    try { const tr = await apiGet(sess, "RegistrySheet/GetStudentTrainingTerms"); termGuids = ((tr && tr.data && tr.data.data) || []).map((t) => t.value).filter(Boolean); } catch (e) {}
+    let sttIds = [];
+    try { const ta = await apiGet(sess, "Advancement/GetTermAveragesByTraining", { studentTrainingId: stid }); sttIds = (((ta && ta.data && ta.data.data) || {}).termAveragesByTrainings || []).map((x) => x.studentTrainingTermId).filter(Boolean); } catch (e) {}
+    results.push({ termGuids, sttIds });
     const eps = [
-      ["EMaterial/GetStudentTermsForResultsCardView", null],
-      ["EMaterial/GetStudentTermsForResultsCardView", { studentTrainingId: stid }],
-      ["EMaterial/GetFilterTypeForGetResultsCardView", null],
-      ["EMaterial/GetResultsCardView", { studentTrainingId: stid }],
-      ["EMaterial/GetResultsCardView", { studentTrainingId: stid, termId: termId }],
-      ["EMaterial/GetResultsCardView", { studentTrainingId: stid, selectedTermId: termId }],
-      ["RegistrySheet/GetStudentAverages", null],
-      ["RegistrySheet/GetStudentAverages", { studentTrainingId: stid }],
-      ["RegistrySheet/GetStudentaverageDetail", { studentTrainingId: stid }],
-      ["Advancement/GetTermAveragesByTraining", { studentTrainingId: stid }],
-      ["Dashboard/GetAverages", null],
-      ["Dashboard/GetAverages", { studentTrainingId: stid }],
-      ["Dashboard/GetAverageTypesDescription", null],
-      ["ExamResults/GetTermsForGetExamResultsList", null],
-      ["ExamResults/GetExamResultsList", p500],
-      ["ExamResults/GetExamResultsList", Object.assign({ selectedTermId: termId }, p500)],
-      ["SubjectCourse/GetTermsForSubjectResultsList", null],
+      ["RegistrySheet/GetCertificateResults", null],
+      ["RegistrySheet/GetCertificatePartialResults", null],
+      ["OfferedGrades/GetOfferedGrades", null],
+      ["OfferedGrades/GetOfferedGrades", { studentTrainingId: stid }],
+      ["Tasks/GetMidTermTaskResults", null],
+      ["Tasks/GetMidTermTaskResults", { studentTrainingId: stid }],
+      ["SubjectCourse/GetSubjectResultsList", { studentTrainingId: stid }],
+      ["SubjectCourse/GetSubjectResultsList", p500],
+      ["RegistrySheet/GetStudentTakenSubjectsByTerm", termGuids[0] ? { termId: termGuids[0] } : { termId: "" }],
+      ["RegistrySheet/GetStudentTakenSubjectsByTerm", sttIds[0] ? { studentTrainingTermDataId: sttIds[0] } : { studentTrainingTermDataId: "" }],
+      ["RegistrySheet/GetStudentTakenSubjectsByTerm", termGuids[1] ? { termId: termGuids[1] } : { termId: "" }],
     ];
     for (const [ep, params] of eps) {
       $("busy-text").textContent = ep.split("/").pop() + "…";

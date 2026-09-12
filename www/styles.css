@@ -231,11 +231,16 @@ button.row:active { background: var(--surface-2); }
 .gi-v { font-family: var(--font-mono); font-weight: 600; font-size: 22px; color: var(--ink); letter-spacing: -.01em; }
 .gi-k { font-size: 11px; color: var(--ink-3); margin-top: 4px; line-height: 1.25; }
 .grade-row { align-items: center; }
-.grade-pill { flex: none; font-size: 13px; font-weight: 600; padding: 5px 11px; border-radius: 999px; white-space: nowrap;
-  background: var(--surface-2); border: 1px solid var(--line-2); color: var(--ink-2); }
-.grade-pill b { font-family: var(--font-mono); font-weight: 700; }
-.grade-pill.gr-good { color: var(--brand-plus); border-color: color-mix(in srgb, var(--brand-plus) 45%, var(--line-2)); }
-.grade-pill.gr-fail { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, var(--line-2)); }
+.grade-box { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+  font-family: var(--font-mono); font-weight: 700; font-size: 18px; color: #14150f; }
+.grade-box svg.ic { width: 20px; height: 20px; color: #14150f; }
+.grade-box.g5 { background: #37b26b; }
+.grade-box.g4 { background: #6fbf5b; }
+.grade-box.g3 { background: #d9b53c; }
+.grade-box.g2 { background: #e08b3a; }
+.grade-box.g1 { background: #d15b5b; }
+.grade-box.g0 { background: var(--surface-3); color: var(--ink-2); border: 1px solid var(--line-2); }
+.grade-box.g0 svg.ic { color: var(--ink-2); }
 
 /* Üzenetek */
 .seg-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: 9px; background: var(--brand-plus); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; vertical-align: middle; }
