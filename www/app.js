@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.194";
+const APP_VERSION = "v0.195";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -23,7 +23,7 @@ const P = {
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4m8-4v4"/>',
   clipboard: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 12l1.5 1.5L14 10m-5 6h6"/>',
-  gear: '<path d="M4 8h9m3 0h4M4 16h4m3 0h9"/><circle cx="15" cy="8" r="2.4"/><circle cx="9" cy="16" r="2.4"/>',
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.2l1.5 2.6a7.8 7.8 0 0 1 1.9.8l3-.5 1.6 2.8-2 2.2c.1.7.1 1.4 0 2.1l2 2.2-1.6 2.8-3-.5a7.8 7.8 0 0 1-1.9.8L12 21.8l-1.5-2.6a7.8 7.8 0 0 1-1.9-.8l-3 .5-1.6-2.8 2-2.2a7.9 7.9 0 0 1 0-2.1l-2-2.2 1.6-2.8 3 .5a7.8 7.8 0 0 1 1.9-.8z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3m-8 0 1 14h8l1-14"/>',
   doc: '<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4M9 13h6M9 17h4"/>',
   chev: '<path d="m9 5 7 7-7 7"/>',
@@ -193,9 +193,26 @@ function buildKeypad(container, { onDigit, onBack, action }) {
 function ask({ title, body, okText = "Igen", cancelText = "Mégse" }) {
   return new Promise((res) => {
     $("ask-title").textContent = title; $("ask-body").innerHTML = body; $("ask-ok").textContent = okText; $("ask-cancel").textContent = cancelText;
+    $("ask-ok").disabled = false;
     $("ask-dialog").classList.remove("hidden");
     const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").onclick = null; $("ask-cancel").onclick = null; res(v); };
     $("ask-ok").onclick = () => done(true); $("ask-cancel").onclick = () => done(false);
+  });
+}
+// Like ask(), but the OK button unlocks only once the user types the confirmation word (e.g. IGEN).
+// Used for irreversible actions (accepting/rejecting an offered grade).
+function askTyped({ title, body, word = "IGEN", okText = "Megerősítés", cancelText = "Mégse" }) {
+  return new Promise((res) => {
+    $("ask-title").textContent = title;
+    $("ask-body").innerHTML = body + `<div class="field" style="margin-top:14px"><input class="input" id="ask-typed" placeholder="Írd be: ${esc(word)}" autocomplete="off" autocapitalize="characters" autocorrect="off" /></div>`;
+    $("ask-ok").textContent = okText; $("ask-cancel").textContent = cancelText;
+    const ok = $("ask-ok"), inp = $("ask-typed");
+    ok.disabled = true;
+    $("ask-dialog").classList.remove("hidden");
+    const check = () => { ok.disabled = inp.value.trim().toLowerCase() !== String(word).toLowerCase(); };
+    inp.oninput = check; setTimeout(() => { try { inp.focus(); } catch (e) {} }, 50);
+    const done = (v) => { $("ask-dialog").classList.add("hidden"); ok.onclick = null; $("ask-cancel").onclick = null; inp.oninput = null; ok.disabled = false; res(v); };
+    ok.onclick = () => { if (!ok.disabled) done(true); }; $("ask-cancel").onclick = () => done(false);
   });
 }
 // Confirm dialog that requires typing a specific word (e.g. "törlés") before the action button enables.
@@ -1494,8 +1511,8 @@ function renderGrades() {
 }
 async function offeredDecide(id, accept) {
   const gr = state.grades; const o = (gr && gr.offered || []).find((x) => x.id === id); if (!o) return;
-  const ok = await ask({ title: accept ? "Megajánlott jegy elfogadása" : "Megajánlott jegy elutasítása", okText: accept ? "Elfogadom" : "Elutasítom", cancelText: "Mégse",
-    body: `<b>${esc(o.subject || o.code)}</b><br>Megajánlott jegy: <b>${esc(o.result || "—")}</b><br><br>${accept ? "Elfogadás után bekerül a leckekönyvbe." : "Elutasítás után vizsgáznod kell a tárgyból."}` });
+  const ok = await askTyped({ title: accept ? "Biztosan elfogadod?" : "Biztosan elutasítod?", okText: accept ? "Elfogadom" : "Elutasítom", cancelText: "Mégse", word: "IGEN",
+    body: `<b>${esc(o.subject || o.code)}</b><br>Megajánlott jegy: <b>${esc(o.result || "—")}</b><br><br>${accept ? "Elfogadás után a jegy bekerül a leckekönyvbe, és ezt nem lehet visszavonni." : "Elutasítás után vizsgáznod kell a tárgyból."}<br>A megerősítéshez írd be, hogy <b>IGEN</b>.` });
   if (!ok) return;
   showBusy(accept ? "Elfogadás…" : "Elutasítás…", true);
   let r; try { r = await apiOfferedGradeDecision(id, accept); } catch (e) { r = { ok: false }; }
