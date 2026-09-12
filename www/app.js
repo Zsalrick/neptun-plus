@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.197";
+const APP_VERSION = "v0.198";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2992,8 +2992,8 @@ async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
-  const ok = await ask({ title: "Jegyek diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, <b>felderíti</b> a jegyek/átlagok-végpontokat az app JS-fájljaiból, majd <b>közvetlenül</b> lekéri őket (natív HTTP, nem tud beragadni), és a teljes JSON választ fájlba menti (Dokumentumok/neptunplus). Kicsit tovább tart (JS-ek letöltése)." });
+  const ok = await ask({ title: "Időszakok diagnosztika", okText: "Indítás", cancelText: "Mégse",
+    body: "Bejelentkezik, és <b>közvetlenül</b> lekéri az időszak-végpontokat több paraméter-variánssal (GET és POST), majd a teljes JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -3025,23 +3025,35 @@ async function runApiDiagnostics() {
     let sttIds = [];
     try { const ta = await apiGet(sess, "Advancement/GetTermAveragesByTraining", { studentTrainingId: stid }); sttIds = (((ta && ta.data && ta.data.data) || {}).termAveragesByTrainings || []).map((x) => x.studentTrainingTermId).filter(Boolean); } catch (e) {}
     results.push({ termGuids, sttIds });
+    // IDŐSZAKOK (periods) discovery — probe Periods/GetPeriods with several param shapes (GET), plus the
+    // per-module period endpoints, so we learn the true request binding + response envelope on live data.
+    const wide = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 };
     const eps = [
-      ["RegistrySheet/GetCertificateResults", null],
-      ["RegistrySheet/GetCertificatePartialResults", null],
-      ["OfferedGrades/GetOfferedGrades", null],
-      ["OfferedGrades/GetOfferedGrades", { studentTrainingId: stid }],
-      ["Tasks/GetMidTermTaskResults", null],
-      ["Tasks/GetMidTermTaskResults", { studentTrainingId: stid }],
-      ["SubjectCourse/GetSubjectResultsList", { studentTrainingId: stid }],
-      ["SubjectCourse/GetSubjectResultsList", p500],
-      ["RegistrySheet/GetStudentTakenSubjectsByTerm", termGuids[0] ? { termId: termGuids[0] } : { termId: "" }],
-      ["RegistrySheet/GetStudentTakenSubjectsByTerm", sttIds[0] ? { studentTrainingTermDataId: sttIds[0] } : { studentTrainingTermDataId: "" }],
-      ["RegistrySheet/GetStudentTakenSubjectsByTerm", termGuids[1] ? { termId: termGuids[1] } : { termId: "" }],
+      ["Periods/GetPeriods", wide],
+      ["Periods/GetPeriods", { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500, "request.termId": termId }],
+      ["Periods/GetPeriods", { firstRow: 0, lastRow: 500 }],
+      ["Periods/GetPeriods", null],
+      ["Periods/GetTerms", null],
+      ["FinalExams/GetActivePeriods", null],
+      ["FinalExams/GetPeriodsBySelectedTabType", null],
+      ["ModuleSelection/GetPeriods", null],
+      ["ModuleSelection/GetActivePeriodsCount", null],
+      ["DormitoryRegistration/GetActiveDormitoryPeriods", null],
     ];
     for (const [ep, params] of eps) {
       $("busy-text").textContent = ep.split("/").pop() + "…";
-      try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, params: params || undefined, status: r.status, data: r.data }); }
-      catch (e) { results.push({ ep, params: params || undefined, error: String(e && e.message || e) }); }
+      try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, verb: "GET", params: params || undefined, status: r.status, data: r.data }); }
+      catch (e) { results.push({ ep, verb: "GET", params: params || undefined, error: String(e && e.message || e) }); }
+    }
+    // POST variants for Periods/GetPeriods (in case this deployment binds a request body, not query).
+    const posts = [
+      ["Periods/GetPeriods", { firstRow: 0, lastRow: 500, filterModel: { termId: "" } }],
+      ["Periods/GetPeriods", { request: { termId: "" }, sortAndPage: { firstRow: 0, lastRow: 500 } }],
+    ];
+    for (const [ep, body] of posts) {
+      $("busy-text").textContent = ep.split("/").pop() + " (POST)…";
+      try { const r = await apiPost(sess, ep, body); results.push({ ep, verb: "POST", body, status: r.status, data: r.data }); }
+      catch (e) { results.push({ ep, verb: "POST", body, error: String(e && e.message || e) }); }
     }
     // Endpoint names already known from the v0.143 grep — skip the slow JS re-discovery this run;
     // we only need the Message list shapes above.
@@ -3067,7 +3079,7 @@ async function runApiDiagnostics() {
   catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) {}
   const summary = results.filter((r) => r.ep).map((r) => `${r.discovered ? "🔎 " : ""}${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
-  await ask({ title: "Jegyek diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
+  await ask({ title: "Időszakok diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
