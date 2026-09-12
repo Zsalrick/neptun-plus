@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.177";
+const APP_VERSION = "v0.178";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -842,64 +842,25 @@ function renderHome() {
   if (hp) { hp.onclick = openProfilePicker; hp.classList.toggle("has-multi", (state.profiles || []).length > 1); }
   renderNextClass();
   renderNextExam();
-  renderSyncCard();
-  renderHubStats();
   const noUpcoming = ["current-class", "next-class", "next-exam"].every((id) => $(id).classList.contains("hidden"));
   const emptyEl = $("upcoming-empty"); if (emptyEl) emptyEl.hidden = !noUpcoming;
-  const lbl = $("dash-overview-lbl"); if (lbl) lbl.hidden = noUpcoming;
-}
-// Glanceable dashboard tiles (Kredit / Üzenetek / Egyenleg) — only the ones with data, tap to open.
-function renderHubStats() {
-  const wrap = $("hub-stats"), lbl = $("stats-lbl"); if (!wrap) return;
-  const tiles = [];
-  const p = state.progress;
-  if (p && p.total) tiles.push({ lbl: "Kredit", val: `${p.done}/${p.total}`, sub: `${Math.round(p.done / p.total * 100)}% teljesítve`, go: () => pushScreen("tab-credit") });
-  const m = state.messages;
-  if (m && m.fetchedAt) tiles.push({ lbl: "Üzenetek", val: String(m.unread || 0), sub: m.unread ? "olvasatlan" : "elolvasva", go: () => pushScreen("tab-messages") });
-  const f = state.finance;
-  if (f && f.accounts) { const a = f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]; if (a && a.balance != null) tiles.push({ lbl: "Egyenleg", val: a.balance.toLocaleString("hu"), sub: "Ft", go: () => pushScreen("tab-finance") }); }
-  const show = tiles.length > 0;
-  wrap.hidden = !show; if (lbl) lbl.hidden = !show;
-  if (!show) { wrap.innerHTML = ""; return; }
-  wrap.innerHTML = tiles.map((t, i) => `<button class="stat-tile" data-si="${i}" type="button"><div class="stat-lbl">${esc(t.lbl)}</div><div class="stat-val">${esc(t.val)}</div><div class="stat-sub">${esc(t.sub)}</div></button>`).join("");
-  wrap.querySelectorAll("[data-si]").forEach((b) => b.onclick = tiles[+b.dataset.si].go);
-}
-// Hub card that opens the unified data read. Prominent when data is missing; a quiet
-// "refresh" entry once everything is in.
-function renderSyncCard() {
-  const el = $("btn-sync"); if (!el) return;
-  if (!canAutoLogin()) { el.classList.add("hidden"); el.onclick = null; return; }
-  el.classList.remove("hidden");
-  const missing = DATA_TASKS.filter((t) => !t.has());
-  if (missing.length) {
-    el.classList.add("sync-cta");
-    el.innerHTML = `<div class="nc-head">${icon("down")} Szükséges adatok beolvasása</div>`
-      + `<div class="nc-title" style="margin-top:8px">Hiányzik: ${esc(missing.map((t) => t.label).join(", "))}</div>`
-      + `<div class="nc-loc">Beolvasás egyben a Neptunból, pár perc alatt.</div>`;
-    el.onclick = () => openDataSync(missing.map((t) => t.id));
-  } else {
-    el.classList.remove("sync-cta");
-    el.innerHTML = `<div class="nc-head">${icon("refresh")} Adatok frissítése</div>`
-      + `<div class="nc-title" style="margin-top:8px">Órarend, félévek, kredit, tárgyak</div>`
-      + `<div class="nc-loc">Válaszd ki, mit olvassak be újra.</div>`;
-    el.onclick = () => openDataSync(null);
-  }
 }
 // =====================================================================
 //  MORE (services grid) — scales to the features coming later
 // =====================================================================
-// Grouped so the hub is scannable (no flat wall of tiles). "Adatok frissítése" lives ONLY on the
-// Kezdőlap sync card + the per-screen refresh — not duplicated here.
+// Grouped so the hub is scannable (no flat wall of tiles). Global "Adatok frissítése" lives ONLY here
+// (in Eszközök) + the per-screen refresh icon — the Kezdőlap stays a clean, glanceable dashboard.
 const MORE_SERVICES = [
   { id: "courses", group: "Tanulmányok", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => pushScreen("tab-courses") },
   { id: "credit", group: "Tanulmányok", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => pushScreen("tab-credit") },
   { id: "finance", group: "Szolgáltatások", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
-  { id: "dlc", group: "Szolgáltatások", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
+  { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
+  { id: "sync", group: "Eszközök", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "reg-course", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
   { id: "reg-exam", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
 ];
-const MORE_GROUPS = ["Tanulmányok", "Szolgáltatások"];
+const MORE_GROUPS = ["Tanulmányok", "Szolgáltatások", "Eszközök"];
 function renderMore() {
   const host = $("more-scroll"); if (!host) return;
   const tile = (s) => `<button class="svc${s.soon ? " soon" : ""}" data-svc="${s.id}"${s.soon ? " disabled" : ""} type="button">`
@@ -1350,9 +1311,9 @@ function nextIsland(el, e, headText, tab, now) {
   const time = now ? `${hm(e.S)}–${hm(e.E)}` : hm(e.S);
   const p = e.manual ? null : parseClassSummary(e.summary);
   const title = p ? p.name : (e.summary || "");
-  const meta = p ? [p.type, p.teacher].filter(Boolean).join(" · ") : "";
-  el.innerHTML = `<div class="nc-head">${icon("clock")} ${headText} · ${esc(dayHeading(e.S))}</div>
-    <div class="nc-row"><span class="nc-time">${time}</span><div class="nc-body"><div class="nc-title">${esc(title)}</div>${meta ? `<div class="nc-loc">${icon("user")} ${esc(meta)}</div>` : ""}${e.location ? `<div class="nc-loc">${icon("pin")} ${esc(e.location)}</div>` : ""}</div></div>`;
+  const meta = (p ? [p.type, p.teacher, e.location] : [e.location]).filter(Boolean).join(" · ");
+  el.innerHTML = `<div class="nc-head">${headText} · ${esc(dayHeading(e.S))}</div>`
+    + `<div class="nc-row"><span class="nc-time">${time}</span><div class="nc-body"><div class="nc-title">${esc(title)}</div>${meta ? `<div class="nc-meta">${esc(meta)}</div>` : ""}</div></div>`;
   el.onclick = () => navTo(tab);
 }
 function renderNextClass() {
@@ -1621,17 +1582,19 @@ function classInfoHtml(e, examMode) {
   if (e.location) h += `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>`;
   return h;
 }
-function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
+function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, topExtra) {
   if (!scroll) return;
+  topExtra = topExtra || "";
   const hasFeed = !!state.icsUrl;
   if (refreshBtn) refreshBtn.hidden = !hasFeed;
   // Classes need the feed; exams can also come from manual entries.
   if (!examMode && !hasFeed) {
     subEl.textContent = "Feliratkozási link szükséges";
-    scroll.innerHTML = `<div class="empty"><div class="empty-ic">${icon("calendar")}</div>
+    scroll.innerHTML = topExtra + `<div class="empty"><div class="empty-ic">${icon("calendar")}</div>
       <h2>Órarend</h2><p>Add meg egyszer a Neptun feliratkozási linkjét, és onnantól egy gombbal frissül.</p>
       <button class="btn primary ics-setup" style="width:auto">Feliratkozási link megadása</button></div>`;
     const b = scroll.querySelector(".ics-setup"); if (b) b.onclick = openIcs;
+    wireViewToggle(scroll);
     return;
   }
   const items = examMode ? examEvents() : classEvents();
@@ -1660,7 +1623,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
     }
   }
 
-  let html = `<div class="controls">${periodBtn(filter)}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
+  let html = topExtra + `<div class="controls">${periodBtn(filter)}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
   if (hasFeed) html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${state.ics && state.ics.fetchedAt ? fmtWhen(state.ics.fetchedAt) : "még soha"}</div>`;
   else html += `<div style="height:10px"></div>`;
   if (!list.length) {
@@ -1711,8 +1674,91 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter) {
     onPick: (v) => onFilter(v) });
   const add = scroll.querySelector("#add-exam"); if (add) add.onclick = openExamSheet;
   scroll.querySelectorAll(".tt-event").forEach((el) => el.onclick = () => openDetail(list[+el.dataset.idx], examMode));
+  wireViewToggle(scroll);
 }
-function renderTimetable() { renderAgenda($("tt-scroll"), $("tt-sub"), $("tt-refresh"), false, ttFilter, (k) => { ttFilter = k; renderTimetable(); }); }
+// ---- View toggle (Lista / Hét) — timetable only ----
+let ttView = "list", ttWeekStart = null; // ttWeekStart = Monday 00:00 of the shown week
+function viewToggleHtml() {
+  return `<div class="seg tt-view" style="margin-bottom:12px">`
+    + `<button class="seg-btn${ttView === "list" ? " active" : ""}" data-ttview="list" type="button">Lista</button>`
+    + `<button class="seg-btn${ttView === "week" ? " active" : ""}" data-ttview="week" type="button">Hét</button></div>`;
+}
+function wireViewToggle(scroll) { scroll.querySelectorAll("[data-ttview]").forEach((b) => b.onclick = () => { ttView = b.dataset.ttview; renderTimetable(); }); }
+function mondayOf(d) { const x = new Date(d); const off = (x.getDay() + 6) % 7; x.setDate(x.getDate() - off); x.setHours(0, 0, 0, 0); return x; }
+// Assign side-by-side columns to overlapping events within one day (interval graph, per cluster).
+function layoutOverlaps(dayEvs) {
+  let i = 0;
+  while (i < dayEvs.length) {
+    let j = i, end = dayEvs[i].E.getTime();
+    while (j + 1 < dayEvs.length && dayEvs[j + 1].S.getTime() < end) { j++; end = Math.max(end, dayEvs[j].E.getTime()); }
+    const cluster = dayEvs.slice(i, j + 1), colEnd = [];
+    cluster.forEach((e) => { let c = 0; while (c < colEnd.length && colEnd[c] > e.S.getTime()) c++; colEnd[c] = e.E.getTime(); e._col = c; });
+    cluster.forEach((e) => e._cols = colEnd.length);
+    i = j + 1;
+  }
+}
+function renderTimetableWeek() {
+  const scroll = $("tt-scroll"), subEl = $("tt-sub"), refreshBtn = $("tt-refresh"); if (!scroll) return;
+  const hasFeed = !!state.icsUrl;
+  if (refreshBtn) refreshBtn.hidden = !hasFeed;
+  if (!hasFeed) {
+    subEl.textContent = "Feliratkozási link szükséges";
+    scroll.innerHTML = viewToggleHtml() + `<div class="empty"><div class="empty-ic">${icon("calendar")}</div>`
+      + `<h2>Órarend</h2><p>Add meg egyszer a Neptun feliratkozási linkjét, és onnantól egy gombbal frissül.</p>`
+      + `<button class="btn primary ics-setup" style="width:auto">Feliratkozási link megadása</button></div>`;
+    const b = scroll.querySelector(".ics-setup"); if (b) b.onclick = openIcs;
+    wireViewToggle(scroll); return;
+  }
+  if (!ttWeekStart) ttWeekStart = mondayOf(new Date());
+  const weekStart = ttWeekStart, weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
+  const evs = classEvents().filter((e) => !isHiddenOcc(e) && e.S >= weekStart && e.S < weekEnd).sort((a, b) => a.S - b.S);
+  subEl.textContent = evs.length + " óra";
+  let maxDay = 4; evs.forEach((e) => { const di = (e.S.getDay() + 6) % 7; if (di > maxDay) maxDay = di; });
+  const nDays = maxDay + 1;
+  let minH = 8, maxH = 20;
+  evs.forEach((e) => { minH = Math.min(minH, e.S.getHours()); maxH = Math.max(maxH, e.E.getHours() + (e.E.getMinutes() > 0 ? 1 : 0)); });
+  const rowH = 46, hours = maxH - minH, today = new Date(), now = Date.now();
+  const wkEnd = new Date(weekStart); wkEnd.setDate(wkEnd.getDate() + nDays - 1);
+  const wkLabel = `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}. – ${TT_MON[wkEnd.getMonth()]} ${wkEnd.getDate()}.`;
+  let daysHead = "";
+  for (let d = 0; d < nDays; d++) { const dd = new Date(weekStart); dd.setDate(dd.getDate() + d);
+    daysHead += `<div class="wk-day${sameDay(dd, today) ? " today" : ""}"><span class="wk-day-n">${esc(TT_DAYS[dd.getDay()].slice(0, 2))}</span><span class="wk-day-d">${dd.getDate()}</span></div>`; }
+  let times = ""; for (let h = minH; h < maxH; h++) times += `<div class="wk-hour" style="height:${rowH}px">${h}:00</div>`;
+  let cols = "";
+  for (let d = 0; d < nDays; d++) {
+    const dayEvs = evs.filter((e) => (e.S.getDay() + 6) % 7 === d);
+    layoutOverlaps(dayEvs);
+    let blocks = "";
+    dayEvs.forEach((e) => {
+      const startMin = (e.S.getHours() - minH) * 60 + e.S.getMinutes();
+      const dur = Math.max(30, (e.E - e.S) / 60000);
+      const top = startMin / 60 * rowH, height = dur / 60 * rowH;
+      const w = 100 / e._cols, left = e._col * w;
+      const p = e.manual ? null : parseClassSummary(e.summary);
+      const isNow = e.S.getTime() <= now && e.E.getTime() > now;
+      blocks += `<button class="wk-ev${isNow ? " now" : ""}" data-ek="${esc(occKey(e))}" type="button" style="top:${top}px;height:${Math.max(height - 3, 22)}px;left:${left}%;width:calc(${w}% - 3px)">`
+        + `<span class="wk-ev-t">${esc(hm(e.S))}</span><span class="wk-ev-n">${esc(p ? p.name : (e.summary || "Óra"))}</span>${e.location ? `<span class="wk-ev-r">${esc(e.location)}</span>` : ""}</button>`;
+    });
+    const dd = new Date(weekStart); dd.setDate(dd.getDate() + d);
+    cols += `<div class="wk-col${sameDay(dd, today) ? " today" : ""}" style="height:${hours * rowH}px">${blocks}</div>`;
+  }
+  scroll.innerHTML = viewToggleHtml()
+    + `<div class="wk-nav"><button class="wk-navbtn" id="wk-prev" type="button">${icon("back")}</button>`
+    + `<button class="wk-today" id="wk-today" type="button">${esc(wkLabel)}</button>`
+    + `<button class="wk-navbtn" id="wk-next" type="button">${icon("chev")}</button></div>`
+    + `<div class="wk-head"><div class="wk-head-corner"></div><div class="wk-head-days" style="grid-template-columns:repeat(${nDays},1fr)">${daysHead}</div></div>`
+    + `<div class="wk-grid"><div class="wk-times">${times}</div>`
+    + `<div class="wk-body" style="grid-template-columns:repeat(${nDays},1fr);background-image:repeating-linear-gradient(to bottom,var(--line) 0,var(--line) 1px,transparent 1px,transparent ${rowH}px)">${cols}</div></div>`;
+  wireViewToggle(scroll);
+  $("wk-prev").onclick = () => { const s = new Date(weekStart); s.setDate(s.getDate() - 7); ttWeekStart = s; renderTimetable(); };
+  $("wk-next").onclick = () => { const s = new Date(weekStart); s.setDate(s.getDate() + 7); ttWeekStart = s; renderTimetable(); };
+  $("wk-today").onclick = () => { ttWeekStart = mondayOf(new Date()); renderTimetable(); };
+  scroll.querySelectorAll(".wk-ev").forEach((el) => el.onclick = () => { const e = evs.find((x) => occKey(x) === el.dataset.ek); if (e) openDetail(e, false); });
+}
+function renderTimetable() {
+  if (ttView === "week") return renderTimetableWeek();
+  renderAgenda($("tt-scroll"), $("tt-sub"), $("tt-refresh"), false, ttFilter, (k) => { ttFilter = k; renderTimetable(); }, viewToggleHtml());
+}
 function renderExams() { renderAgenda($("ex-scroll"), $("ex-sub"), $("ex-refresh"), true, exFilter, (k) => { exFilter = k; renderExams(); }); }
 
 // ----- courses: 3 segments — Aktuális (felvett) / Összes (mintatanterv) / Szabadon választható -----
@@ -3574,7 +3620,7 @@ function syncSettings() {
   syncBackupFreq();
   // Mirror live values onto the settings hub rows.
   const mir = (from, to) => { const a = $(from), b = $(to); if (a && b) b.textContent = a.textContent; };
-  mir("cur-uni", "hub-uni-sub"); mir("prog-status", "hub-prog-sub"); mir("update-status", "hub-update-sub");
+  mir("cur-uni", "hub-uni-sub"); mir("update-status", "hub-update-sub");
 }
 function syncSemStatus() {
   const el = $("sems-status"); if (!el) return;
@@ -3586,7 +3632,6 @@ function syncProgStatus() {
   const p = state.progress;
   el.textContent = (p && p.total) ? (p.done + "/" + p.total + " kredit · " + fmtWhen(p.fetchedAt)) : "Nincs beolvasva";
 }
-$("btn-prog").onclick = grabProgress;
 // Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
 const NOTIFY_CATS = [["classes", "Órák"], ["zh", "ZH"], ["vizsga", "Vizsgák"]];
 const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];

@@ -218,16 +218,10 @@
                   <div class="hint center" id="login-hint" style="margin-bottom:0"></div>
                 </div>
 
-                <button class="card next-card hidden" id="btn-sync" type="button"></button>
-
-                <div class="dash-label" id="dash-overview-lbl" hidden>Közelgő</div>
                 <button class="card next-card hidden" id="current-class" type="button"></button>
                 <button class="card next-card hidden" id="next-class" type="button"></button>
                 <button class="card next-card hidden" id="next-exam" type="button"></button>
-                <div class="dash-empty" id="upcoming-empty" hidden>Nincs közelgő óra vagy számonkérés. Frissítsd az adatokat a fenti kártyával.</div>
-
-                <div class="dash-label" id="stats-lbl" hidden>Áttekintés</div>
-                <div class="stat-row" id="hub-stats" hidden></div>
+                <div class="dash-empty" id="upcoming-empty" hidden>Nincs közelgő óra vagy számonkérés.</div>
 
                 <div class="version-tag" id="version-tag"></div>
               </div>
@@ -287,7 +281,6 @@
                 <div class="section-label">Tanulmányok</div>
                 <div class="card">
                   <button class="row" data-setpage="tab-set-timetable"><span class="row-ic"><span data-icon="calendar"></span></span><span class="row-main"><span class="row-title">Órarend</span><span class="row-sub">Feliratkozás és szünet</span></span><span class="row-chev" data-icon="chev"></span></button>
-                  <button class="row" data-setpage="tab-set-credit"><span class="row-ic"><span data-icon="chart"></span></span><span class="row-main"><span class="row-title">Kredit</span><span class="row-sub" id="hub-prog-sub">Beolvasás a Neptunból</span></span><span class="row-chev" data-icon="chev"></span></button>
                   <button class="row" data-setpage="tab-set-notify"><span class="row-ic"><span data-icon="clock"></span></span><span class="row-main"><span class="row-title">Értesítések</span><span class="row-sub">Emlékeztetők órákra és vizsgákra</span></span><span class="row-chev" data-icon="chev"></span></button>
                 </div>
 
@@ -399,21 +392,6 @@
               </div>
             </section>
 
-            <section class="tabscreen" id="tab-set-credit">
-              <header class="topbar">
-                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
-                <div style="flex:1"><div class="wordmark">Kredit</div><div class="topbar-sub">Előrehaladás beolvasása</div></div>
-              </header>
-              <div class="scroll">
-                <div class="card">
-                  <button class="row" id="btn-prog">
-                    <span class="row-ic"><span data-icon="book"></span></span>
-                    <span class="row-main"><span class="row-title">Kredit beolvasása</span><span class="row-sub" id="prog-status">Nincs beolvasva</span></span>
-                    <span class="row-chev" data-icon="chev"></span>
-                  </button>
-                </div>
-              </div>
-            </section>
 
             <section class="tabscreen" id="tab-set-notify">
               <header class="topbar">
