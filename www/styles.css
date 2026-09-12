@@ -700,19 +700,16 @@ button.grade-row:active { background: var(--surface-2); }
 .empty p { font-size: 13.5px; color: var(--ink-3); max-width: 260px; }
 .badge-soon { font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
   border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; }
-/* Időszakok — compact scannable rows with a status dot + time badge */
-.period-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+/* Időszakok — clean typographic rows: title + dates, time remaining as quiet right-aligned text.
+   No status dots, no pill badges (see DESIGN.md — avoid AI-slop decoration). Status = grouping. */
+.period-row { display: flex; align-items: baseline; gap: 14px; padding: 13px 15px; border-bottom: 1px solid var(--line); }
 .period-row:last-child { border-bottom: 0; }
-.pd-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); }
-.period-row.on .pd-dot { background: var(--brand-plus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-plus) 22%, transparent); }
-.period-row.soon .pd-dot { background: var(--ink-2); }
-.period-row.off { opacity: .5; }
 .pd-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.pd-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.pd-name { font-size: 14.5px; font-weight: 600; line-height: 1.35; color: var(--ink); }
 .pd-dates { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
-.pd-badge { flex: none; font-size: 11px; font-weight: 600; color: var(--ink-2); white-space: nowrap;
-  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 3px 9px; }
-.period-row.on .pd-badge { color: var(--brand-plus); border-color: color-mix(in srgb, var(--brand-plus) 40%, var(--line-2)); }
+.pd-when { flex: none; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+/* Closed periods: quietly recede (muted text, not an opacity wash). */
+.period-row.off .pd-name { color: var(--ink-2); font-weight: 500; }
 
 /* ---------- Bottom nav island ---------- */
 .nav-island { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));

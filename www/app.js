@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.200";
+const APP_VERSION = "v0.201";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1620,10 +1620,10 @@ function renderPeriods() {
     html += `<div class="dash-label">${esc(g.label)} · ${g.items.length}</div><div class="card">`;
     g.items.forEach((p) => {
       const st = periodState(p, now), cls = st === 0 ? "on" : st === 1 ? "soon" : "off", badge = periodBadge(p, st, now);
-      html += `<div class="period-row ${cls}"><span class="pd-dot"></span>`
+      html += `<div class="period-row ${cls}">`
         + `<span class="pd-main"><span class="pd-name">${esc(periodSentence(p.name || p.type || "Időszak"))}</span>`
         + `<span class="pd-dates">${esc(periodShortRange(p))}</span></span>`
-        + (badge ? `<span class="pd-badge">${esc(badge)}</span>` : "") + `</div>`;
+        + (badge ? `<span class="pd-when">${esc(badge)}</span>` : "") + `</div>`;
     });
     html += `</div>`;
   });
