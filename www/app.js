@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.207";
+const APP_VERSION = "v0.208";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2659,7 +2659,8 @@ async function autoRefreshAll(reason) {
       try { renderHome(); } catch (e) {}
     }
     try { refreshAgendas(); } catch (e) {}
-  } finally { autoRefreshing = false; try { renderHome(); } catch (e) {} }
+  } catch (e) { dbg("autoRefreshAll: " + (e && e.message ? e.message : e)); } // never reject → boot can't hang on us
+  finally { autoRefreshing = false; try { renderHome(); } catch (e) {} }
 }
 // Show the boot/splash screen (Kredit+ logo + loading bar) and run a full data fetch on it, then hide it.
 // Used right after onboarding / adding a profile so the first read has the same clean full-screen loader
@@ -3080,7 +3081,7 @@ async function runApiDiagnostics() {
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "Címzett-keresés diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld semmit) a címzett-kereső végpontot több paraméter-variánssal egy rövid névrészletre, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt, hogy az „Új üzenet" pontosan működjön." });
+    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld semmit) a címzett-kereső végpontot több paraméter-variánssal egy rövid névrészletre, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt, hogy az új üzenet funkció pontosan működjön." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -4910,41 +4911,49 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
 
 (async () => {
   const bootTs = Date.now();
-  if (bootSoundOn()) playBootChime(); // little satisfying chime synced to the logo letters
-  bioOK = await bioAvailable(); // resolve BEFORE the first lock so biometrics is offered on cold start
-  // Cold start: behind the loading screen, check for an OTA update and apply it before login.
-  if (isNative && window.OTA && window.OTA.configured()) {
-    setBootText("Frissítés keresése");
-    try {
-      await Promise.race([
-        window.OTA.check({ current: APP_VERSION, apply: "now", onFound: () => setBootText("Új verzió letöltése"),
-          onError: (e) => setBootText("Frissítés kihagyva") }),
-        new Promise((r) => setTimeout(r, 12000)), // don't let a slow network hold the app hostage
-      ]);
-    } catch (e) { /* proceed into the app regardless */ }
-  }
-  setBootText("Betöltés");
-  if (state.setupComplete) { enterApp(); showTab("tab-home"); if (secOn("startup")) lockNow(); }
-  else {
-    obStep = 0;
-    obSel = state.university ? (UNIVERSITIES.find((u) => u.name === state.university) || null) : null;
-    $("ob-username").value = state.username || "";
-    $("ob-password").value = state.password || "";
-    renderOb();
-  }
-  totpTick();
-  if (isNative) {
-    const ln = LN();
-    if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
-    rescheduleNotifications(); // refresh reminders on every launch
-    if (state.setupComplete) {
-      setTimeout(dailyBackup, 2500);
-      // Cold start → query/refresh every topic ON the splash (logo + loading bar), then reveal the app.
-      // No popup ever. Capped so a slow network can't hold the splash hostage (it keeps going in the bg).
-      await Promise.race([autoRefreshAll("start"), new Promise((r) => setTimeout(r, 30000))]);
+  // Absolute safety net: no matter what throws or hangs below, the splash MUST come down. Without this a
+  // rejected/hanging await could leave the app stuck on the loading screen forever (v0.204 regression).
+  const safety = setTimeout(hideBoot, 14000);
+  try {
+    if (bootSoundOn()) playBootChime(); // little satisfying chime synced to the logo letters
+    try { bioOK = await bioAvailable(); } catch (e) { bioOK = false; } // must not block boot if the plugin stalls
+    // Cold start: behind the loading screen, check for an OTA update and apply it before login.
+    if (isNative && window.OTA && window.OTA.configured()) {
+      setBootText("Frissítés keresése");
+      try {
+        await Promise.race([
+          window.OTA.check({ current: APP_VERSION, apply: "now", onFound: () => setBootText("Új verzió letöltése"),
+            onError: (e) => setBootText("Frissítés kihagyva") }),
+          new Promise((r) => setTimeout(r, 12000)), // don't let a slow network hold the app hostage
+        ]);
+      } catch (e) { /* proceed into the app regardless */ }
     }
+    setBootText("Betöltés");
+    if (state.setupComplete) { enterApp(); showTab("tab-home"); if (secOn("startup")) lockNow(); }
+    else {
+      obStep = 0;
+      obSel = state.university ? (UNIVERSITIES.find((u) => u.name === state.university) || null) : null;
+      $("ob-username").value = state.username || "";
+      $("ob-password").value = state.password || "";
+      renderOb();
+    }
+    totpTick();
+    if (isNative) {
+      const ln = LN();
+      if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
+      rescheduleNotifications(); // refresh reminders on every launch
+      if (state.setupComplete) {
+        setTimeout(dailyBackup, 2500);
+        // Cold start → query/refresh every topic ON the splash (logo + loading bar), then reveal the app.
+        // No popup ever. Capped so a slow network can't hold the splash hostage (it keeps going in the bg).
+        try { await Promise.race([autoRefreshAll("start"), new Promise((r) => setTimeout(r, 10000))]); } catch (e) {}
+      }
+    }
+  } catch (e) { try { dbg("boot: " + (e && e.message ? e.message : e)); } catch (_) {} }
+  finally {
+    clearTimeout(safety);
+    // Keep the splash up at least until the logo animation played (~2.6s); the data fetch usually takes
+    // longer, so this resolves immediately after it. Runs no matter what happened above.
+    setTimeout(hideBoot, Math.max(0, 2600 - (Date.now() - bootTs)));
   }
-  // Keep the splash up at least until the logo animation played (~2.6s); the data fetch above usually
-  // takes longer, so this resolves immediately after it.
-  setTimeout(hideBoot, Math.max(0, 2600 - (Date.now() - bootTs)));
 })();
