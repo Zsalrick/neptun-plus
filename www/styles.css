@@ -37,6 +37,27 @@
 :root[data-theme="indigo"] { --bg:#0b0c11; --surface:#15171f; --surface-2:#1c1f2a; --surface-3:#262a37;
   --ink:#ecedf2; --ink-2:#9a9fb0; --ink-3:#626880; --line:#262a37; --line-2:#333949;
   --accent:#e9eaf2; --accent-ink:#141620; --brand-plus:#8b8cf7; --focus:rgba(139,140,247,.26); }
+:root[data-theme="crimson"] { --bg:#100a0b; --surface:#1a1113; --surface-2:#241719; --surface-3:#2f1f22;
+  --ink:#f2eaea; --ink-2:#b09a9d; --ink-3:#7a6266; --line:#2f1f22; --line-2:#3d282c;
+  --accent:#f0e6e6; --accent-ink:#1a1113; --brand-plus:#e5555c; --focus:rgba(229,85,92,.26); }
+:root[data-theme="teal"] { --bg:#08100f; --surface:#111a19; --surface-2:#172422; --surface-3:#21302e;
+  --ink:#e7f0ef; --ink-2:#8fa5a2; --ink-3:#5b706d; --line:#21302e; --line-2:#2c403d;
+  --accent:#e4efee; --accent-ink:#0f1a19; --brand-plus:#2fb8b0; --focus:rgba(47,184,176,.26); }
+:root[data-theme="rose"] { --bg:#100b0e; --surface:#1a1317; --surface-2:#241a20; --surface-3:#2f232a;
+  --ink:#f2eaee; --ink-2:#b09aa4; --ink-3:#7a626c; --line:#2f232a; --line-2:#3d2e37;
+  --accent:#f0e6ea; --accent-ink:#1a1317; --brand-plus:#f08ab0; --focus:rgba(240,138,176,.26); }
+:root[data-theme="sunset"] { --bg:#120c08; --surface:#1c1410; --surface-2:#271b15; --surface-3:#33241b;
+  --ink:#f2ece5; --ink-2:#b0a192; --ink-3:#7a6a58; --line:#33241b; --line-2:#42301f;
+  --accent:#f0e9e0; --accent-ink:#1c1410; --brand-plus:#f0873c; --focus:rgba(240,135,60,.26); }
+:root[data-theme="slate"] { --bg:#0b0d0f; --surface:#141719; --surface-2:#1c2023; --surface-3:#262b2f;
+  --ink:#eef1f3; --ink-2:#9aa4ac; --ink-3:#616a72; --line:#262b2f; --line-2:#333a40;
+  --accent:#e9edf0; --accent-ink:#141719; --brand-plus:#9fb2c0; --focus:rgba(159,178,192,.26); }
+:root[data-theme="amethyst"] { --bg:#0e0b12; --surface:#17131d; --surface-2:#201a29; --surface-3:#2b2336;
+  --ink:#efeaf3; --ink-2:#a99ab4; --ink-3:#71627e; --line:#2b2336; --line-2:#392e47;
+  --accent:#ece6f2; --accent-ink:#17131d; --brand-plus:#b57cf0; --focus:rgba(181,124,240,.26); }
+:root[data-theme="emerald"] { --bg:#07100b; --surface:#0f1a13; --surface-2:#15241b; --surface-3:#1f3026;
+  --ink:#e7f0ea; --ink-2:#8fa598; --ink-3:#5b7064; --line:#1f3026; --line-2:#2a4033;
+  --accent:#e4efe8; --accent-ink:#0f1a13; --brand-plus:#35c47a; --focus:rgba(53,196,122,.26); }
 /* Theme picker rows */
 .theme-row.sel { background: var(--surface-2); }
 .theme-sw { flex: none; display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--line-2); margin-right: 13px; }

@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.205";
+const APP_VERSION = "v0.206";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -556,6 +556,13 @@ const THEMES = [
   { id: "espresso", name: "Espresso", desc: "Meleg grafit-barna, meleg arany. Elegáns, otthonos.", sw: ["#0f0c0a", "#1a1512", "#eab04a"] },
   { id: "forest", name: "Erdő", desc: "Mély zöld árnyalat, lágy arany. Diszkrét, prémium.", sw: ["#080e0b", "#111a14", "#d8b45f"] },
   { id: "indigo", name: "Indigó", desc: "Semleges grafit, hideg indigó akcentus. A legmodernebb.", sw: ["#0b0c11", "#15171f", "#8b8cf7"] },
+  { id: "crimson", name: "Bordó", desc: "Meleg szénfekete, mély bordó akcentus. Erőteljes.", sw: ["#100a0b", "#241719", "#e5555c"] },
+  { id: "teal", name: "Tenger", desc: "Sötét pala, türkiz akcentus. Friss és tiszta.", sw: ["#08100f", "#172422", "#2fb8b0"] },
+  { id: "rose", name: "Rózsa", desc: "Semleges sötét, lágy rózsaszín akcentus. Finom.", sw: ["#100b0e", "#241a20", "#f08ab0"] },
+  { id: "sunset", name: "Naplemente", desc: "Meleg sötét, narancs akcentus. Élénk, barátságos.", sw: ["#120c08", "#271b15", "#f0873c"] },
+  { id: "slate", name: "Pala", desc: "Hűvös szürke, ezüstös acél akcentus. Visszafogott.", sw: ["#0b0d0f", "#1c2023", "#9fb2c0"] },
+  { id: "amethyst", name: "Ametiszt", desc: "Sötét lila felület, élénk viola akcentus. Karakteres.", sw: ["#0e0b12", "#201a29", "#b57cf0"] },
+  { id: "emerald", name: "Smaragd", desc: "Feketés zöld, élénk smaragd akcentus. Üde.", sw: ["#07100b", "#15241b", "#35c47a"] },
 ];
 function currentTheme() { try { return localStorage.getItem("kredit-theme") || "neutral"; } catch (e) { return "neutral"; } }
 function applyTheme(id) {
