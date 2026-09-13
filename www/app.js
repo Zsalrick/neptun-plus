@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.208";
+const APP_VERSION = "v0.209";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -3117,14 +3117,15 @@ async function runApiDiagnostics() {
     // filter in a few param shapes (flat vs request./sortAndPage.) to learn the request binding + the
     // response envelope (result vs items vs array) + item fields (userId, printName, additional*Data).
     // NOTE: the send endpoint (message/new/send) is a real side-effect → NOT probed here.
-    const q = (state.username || "a").slice(0, 2); // a short, broad query that should match classmates
+    // Round 2: the search REQUIRES a messageId. For a NEW message the web app passes messageId="" (empty)
+    // or possibly the zero-guid. Probe both, with the name filter, to learn which the server accepts.
+    const q = "BL"; // a short, broad query that should match classmates
+    const ZERO = "00000000-0000-0000-0000-000000000000";
     const eps = [
-      ["UserSearch/GetMessageRecipientUsers", { nameOrNickname: q, firstRow: 0, lastRow: 50 }],
-      ["UserSearch/GetMessageRecipientUsers", { "request.nameOrNickname": q, "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50 }],
-      ["UserSearch/GetMessageRecipientUsers", { nameOrNickname: q }],
-      ["UserSearch/GetMessageRecipientUsers", null],
-      ["Message/GetMessageSendingSettings", null],
-      ["Message/GetMessageLimitSetting", null],
+      ["UserSearch/GetMessageRecipientUsers", { messageId: "", nameOrNickname: q, firstRow: 0, lastRow: 50 }],
+      ["UserSearch/GetMessageRecipientUsers", { messageId: ZERO, nameOrNickname: q, firstRow: 0, lastRow: 50 }],
+      ["UserSearch/GetMessageRecipientUsers", { messageId: "", nameOrNickname: q }],
+      ["UserSearch/GetMessageRecipientUsers", { messageId: "" }],
     ];
     for (const [ep, params] of eps) {
       $("busy-text").textContent = ep.split("/").pop() + "…";
