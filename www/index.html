@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" />
   <link rel="stylesheet" href="styles.css" />
+  <script>try{var t=localStorage.getItem("kredit-theme");if(t&&t!=="neutral")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 </head>
 <body>
   <!-- Boot / loading screen: shown on cold start while checking for an OTA update, before login. -->
@@ -310,6 +311,11 @@
                   <button class="row" data-setpage="tab-set-notify"><span class="row-ic"><span data-icon="clock"></span></span><span class="row-main"><span class="row-title">Értesítések</span><span class="row-sub">Emlékeztetők órákra és vizsgákra</span></span><span class="row-chev" data-icon="chev"></span></button>
                 </div>
 
+                <div class="section-label">Megjelenés</div>
+                <div class="card">
+                  <button class="row" data-setpage="tab-set-theme"><span class="row-ic"><span data-icon="theme"></span></span><span class="row-main"><span class="row-title">Téma</span><span class="row-sub" id="hub-theme-sub">Éjfekete</span></span><span class="row-chev" data-icon="chev"></span></button>
+                </div>
+
                 <div class="section-label">Biztonság</div>
                 <div class="card">
                   <button class="row" data-setpage="tab-set-security"><span class="row-ic"><span data-icon="lock"></span></span><span class="row-main"><span class="row-title">Védelem</span><span class="row-sub">Biometria és mikor kérjen kódot</span></span><span class="row-chev" data-icon="chev"></span></button>
@@ -428,6 +434,14 @@
                 <div id="notify-cats"></div>
                 <button class="btn tonal" id="notify-test" style="margin-top:2px"><span data-icon="clock"></span> Teszt értesítés (5 mp)</button>
               </div>
+            </section>
+
+            <section class="tabscreen" id="tab-set-theme">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Téma</div><div class="topbar-sub">Az app hangulata</div></div>
+              </header>
+              <div class="scroll" id="theme-scroll"></div>
             </section>
 
             <section class="tabscreen" id="tab-set-security">

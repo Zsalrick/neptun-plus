@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.204";
+const APP_VERSION = "v0.205";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -38,6 +38,7 @@ const P = {
   down: '<path d="m6 9 6 6 6-6"/>',
   up: '<path d="m6 15 6-6 6 6"/>',
   pencil: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 17z"/><path d="m13.5 6.5 3 3"/>',
+  theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/>',
   grip: '<circle cx="9" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.5" fill="currentColor" stroke="none"/>',
   note: '<path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M9 9h6M9 13h4"/>',
   book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 0-2 2z"/><path d="M5 4v16M18 20a2 2 0 0 1 2 2"/>',
@@ -545,8 +546,36 @@ function renderForTab(id) {
   else if (id === "tab-msg-view") renderMsgView();
   else if (id === "tab-event") renderDetail();
   else if (id === "tab-profile") renderProfilePage();
+  else if (id === "tab-set-theme") renderThemePage();
   else if (id === "tab-settings" || id.indexOf("tab-set-") === 0) syncSettings();
 }
+// ---- Színtéma: device-local preference (localStorage, NOT the profile state → no backend migrate) ----
+const THEMES = [
+  { id: "neutral", name: "Éjfekete", desc: "A klasszikus semleges fekete-fehér, arany akcentussal.", sw: ["#0c0d0f", "#141518", "#f5b221"] },
+  { id: "midnight", name: "Éjkék", desc: "Hűvös, kékes-fekete felület. Nyugodt, tech-prémium.", sw: ["#0a0d13", "#131926", "#f3b53a"] },
+  { id: "espresso", name: "Espresso", desc: "Meleg grafit-barna, meleg arany. Elegáns, otthonos.", sw: ["#0f0c0a", "#1a1512", "#eab04a"] },
+  { id: "forest", name: "Erdő", desc: "Mély zöld árnyalat, lágy arany. Diszkrét, prémium.", sw: ["#080e0b", "#111a14", "#d8b45f"] },
+  { id: "indigo", name: "Indigó", desc: "Semleges grafit, hideg indigó akcentus. A legmodernebb.", sw: ["#0b0c11", "#15171f", "#8b8cf7"] },
+];
+function currentTheme() { try { return localStorage.getItem("kredit-theme") || "neutral"; } catch (e) { return "neutral"; } }
+function applyTheme(id) {
+  const t = THEMES.some((x) => x.id === id) ? id : "neutral";
+  if (t === "neutral") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  try { localStorage.setItem("kredit-theme", t); } catch (e) {}
+}
+function renderThemePage() {
+  const host = $("theme-scroll"); if (!host) return;
+  const cur = currentTheme();
+  host.innerHTML = `<p class="hub-ed-intro">Válaszd ki az app hangulatát. Mind sötét és prémium marad, csak a felületek árnyalata változik.</p><div class="card">`
+    + THEMES.map((t) => `<button class="row theme-row${t.id === cur ? " sel" : ""}" data-theme-id="${t.id}" type="button">`
+      + `<span class="theme-sw">${t.sw.map((c) => `<span style="background:${c}"></span>`).join("")}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(t.name)}</span><span class="row-sub">${esc(t.desc)}</span></span>`
+      + `<span class="row-chev theme-check">${t.id === cur ? icon("check") : ""}</span></button>`).join("")
+    + `</div>`;
+  host.querySelectorAll("[data-theme-id]").forEach((b) => b.onclick = () => { applyTheme(b.dataset.themeId); renderThemePage(); });
+}
+applyTheme(currentTheme()); // keep DOM in sync on load (the <head> inline script prevents the first-paint flash)
 // Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
 // the slide animation, so the transition never has to wait on the DOM build (no jank).
 const HEAVY_TABS = { "tab-timetable": "agenda", "tab-exams": "agenda", "tab-courses": "courses" };
@@ -4187,6 +4216,7 @@ function syncSettings() {
   // Mirror live values onto the settings hub rows.
   const mir = (from, to) => { const a = $(from), b = $(to); if (a && b) b.textContent = a.textContent; };
   mir("cur-uni", "hub-uni-sub"); mir("update-status", "hub-update-sub");
+  { const th = THEMES.find((t) => t.id === currentTheme()), el = $("hub-theme-sub"); if (el && th) el.textContent = th.name; }
 }
 function syncSemStatus() {
   const el = $("sems-status"); if (!el) return;
