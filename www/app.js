@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.203";
+const APP_VERSION = "v0.204";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -430,13 +430,13 @@ function finishOnboarding() {
     dataSyncOffered = false; saveState();
     enterApp(); showTab("tab-home"); renderHome();
     toast("Profil hozzáadva.");
-    setTimeout(maybeOfferDataSync, 700);
+    setTimeout(() => bootFetch("account"), 400); // new profile → auto-read everything on the splash, no popup
     return;
   }
   state.setupComplete = true; saveState();
   enterApp(); showTab("tab-home");
   toast("Beállítás kész, kezdheted.");
-  setTimeout(maybeOfferDataSync, 700); // right after setup, offer to read the missing data
+  setTimeout(() => bootFetch("start"), 400); // first setup → auto-read everything on the splash, no popup
 }
 function initOnboarding() {
   $("ob-next").onclick = async () => {
@@ -2605,18 +2605,35 @@ setInterval(keepAlive, 30000);
 // having to pull-to-refresh anything. Non-blocking (no modal, no result dialog) — re-renders as each
 // topic lands, and shows "Adatok frissítése…" in the Home subtitle while it works.
 let autoRefreshing = false;
+// True while the boot/splash screen is on screen (logo + loading bar visible).
+function bootVisible() { const b = $("boot"); return !!(b && !b.hidden && !b.classList.contains("boot--hide")); }
 async function autoRefreshAll(reason) {
   if (!isNative || !state.setupComplete || !canAutoLogin()) return;
   if (autoRefreshing || flowActive) return;
   autoRefreshing = true; try { renderHome(); } catch (e) {}
+  const onBoot = bootVisible();
+  const fresh = missingTaskIds().length >= DATA_TASKS.length; // nothing cached yet → first fetch
+  if (onBoot) { setBootText(fresh ? "Adatok lekérdezése" : "Adatok frissítése"); bootProgress(0, DATA_TASKS.length); }
   try {
     const sess = await getApiSession(); if (!sess) return; // no token → nothing to read
+    let done = 0;
     for (const t of DATA_TASKS) {
       try { await totpTick(); await t.run(); } catch (e) { dbg("autoRefresh " + t.id + ": " + (e && e.message ? e.message : e)); }
+      done++; if (onBoot) bootProgress(done, DATA_TASKS.length);
       try { renderHome(); } catch (e) {}
     }
     try { refreshAgendas(); } catch (e) {}
   } finally { autoRefreshing = false; try { renderHome(); } catch (e) {} }
+}
+// Show the boot/splash screen (Kredit+ logo + loading bar) and run a full data fetch on it, then hide it.
+// Used right after onboarding / adding a profile so the first read has the same clean full-screen loader
+// as a cold start — no popup. Capped so a slow network can't hold the splash forever.
+async function bootFetch(reason) {
+  const b = $("boot");
+  if (b) { b.hidden = false; b.classList.remove("boot--hide"); }
+  setBootText("Adatok lekérdezése"); bootProgress(0, DATA_TASKS.length);
+  await Promise.race([autoRefreshAll(reason), new Promise((r) => setTimeout(r, 30000))]);
+  hideBoot();
 }
 // GET a Neptun API endpoint (native HTTP → no CORS). Returns { status, data } with data parsed.
 // Pass query params via `params` (object) — CapacitorHttp doesn't reliably forward a query
@@ -3601,16 +3618,6 @@ $("sync-go").onclick = () => {
   $("sync-sheet").classList.add("hidden");
   runDataSync(ids);
 };
-
-// Offer the read once per launch (and right after onboarding) when something is still missing.
-async function maybeOfferDataSync() {
-  if (dataSyncOffered || !isNative || !state.setupComplete || !canAutoLogin()) return;
-  if (!$("lock").classList.contains("hidden")) return; // wait until unlocked
-  const missing = missingTaskIds();
-  if (!missing.length) return;
-  dataSyncOffered = true;
-  openDataSync(missing);
-}
 
 // Grab the timetable subscription (iCal) link: login → Menü → Naptár → Naptár kezelése → read link.
 async function grabIcsLink() {
@@ -4729,7 +4736,7 @@ function requireAuth() {
 }
 function lockSuccess() {
   if (lockVerifyCb) { const cb = lockVerifyCb; lockVerifyCb = null; $("lock-cancel").hidden = true; if (!isLocked) $("lock").classList.add("hidden"); cb(true); }
-  else { isLocked = false; $("lock").classList.add("hidden"); setTimeout(maybeOfferDataSync, 500); } // offer after cold-start unlock
+  else { isLocked = false; $("lock").classList.add("hidden"); } // data already auto-fetched on the splash — no popup
 }
 function renderLock() {
   const useBio = state.biometric && bioOK;
@@ -4866,6 +4873,14 @@ function playBootChime() {
 }
 function bootSoundOn() { return state.bootSound !== false; } // default on
 function setBootText(t) { const b = $("boot-text"); if (b) b.textContent = t; }
+// Switch the boot loading bar to a determinate fill (0..total) that grows as each data topic lands.
+function bootProgress(done, total) {
+  const rule = $("boot-rule"); if (!rule) return;
+  rule.classList.add("boot-rule--det");
+  const fill = rule.querySelector("i"); if (!fill) return;
+  const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+  fill.style.width = pct + "%";
+}
 function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot--hide"); setTimeout(() => { b.hidden = true; }, 420); }
 
 (async () => {
@@ -4897,9 +4912,14 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     const ln = LN();
     if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
     rescheduleNotifications(); // refresh reminders on every launch
-    if (state.setupComplete) { setTimeout(dailyBackup, 2500); setTimeout(() => autoRefreshAll("start"), 1200); } // cold start → refresh every topic silently, no manual update needed
-    else setTimeout(maybeOfferDataSync, 1600); // first launch (pre-setup path): offer the read once set up
+    if (state.setupComplete) {
+      setTimeout(dailyBackup, 2500);
+      // Cold start → query/refresh every topic ON the splash (logo + loading bar), then reveal the app.
+      // No popup ever. Capped so a slow network can't hold the splash hostage (it keeps going in the bg).
+      await Promise.race([autoRefreshAll("start"), new Promise((r) => setTimeout(r, 30000))]);
+    }
   }
-  // Keep the splash up long enough for the logo animation to play (min ~3000ms), then reveal the app/login.
-  setTimeout(hideBoot, Math.max(0, 3000 - (Date.now() - bootTs)));
+  // Keep the splash up at least until the logo animation played (~2.6s); the data fetch above usually
+  // takes longer, so this resolves immediately after it.
+  setTimeout(hideBoot, Math.max(0, 2600 - (Date.now() - bootTs)));
 })();

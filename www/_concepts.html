@@ -1,0 +1,85 @@
+<!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kredit+ színkoncepciók</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+:root{--fb:"Bricolage Grotesque",system-ui,sans-serif;--fh:"Hanken Grotesk",system-ui,sans-serif;--fm:"IBM Plex Mono",monospace}
+*{box-sizing:border-box}
+body{margin:0;background:#050506;color:#e8e8ea;font-family:var(--fh);padding:26px 18px 60px}
+h1{font-family:var(--fb);font-weight:800;font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
+.lead{color:#8b8d94;font-size:14px;margin:0 0 26px;max-width:60ch;line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;max-width:1080px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:14px}
+.cap{text-align:center}
+.cap .n{font-family:var(--fb);font-weight:800;font-size:17px;letter-spacing:-.01em}
+.cap .n b{color:var(--dot)}
+.cap .d{color:#8b8d94;font-size:12.5px;margin-top:3px;line-height:1.45;max-width:34ch}
+.swatch{display:flex;gap:6px;justify-content:center;margin-top:9px}
+.swatch i{width:20px;height:20px;border-radius:6px;display:block;border:1px solid rgba(255,255,255,.08)}
+
+/* phone */
+.phone{width:300px;border-radius:34px;padding:11px;background:var(--bg);
+  box-shadow:0 0 0 8px #0c0d0f,0 0 0 9px #24262b,0 26px 60px -20px rgba(0,0,0,.8);color:var(--ink);font-size:14px}
+.notch{width:92px;height:5px;border-radius:99px;background:#26282d;margin:3px auto 12px}
+.top{display:flex;align-items:flex-start;gap:10px;padding:2px 6px 16px}
+.wm{font-family:var(--fb);font-weight:800;font-size:20px;letter-spacing:-.02em}
+.wm b{color:var(--gold)}
+.tsub{font-size:11px;color:var(--ink3);margin-top:3px}
+.tico{margin-left:auto;display:flex;gap:12px;color:var(--ink3)}
+.tico i{width:19px;height:19px;border:1.6px solid currentColor;border-radius:5px;display:block;opacity:.8}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:16px;margin:0 4px 12px}
+.cap2{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.code{font-family:var(--fm);font-weight:600;font-size:26px;letter-spacing:.02em;margin-top:4px}
+.uni{font-size:12.5px;color:var(--ink2);margin-top:5px}
+.btn{margin-top:15px;background:var(--btn);color:var(--btnink);font-family:var(--fh);font-weight:600;font-size:15px;
+  text-align:center;padding:14px;border-radius:12px}
+.hint{text-align:center;color:var(--ink3);font-size:11.5px;margin-top:9px}
+.row{display:flex;gap:13px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:13px 15px;margin:0 4px 12px}
+.rhead{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3)}
+.time{font-family:var(--fm);font-weight:600;font-size:21px;letter-spacing:-.02em}
+.rtitle{font-size:14px;font-weight:600}
+.rsub{font-size:12px;color:var(--ink2);margin-top:2px}
+.credrow{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:11px}
+.credbig{font-family:var(--fm);font-weight:600;font-size:22px}
+.credlbl{font-size:11px;color:var(--ink3);margin-top:2px}
+.credpct{font-family:var(--fm);font-weight:600;font-size:18px;color:var(--gold)}
+.bar{height:7px;border-radius:99px;background:var(--surface3);overflow:hidden}
+.bar>i{display:block;height:100%;width:40%;border-radius:99px;background:var(--gold)}
+
+/* palettes */
+.p-mid{--bg:#0a0d13;--surface:#131926;--surface3:#232c3e;--line:#232c3e;--ink:#eef1f6;--ink2:#98a2b4;--ink3:#5f6a7e;--gold:#f3b53a;--btn:#e9edf4;--btnink:#141a24;--dot:#f3b53a}
+.p-esp{--bg:#0f0c0a;--surface:#1a1512;--surface3:#2d241d;--line:#2d241d;--ink:#f1ebe3;--ink2:#ab9f92;--ink3:#726758;--gold:#eab04a;--btn:#efe7dc;--btnink:#1a1512;--dot:#eab04a}
+.p-for{--bg:#080e0b;--surface:#111a14;--surface3:#213029;--line:#213029;--ink:#e9efe9;--ink2:#93a89a;--ink3:#5d7267;--gold:#d8b45f;--btn:#e6efe8;--btnink:#0f1a13;--dot:#5fae86}
+.p-ind{--bg:#0b0c11;--surface:#15171f;--surface3:#262a37;--line:#262a37;--ink:#ecedf2;--ink2:#9a9fb0;--ink3:#626880;--gold:#8b8cf7;--btn:#e9eaf2;--btnink:#141620;--dot:#8b8cf7}
+.p-cur{--bg:#0c0d0f;--surface:#141518;--surface3:#24262b;--line:#26282d;--ink:#ecedee;--ink2:#9a9ea6;--ink3:#61656d;--gold:#f5b221;--btn:#e9e7e1;--btnink:#17181b;--dot:#9a9ea6}
+</style></head><body>
+<h1>Kredit+ — színkoncepciók</h1>
+<p class="lead">Mind sötét és prémium marad, egyetlen visszafogott akcentussal — csak a felületek kapnak finom színárnyalatot. Ugyanaz a kezdőlap 5 palettában.</p>
+<div class="grid" id="grid"></div>
+<script>
+const screen = `
+  <div class="notch"></div>
+  <div class="top"><div><div class="wm">Kredit<b>+</b></div><div class="tsub">Aktív munkamenet</div></div>
+    <div class="tico"><i></i><i></i><i></i></div></div>
+  <div class="card"><div class="cap2">Neptun kód</div><div class="code">BLU89P</div>
+    <div class="uni">Pannon Egyetem · SZERVER1</div>
+    <div class="btn">Bejelentkezés</div>
+    <div class="hint">Aktív munkamenet, a belépés azonnali.</div></div>
+  <div class="row"><div><div class="rhead">Következő óra</div><div class="time" style="margin-top:6px">10:00</div></div>
+    <div style="flex:1"><div class="rtitle">Általános menedzsment</div><div class="rsub">Tanóra · A.fsz.A1</div></div></div>
+  <div class="card"><div class="credrow"><div><div class="credbig">84 / 210</div><div class="credlbl">teljesített kredit</div></div><div class="credpct">40%</div></div>
+    <div class="bar"><i></i></div></div>`;
+const concepts = [
+  ["p-mid","Éjkék","Hűvös, sötétkék felület, arany akcentus. Nyugodt, tech-prémium (Linear/Stripe).",["#0a0d13","#131926","#f3b53a"]],
+  ["p-esp","Espresso","Meleg, grafit-barna, meleg arany. Elegáns, privátbank-hangulat.",["#0f0c0a","#1a1512","#eab04a"]],
+  ["p-for","Erdő","Mély zöld árnyalat, lágy arany + zöld akcentus. Diszkrét, prémium.",["#080e0b","#111a14","#5fae86"]],
+  ["p-ind","Indigó","Semleges grafit, hideg indigó akcentus arany helyett. Modern, tech.",["#0b0c11","#15171f","#8b8cf7"]],
+  ["p-cur","Jelenlegi","A mostani semleges fekete-fehér + arany — referenciának.",["#0c0d0f","#141518","#f5b221"]]
+];
+document.getElementById("grid").innerHTML = concepts.map(([cls,name,desc,sw])=>`
+  <div class="cell ${cls}">
+    <div class="phone ${cls}">${screen}</div>
+    <div class="cap"><div class="n">${name}</div><div class="d">${desc}</div>
+      <div class="swatch">${sw.map(c=>`<i style="background:${c}"></i>`).join("")}</div></div>
+  </div>`).join("");
+</script>
+</body></html>

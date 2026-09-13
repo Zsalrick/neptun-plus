@@ -951,6 +951,13 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 62%, transparent), transparent);
   transform: translateX(-150%); animation: boot-shimmer 1.9s cubic-bezier(.45,0,.25,1) 1.15s infinite alternate;
 }
+/* determinate mode: the bar fills left→right as data topics land (set inline width via JS) */
+.boot-rule.boot-rule--det { transform: scaleX(1); opacity: 1; }
+.boot-rule.boot-rule--det i {
+  width: 0; transform: none; animation: none;
+  background: color-mix(in srgb, var(--ink) 80%, transparent);
+  transition: width .35s cubic-bezier(.4,0,.2,1);
+}
 .boot-byline {
   font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: .22em;
   text-transform: uppercase; color: var(--ink-3);
