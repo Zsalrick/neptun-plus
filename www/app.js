@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.217";
+const APP_VERSION = "v0.218";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2822,7 +2822,10 @@ async function autoRefreshAll(reason) {
     const sess = await getApiSession(); if (!sess) return; // no token → nothing to read
     let done = 0;
     for (const t of DATA_TASKS) {
-      try { await totpTick(); await t.run(); } catch (e) { dbg("autoRefresh " + t.id + ": " + (e && e.message ? e.message : e)); }
+      // On auto-start, skip rarely-changing topics (félévek/tárgyak/mintatanterv) if still fresh — big speedup.
+      const stamp = t.maxAge && t.stamp && t.stamp();
+      const skip = reason === "start" && t.maxAge && t.has() && stamp && (Date.now() - Date.parse(stamp) < t.maxAge);
+      if (!skip) { try { await totpTick(); await t.run(); } catch (e) { dbg("autoRefresh " + t.id + ": " + (e && e.message ? e.message : e)); } }
       done++; if (onBoot) bootProgress(done, DATA_TASKS.length);
       try { renderHome(); } catch (e) {}
     }
@@ -3340,13 +3343,13 @@ const DATA_TASKS = [
   { id: "ics",     label: "Órarend (naptár)", sub: "Feliratkozási link és a naptár eseményei",
     has: () => !!state.icsUrl && !!(state.ics && state.ics.events && state.ics.events.length), run: syncIcs },
   { id: "sems",    label: "Félévek",          sub: "Aktív féléveid a naptár szűréséhez",
-    has: hasSemesters, run: syncSemesters },
+    has: hasSemesters, run: syncSemesters, maxAge: 864e5, stamp: () => state.semesters && state.semesters.fetchedAt }, // ritkán változik → naponta
   { id: "credit",  label: "Kredit",           sub: "Kredit‑előrehaladás (teljesített / összes)",
     has: () => !!(state.progress && state.progress.total), run: syncCredit },
   { id: "courses", label: "Tárgyak (aktuális)", sub: "Felvett tárgyaid félévenként",
-    has: () => !!(state.courses && state.courses.list && state.courses.list.length), run: syncCourses },
+    has: () => !!(state.courses && state.courses.list && state.courses.list.length), run: syncCourses, maxAge: 864e5, stamp: () => state.courses && state.courses.fetchedAt }, // naponta
   { id: "curriculum", label: "Mintatanterv (összes)", sub: "Képzésed összes tárgya és a szabadon választhatók",
-    has: hasCurriculum, run: syncCurriculum },
+    has: hasCurriculum, run: syncCurriculum, maxAge: 6048e5, stamp: () => state.curriculum && state.curriculum.fetchedAt }, // szinte sose változik → hetente
   { id: "finance", label: "Pénzügyek", sub: "Egyenleg, befizetendő, tranzakciók, számlák, ösztöndíjak",
     has: () => !!(state.finance && state.finance.fetchedAt), run: syncFinance },
   { id: "messages", label: "Üzenetek", sub: "Beérkezett és elküldött üzenetek, olvasatlan darabszám",
@@ -5098,6 +5101,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
 
 (async () => {
   const bootTs = Date.now();
+  let firstEver = false; // true only on a truly fresh install (no cached data) → hold the splash longer
   // Absolute safety net: no matter what throws or hangs below, the splash MUST come down. Without this a
   // rejected/hanging await could leave the app stuck on the loading screen forever (v0.204 regression).
   const safety = setTimeout(hideBoot, 14000);
@@ -5131,16 +5135,19 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
       rescheduleNotifications(); // refresh reminders on every launch
       if (state.setupComplete) {
         setTimeout(dailyBackup, 2500);
-        // Cold start → query/refresh every topic ON the splash (logo + loading bar), then reveal the app.
-        // No popup ever. Capped so a slow network can't hold the splash hostage (it keeps going in the bg).
-        try { await Promise.race([autoRefreshAll("start"), new Promise((r) => setTimeout(r, 10000))]); } catch (e) {}
+        firstEver = missingTaskIds().length >= DATA_TASKS.length; // truly nothing cached (first ever launch)
+        // First launch → hold the splash with the progress bar until the initial read (nothing to show yet).
+        // Returning user → the app already renders last session's cached data, so reveal it immediately and
+        // refresh in the background (Home shows "Adatok frissítése…"); no 2-3s wait on the network.
+        if (firstEver) { try { await Promise.race([autoRefreshAll("start"), new Promise((r) => setTimeout(r, 12000))]); } catch (e) {} }
+        else { autoRefreshAll("start"); } // fire-and-forget
       }
     }
   } catch (e) { try { dbg("boot: " + (e && e.message ? e.message : e)); } catch (_) {} }
   finally {
     clearTimeout(safety);
-    // Keep the splash up at least until the logo animation played (~2.6s); the data fetch usually takes
-    // longer, so this resolves immediately after it. Runs no matter what happened above.
-    setTimeout(hideBoot, Math.max(0, 2600 - (Date.now() - bootTs)));
+    // Let the logo animation play, then reveal. Returning users don't wait on the network so keep it snappy;
+    // a fresh install just finished its blocking read above, so a touch longer is fine.
+    setTimeout(hideBoot, Math.max(0, (firstEver ? 2600 : 1800) - (Date.now() - bootTs)));
   }
 })();
