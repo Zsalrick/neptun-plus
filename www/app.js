@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.237";
+const APP_VERSION = "v0.238";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4615,12 +4615,14 @@ function syncNotifySettings() {
       <button class="check flat" data-nt="brief"><span class="box"><span data-icon="check"></span></span>
         <span><span class="c-t">Reggeli összefoglaló</span><span class="c-b">Napi értesítés a mai órákról, vizsgákról és a befizetendőről.</span></span></button>
       ${br.enabled ? `<div class="lead-row"><span class="lead-lbl">Időpont</span><input type="time" id="brief-time" value="${esc(br.time || "07:00")}" style="font-family:var(--font-mono,inherit);font-size:15px;padding:6px 10px;border-radius:10px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)"></div>` : ""}
-    </div></div>`;
+    </div></div>
+    <button class="btn tonal" id="change-test" style="margin-top:2px"><span data-icon="bell"></span> Változás-teszt (Új üzenet push)</button>`;
   renderIcons(host);
   host.querySelectorAll("[data-nt]").forEach((b) => b.onclick = () => b.dataset.nt === "brief" ? toggleBrief() : toggleNotifyCat(b.dataset.nt));
   host.querySelectorAll(".lead-chip").forEach((b) => b.onclick = () => { removeLead(b.dataset.cat, +b.dataset.lead); });
   host.querySelectorAll("[data-addcat]").forEach((b) => b.onclick = () => addLead(b.dataset.addcat));
   { const t = $("brief-time"); if (t) t.onchange = () => { state.notify.brief.time = t.value || "07:00"; saveState(); rescheduleNotifications(); }; }
+  { const ct = $("change-test"); if (ct) ct.onclick = testChangeNotif; }
   NOTIFY_CATS.forEach(([key]) => { const el = host.querySelector(`[data-nt="${key}"]`); if (el) el.classList.toggle("on", !!(state.notify[key] && state.notify[key].enabled)); });
   { const el = host.querySelector(`[data-nt="brief"]`); if (el) el.classList.toggle("on", !!br.enabled); }
 }
@@ -4630,6 +4632,19 @@ async function toggleNotifyCat(key) {
   else c.enabled = false;
   saveState(); syncNotifySettings(); rescheduleNotifications();
   if (key === "changes") { try { seedBackgroundRunner(); } catch (e) {} } // háttér on/off azonnal
+}
+// Teszt: a valódi változás-értesítő útvonalán küld egy "Új üzenet" push-t (a legfrissebb üzeneted
+// tárgyával), így ellenőrizhető, hogy megjön-e és jó helyre visz-e koppintásra. Nem módosít adatot.
+async function testChangeNotif() {
+  const ln = LN();
+  if (!isNative || !ln) { toast("A teszt a telefonos alkalmazásban működik."); return; }
+  if (!(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell."); return; }
+  const m = (state.messages && state.messages.received && state.messages.received[0]) || null;
+  const body = (m ? [m.from, m.subject].filter(Boolean).join(" · ") : "") || "Teszt feladó · Teszt üzenet";
+  try {
+    await ln.schedule({ notifications: [{ id: 1305000000, title: "Új üzenet", body: body, schedule: { at: new Date(Date.now() + 4000), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { changeKind: "messages" } }] });
+    toast("Teszt push 4 másodperc múlva. Tedd háttérbe az appot, majd koppints rá!");
+  } catch (e) { toast("Hiba: " + (e && e.message ? e.message : e)); }
 }
 async function toggleBrief() {
   const b = state.notify.brief;
