@@ -33,6 +33,13 @@ Mielőtt kártyát/badge-et/ikont raksz be: nézd meg, hogy csinálná ezt a Lin
   Veszélyre `--danger`. Jegyekhez tompított, gyűrűs (nem tömör-neon) jelölés.
 - **Tér:** nagyvonalú padding/margó; ne zsúfolj. Üres állapotok barátságos, rövid szöveggel.
 
+## SZÖVEG (copy szabályok)
+- **SOHA ne használj gondolatjelet (`–` vagy `—`) a felhasználónak látszó szövegben.** Se mondat-összekötőként, se felsorolásban. Bontsd két mondatra ponttal, vagy tegyél vesszőt. (A szóvégi magyar toldalék-kötőjel, pl. „5,00-nál", természetesen maradhat, az nem gondolatjel.)
+  - Rossz: „Nincs internet – a mentett adatokat látod." Jó: „Nincs internet. A mentett adatokat látod."
+  - Rossz: „Nem érhető el — 5 fölötti átlag kellene." Jó: „Nem érhető el. 5 fölötti átlag kellene."
+- Elválasztónak a sorokon belül a „·" (középpont) jó (pl. „VEGT01 · 6 kr"), gondolatjel nem.
+- Tárgyilagos, magyar, emoji és felkiáltás nélkül.
+
 ## Meglévő tokenek (styles.css `:root`)
 - Felületek: `--bg`, `--surface`, `--surface-2/3`; szöveg `--ink`, `--ink-2`, `--ink-3`; vonal `--line`, `--line-2`.
 - Akcentus: `--brand-plus` (arany, ritkán), `--accent` (porcelán, primer gomb), `--danger`.

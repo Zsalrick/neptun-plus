@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.219";
+const APP_VERSION = "v0.220";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1224,7 +1224,7 @@ function renderFinInvoices() {
 // re-entrancy guard just ignores a second trigger while one is already running.
 let refreshingFin = false;
 async function refreshFinance(viaButton) {
-  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
+  if (isOffline()) { toast("Nincs internet. A mentett adatokat látod."); return; }
   if (refreshingFin) return;
   refreshingFin = true;
   if (viaButton) showBusy("Pénzügyek frissítése…", true);
@@ -1465,7 +1465,7 @@ function sanitizeHtml(s) {
 }
 let refreshingMsg = false;
 async function refreshMessages(viaButton) {
-  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
+  if (isOffline()) { toast("Nincs internet. A mentett adatokat látod."); return; }
   if (refreshingMsg) return;
   refreshingMsg = true;
   if (viaButton) showBusy("Üzenetek frissítése…", true);
@@ -1477,7 +1477,7 @@ async function refreshMessages(viaButton) {
 // Credit refresh (topic-scoped): silent direct API via syncCredit, no "Bejelentkezés" overlay.
 let refreshingCredit = false;
 async function refreshCredit(viaButton) {
-  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
+  if (isOffline()) { toast("Nincs internet. A mentett adatokat látod."); return; }
   if (refreshingCredit) return;
   refreshingCredit = true;
   if (viaButton) showBusy("Kredit frissítése…", true);
@@ -1593,7 +1593,7 @@ function openGradeDetail(subjectId) {
 }
 let refreshingGrades = false;
 async function refreshGrades(viaButton) {
-  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
+  if (isOffline()) { toast("Nincs internet. A mentett adatokat látod."); return; }
   if (refreshingGrades) return;
   refreshingGrades = true;
   if (viaButton) showBusy("Jegyek frissítése…", true);
@@ -1686,7 +1686,7 @@ function renderPeriods() {
     items: [{ value: "all", label: "Minden félév" }].concat(terms.map((t) => ({ value: t, label: t }))), onPick: (v) => { periodsTerm = v; renderPeriods(); } });
 }
 async function refreshPeriods(viaButton) {
-  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
+  if (isOffline()) { toast("Nincs internet. A mentett adatokat látod."); return; }
   if (refreshingPeriods) return;
   refreshingPeriods = true;
   if (viaButton) showBusy("Időszakok frissítése…", true);
@@ -1836,7 +1836,10 @@ function renderCalcGoal() {
   const tvEl = $("calc-tv");
   tvEl.oninput = () => { const v = parseFloat(tvEl.value.replace(",", ".")); calcTargetVal = isFinite(v) ? v : null; renderCalcTarget(rows); };
   $("calc-goal-save").onclick = () => {
-    if (calcTargetVal == null || calcTargetVal < 1 || calcTargetVal > 5) { toast("Adj meg egy célértéket 1 és 5 között."); return; }
+    // Súlyozott átlag max 5; a kreditindex viszont lehet 5 fölött is (Σ kredit×jegy / 30), ezért csak
+    // a súlyozottnál korlátozzuk 5-re. A tényleges elérhetőséget úgyis a színes állapot jelzi.
+    const max = calcTargetType === "suly" ? 5 : 30;
+    if (calcTargetVal == null || calcTargetVal < 1 || calcTargetVal > max) { toast(calcTargetType === "suly" ? "Adj meg egy célértéket 1 és 5 között." : "Adj meg egy 1-nél nagyobb célértéket."); return; }
     if (!state.calcGoals) state.calcGoals = {};
     state.calcGoals[calcTerm] = { type: calcTargetType, val: calcTargetVal };
     saveState(); toast("Cél elmentve erre a félévre."); popScreen();
@@ -1849,8 +1852,8 @@ function renderCalcTarget(rows) {
   const out = $("calc-target-out"); if (!out) return;
   if (calcTargetVal == null) { out.innerHTML = `<div class="goal-res hint-state">Írd be a célértéket, és megmutatom, milyen átlag kell a hátralévő tárgyakra.</div>`; return; }
   const r = calcTargetSolve(rows, calcTargetType, calcTargetVal);
-  if (r.none) { out.innerHTML = `<div class="goal-res">Ehhez a félévhez már minden jegy megvan — nincs mit tervezni.</div>`; return; }
-  if (!r.feasible) { out.innerHTML = `<div class="goal-res bad"><div class="goal-res-lbl">Ez a cél már nem érhető el ezen a féléven — 5,00-nál magasabb átlag kellene a hátralévő ${r.openCr} kreditre.</div></div>`; return; }
+  if (r.none) { out.innerHTML = `<div class="goal-res">Ehhez a félévhez már minden jegy megvan, nincs mit tervezni.</div>`; return; }
+  if (!r.feasible) { out.innerHTML = `<div class="goal-res bad"><div class="goal-res-lbl">Ez a cél már nem érhető el ezen a féléven. 5,00-nál magasabb átlag kellene a hátralévő ${r.openCr} kreditre.</div></div>`; return; }
   if (r.trivial) { out.innerHTML = `<div class="goal-res good"><div class="goal-res-lbl">Ez a cél gyakorlatilag biztos: elég átmenned a hátralévő ${r.openN} tárgyon (${r.openCr} kredit).</div></div>`; return; }
   out.innerHTML = `<div class="goal-res"><div class="goal-res-num">${cf2(r.reqAvg)}</div>`
     + `<div class="goal-res-lbl">ez a szükséges átlag a hátralévő <b>${r.openN} tárgyra</b> (${r.openCr} kredit)</div></div>`;
@@ -2108,7 +2111,7 @@ $("ex-refresh").onclick = fetchTimetable;
 function updateIcsStatus() { const s = $("ics-status"); if (s) s.textContent = state.icsUrl ? "Beállítva" : "Nincs beállítva"; }
 
 async function fetchTimetable() {
-  if (isOffline()) { toast("Nincs internet – a mentett órarendet látod."); return; }
+  if (isOffline()) { toast("Nincs internet. A mentett órarendet látod."); return; }
   if (!state.icsUrl) return openIcs();
   $("tt-sub").textContent = "Frissítés folyamatban"; $("ex-sub").textContent = "Frissítés folyamatban";
   try {
