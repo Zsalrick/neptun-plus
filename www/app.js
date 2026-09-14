@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.215";
+const APP_VERSION = "v0.216";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -60,7 +60,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -101,6 +101,7 @@ function defaultState() {
       periods: { enabled: false, leads: [1440, 60] }, // időszak nyitása/zárulása előtt (1 nap + 1 óra)
     },
     calcGoals: {}, // { "<félév>": { type:"ki"|"suly", val:Number } } — mentett cél a kalkulátorhoz
+    calcPreds: {}, // { "<félév>": { "<tárgykulcs>": jegy } } — a kalkulátorban beállított becsült jegyek
   };
 }
 function loadState() {
@@ -129,6 +130,7 @@ function migrate(s) {
   }
   ["classes", "zh", "vizsga", "periods"].forEach((c) => { if (!s.notify[c]) s.notify[c] = { enabled: d.notify[c].enabled, leads: d.notify[c].leads.slice() }; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
   if (!s.calcGoals || typeof s.calcGoals !== "object") s.calcGoals = {};
+  if (!s.calcPreds || typeof s.calcPreds !== "object") s.calcPreds = {};
   // Multi-profile migration: wrap the existing single identity as profile #1.
   ensureProfiles(s);
   // Keep catalog universities' server URLs in sync with the app's list (so fixes to
@@ -1690,7 +1692,10 @@ async function refreshPeriods(viaButton) {
 // ---------- Átlag / kreditindex kalkulátor ----------
 // No combinatorics: forward (pick a predicted grade per subject → live indices) + backward
 // (enter a target index → the single average needed across the remaining credits).
-let calcTerm = null, calcGrades = {}, calcTargetType = "ki", calcTargetVal = null;
+let calcTerm = null, calcTargetType = "ki", calcTargetVal = null;
+// Predicted grades are saved per term in state.calcPreds so they survive app restarts.
+function calcPredMap() { const m = (state.calcPreds || (state.calcPreds = {})); return m[calcTerm] || (m[calcTerm] = {}); }
+function calcSetPred(key, g) { calcPredMap()[key] = g; saveState(); }
 function calcTermList() {
   const s = new Set();
   ((state.courses && state.courses.list) || []).forEach((c) => { if (c.semester) s.add(c.semester); });
@@ -1714,7 +1719,7 @@ function calcRows(term) {
   });
   return rows;
 }
-function calcGradeOf(r) { const g = calcGrades[r.key]; return (g >= 1 && g <= 5) ? g : (r.actual != null ? r.actual : 4); }
+function calcGradeOf(r) { const g = ((state.calcPreds || {})[calcTerm] || {})[r.key]; return (g >= 1 && g <= 5) ? g : (r.actual != null ? r.actual : 4); }
 function calcCompute(rows) {
   let n = 0, sumG = 0, cAll = 0, cDone = 0, ptsDone = 0;
   // 0-credit subjects (criterion, e.g. testnevelés) carry no weight and no numeric grade → skip entirely.
@@ -1775,7 +1780,7 @@ function renderCalc() {
   html += `</div>`;
   host.innerHTML = html;
   wireCalcTerm(terms);
-  host.querySelectorAll("[data-cg]").forEach((b) => b.onclick = () => { calcGrades[b.dataset.cg] = +b.dataset.g; renderCalc(); });
+  host.querySelectorAll("[data-cg]").forEach((b) => b.onclick = () => { calcSetPred(b.dataset.cg, +b.dataset.g); renderCalc(); });
   const gs = $("calc-goal-status"); if (gs) gs.onclick = () => openCalcGoal();
   wireGoalBtn(gbtn);
 }
@@ -1824,7 +1829,7 @@ function renderCalcGoal() {
   const del = $("calc-goal-del"); if (del) del.onclick = () => { if (state.calcGoals) delete state.calcGoals[calcTerm]; saveState(); toast("Cél törölve."); popScreen(); };
   renderCalcTarget(rows);
 }
-function wireCalcTerm(terms) { const b = $("calc-term"); if (b) b.onclick = () => openList({ title: "Félév", selected: calcTerm, items: terms.map((t) => ({ value: t, label: t })), onPick: (v) => { calcTerm = v; calcGrades = {}; renderCalc(); } }); }
+function wireCalcTerm(terms) { const b = $("calc-term"); if (b) b.onclick = () => openList({ title: "Félév", selected: calcTerm, items: terms.map((t) => ({ value: t, label: t })), onPick: (v) => { calcTerm = v; renderCalc(); } }); }
 function renderCalcTarget(rows) {
   const out = $("calc-target-out"); if (!out) return;
   if (calcTargetVal == null) { out.innerHTML = `<div class="goal-res hint-state">Írd be a célértéket, és megmutatom, milyen átlag kell a hátralévő tárgyakra.</div>`; return; }
