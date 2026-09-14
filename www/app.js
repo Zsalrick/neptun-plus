@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.233";
+const APP_VERSION = "v0.234";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4093,7 +4093,13 @@ async function apiCourseBundle(ev) {
     g("SubjectCourse/GetSubjectCourseStudents", { courseId: ev.courseId, subjectId: ev.subjectId, selectedTermId: termId, firstRow: 0, lastRow: 500 }),
     g("SubjectCourse/GetGeneralRequirements", base),
   ]);
-  return { course, tutors: tutors || [], detail: detail || {}, students: students || [], reqs: reqs || [] };
+  // Tanszék az oktatókhoz — a személykártyáról (email/telefon nem jár egy hallgatónak, csak szervezet).
+  const tut = tutors || [];
+  await Promise.all(tut.map(async (t) => {
+    if (!t.employeeId) return;
+    try { const d = await g("UserSearch/GetUserData", { userId: t.employeeId }); const orgs = d && d.additionalEmployeeData && d.additionalEmployeeData.organizationNames; if (orgs && orgs.length) t.org = String(orgs[orgs.length - 1] || "").trim(); } catch (e) {}
+  }));
+  return { course, tutors: tut, detail: detail || {}, students: students || [], reqs: reqs || [] };
 }
 // Subject-level detail for the Tárgyak list (no course context): GetSubjectDetails + prerequisites +
 // general requirements. termId defaults to the actual term. Returns { detail, prereqs, reqs } or null.
@@ -4141,6 +4147,18 @@ function noteAdd(e, kind) {
   state.notes = state.notes || [];
   state.notes.push(kind === "subject" ? { id: uid(), kind: "subject", subject: e.summary, text: v } : { id: uid(), kind: "occurrence", occKey: occKey(e), text: v });
   saveState(); renderDetail(); refreshAgendas(); toast("Megjegyzés hozzáadva.");
+}
+// Oktató kör-avatar: valódi fotó (base64 JPEG a Neptunból) vagy színes monogram (fallback szín + kezdőbetűk).
+function tutorAvatar(t) {
+  const a = (t && t.avatar) || {};
+  const img = a.normalImage || a.thumbnailImage;
+  const base = "width:34px;height:34px;border-radius:50%;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;font-size:13px;font-weight:600;color:#fff";
+  if (img) return `<span style="${base}"><img src="data:image/jpeg;base64,${img}" style="width:100%;height:100%;object-fit:cover" alt=""></span>`;
+  const nm = String(a.printName || t.printname || t.nickname || "").replace(/^dr\.?\s+/i, "").trim();
+  const p = nm.split(/\s+/);
+  const ini = (((p[0] || "")[0] || "") + ((p[1] || "")[0] || "")).toUpperCase() || "?";
+  const col = /^[0-9a-fA-F]{6}$/.test(a.fallbackColorCodeInHexa || "") ? "#" + a.fallbackColorCodeInHexa : "#6b7280";
+  return `<span style="${base};background:${col}">${esc(ini)}</span>`;
 }
 function renderDetail() {
   const e = detailEvent; if (!e) return;
@@ -4202,7 +4220,15 @@ function renderCourseSeg(e) {
   if (loading) { host.innerHTML = `<div class="dash-empty" style="padding:18px 2px">Betöltés…</div>`; return; }
   if (detailSeg === "tutors") {
     const list = c.tutors || [];
-    host.innerHTML = list.length ? `<div class="card">` + list.map((t) => `<div class="row"><span class="row-ic">${icon("user")}</span><span class="row-main"><span class="row-title">${esc(t.printname || t.nickname || "Oktató")}</span>${t.nickname && t.nickname !== t.printname ? `<span class="row-sub">${esc(t.nickname)}</span>` : ""}</span></div>`).join("") + `</div>`
+    const norm = (s) => String(s || "").replace(/^dr\.?\s+/i, "").trim().toLowerCase();
+    const owner = norm(c.detail && c.detail.ownerPrintName);
+    host.innerHTML = list.length ? `<div class="card">` + list.map((t) => {
+      const isOwner = owner && norm(t.printname) === owner;
+      const sub = [];
+      if (t.nickname && t.nickname !== t.printname) sub.push(esc(t.nickname));
+      if (t.org) sub.push(esc(t.org));
+      return `<div class="row"><span class="row-ic" style="padding:0">${tutorAvatar(t)}</span><span class="row-main"><span class="row-title">${esc(t.printname || t.nickname || "Oktató")}${isOwner ? ` <span style="color:var(--muted);font-weight:400">· Tárgyfelelős</span>` : ""}</span>${sub.length ? `<span class="row-sub">${sub.join(" · ")}</span>` : ""}</span></div>`;
+    }).join("") + `</div>`
       : `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni." : (c.course && c.course.courseTutor ? esc(c.course.courseTutor) : "Nincs megadott oktató.")}</div>`;
     return;
   }
