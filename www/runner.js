@@ -123,9 +123,9 @@ async function check() {
   } catch (e) {}
   var prevUnread = parseInt(kvGet("np_lastUnread") || "-1", 10);
   var prevGrades = parseInt(kvGet("np_lastGrades") || "-1", 10);
-  var parts = [];
-  if (prevUnread >= 0 && unread != null && unread > prevUnread) parts.push((unread - prevUnread) + " új üzenet");
-  if (prevGrades >= 0 && gradeCount > prevGrades) parts.push((gradeCount - prevGrades) + " új jegy");
+  var parts = [], CAP = 15; // nagy ugrás baseline-hiba (pl. első betöltés), nem valódi újdonság → elnyomjuk
+  if (prevUnread >= 0 && unread != null && unread > prevUnread && (unread - prevUnread) <= CAP) parts.push((unread - prevUnread) + " új üzenet");
+  if (prevGrades >= 0 && gradeCount > prevGrades && (gradeCount - prevGrades) <= CAP) parts.push((gradeCount - prevGrades) + " új jegy");
   if (unread != null) kvSet("np_lastUnread", unread);
   kvSet("np_lastGrades", gradeCount);
   if (parts.length) {

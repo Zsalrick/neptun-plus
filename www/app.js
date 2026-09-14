@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.236";
+const APP_VERSION = "v0.237";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4475,34 +4475,41 @@ async function notifyChanges() {
   if (!isNative) return;
   const cur = changeSnapshot();
   const prev = state.seen;
+  // Ha egy kategória adata most üres (nem töltött be / hibázott a sync), NE írjuk felül a korábbi baseline-t
+  // — különben egy üres pillanatkép után minden réginek tűnő elem "újként" jönne vissza (a 201-es hamis riasztás).
+  if (prev) ["gradeKeys", "offered", "msgs", "toPay"].forEach((k) => { if ((!cur[k] || !cur[k].length) && prev[k] && prev[k].length) cur[k] = prev[k].slice(); });
   state.seen = cur; saveState();
   const cat = (state.notify && state.notify.changes) || {};
   if (!prev || !cat.enabled) return; // no baseline yet, or category off → just record
   const ln = LN(); if (!ln) return;
   try { const p = await ln.checkPermissions(); if (p.display !== "granted") return; } catch (e) { return; }
   const setOf = (a) => new Set(a || []);
+  const had = (a) => Array.isArray(a) && a.length > 0; // csak akkor riasztunk, ha volt korábbi, nem üres baseline
+  const CAP = 15; // ekkora vagy nagyobb "új" tömeg baseline-hiba, nem valódi újdonság → elnyomjuk
   const news = [];
   // Új jegy — label the single new one from live data.
   const pg = setOf(prev.gradeKeys), ng = cur.gradeKeys.filter((k) => !pg.has(k));
-  if (ng.length) {
+  if (ng.length && had(prev.gradeKeys) && ng.length <= CAP) {
     let label = ng.length + " új jegy";
-    if (ng.length === 1) { let hit = null; (state.grades.terms || []).forEach((t) => (t.subjects || []).forEach((s) => { if (((s.code || s.subject || "?") + "|" + (s.value || s.result)) === ng[0]) hit = s; })); if (hit) label = (hit.subject || hit.code || "Tárgy") + " · " + (hit.result || hit.value); }
+    if (ng.length === 1) { let hit = null; ((state.grades && state.grades.terms) || []).forEach((t) => (t.subjects || []).forEach((s) => { if (((s.code || s.subject || "?") + "|" + (s.value || s.result)) === ng[0]) hit = s; })); if (hit) label = (hit.subject || hit.code || "Tárgy") + " · " + (hit.result || hit.value); }
     news.push({ kind: "grades", title: "Új jegy", body: label });
   }
-  // Megajánlott jegy
+  // Megajánlott jegy — kevés van, de a nagy első-baseline ugrást itt is elnyomjuk a CAP-pal.
   const po = setOf(prev.offered), no = cur.offered.filter((k) => !po.has(k));
-  if (no.length) news.push({ kind: "grades", title: "Megajánlott jegy", body: no.length === 1 ? "1 új megajánlott jegy vár rád" : no.length + " új megajánlott jegy" });
+  if (no.length && no.length <= CAP) news.push({ kind: "grades", title: "Megajánlott jegy", body: no.length === 1 ? "1 új megajánlott jegy vár rád" : no.length + " új megajánlott jegy" });
   // Új üzenet
-  const pm = setOf(prev.msgs), nm = (state.messages.received || []).filter((x) => x.id && !pm.has(x.id));
-  if (nm.length) news.push({ kind: "messages", title: "Új üzenet", body: nm.length === 1 ? [nm[0].from, nm[0].subject].filter(Boolean).join(" · ") : nm.length + " új üzenet" });
+  const pm = setOf(prev.msgs), nm = ((state.messages && state.messages.received) || []).filter((x) => x.id && !pm.has(x.id));
+  if (nm.length && had(prev.msgs) && nm.length <= CAP) news.push({ kind: "messages", title: "Új üzenet", body: nm.length === 1 ? [nm[0].from, nm[0].subject].filter(Boolean).join(" · ") : nm.length + " új üzenet" });
   // Új befizetendő
-  const pp = setOf(prev.toPay), np = (state.finance.toPay || []).filter((x) => x.id && !pp.has(x.id));
-  if (np.length) news.push({ kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel" });
-  // Órarend változott (a következő 7 napon belül új vagy elmaradó óra)
-  const curK = setOf(cur.classes.map((c) => c.k)), prevK = setOf((prev.classes || []).map((c) => c.k));
-  const added = cur.classes.filter((c) => !prevK.has(c.k)).length;
-  const removed = (prev.classes || []).filter((c) => c.t > Date.now() && !curK.has(c.k)).length;
-  if (added || removed) news.push({ kind: "timetable", title: "Órarend változott", body: [added ? added + " új óra" : "", removed ? removed + " elmaradó óra" : ""].filter(Boolean).join(" · ") });
+  const pp = setOf(prev.toPay), np = ((state.finance && state.finance.toPay) || []).filter((x) => x.id && !pp.has(x.id));
+  if (np.length && np.length <= CAP) news.push({ kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel" });
+  // Órarend változott (a következő 7 napon belül új vagy elmaradó óra) — csak ha volt korábbi baseline.
+  if (had(prev.classes)) {
+    const curK = setOf(cur.classes.map((c) => c.k)), prevK = setOf((prev.classes || []).map((c) => c.k));
+    const added = cur.classes.filter((c) => !prevK.has(c.k)).length;
+    const removed = (prev.classes || []).filter((c) => c.t > Date.now() && !curK.has(c.k)).length;
+    if ((added || removed) && (added + removed) <= CAP) news.push({ kind: "timetable", title: "Órarend változott", body: [added ? added + " új óra" : "", removed ? removed + " elmaradó óra" : ""].filter(Boolean).join(" · ") });
+  }
   if (!news.length) return;
   const notifs = news.slice(0, 6).map((n, i) => ({ id: 1300000000 + i, title: n.title, body: n.body, schedule: { at: new Date(Date.now() + 1500 + i * 400), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { changeKind: n.kind } }));
   try { await ln.schedule({ notifications: notifs }); } catch (e) { /* ignore */ }
@@ -5359,7 +5366,12 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     totpTick();
     if (isNative) {
       const ln = LN();
-      if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
+      if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => {
+        const x = ev && ev.notification && ev.notification.extra; if (!x) return;
+        // Változás-értesítők → a megfelelő képernyőre viszünk, nem a generikus emlékeztető-sheetre.
+        if (x.changeKind) { const dest = { messages: "tab-messages", grades: "tab-grades", finance: "tab-fin-topay", timetable: "tab-timetable" }[x.changeKind]; if (dest) { try { openTab(dest); } catch (e) {} } return; }
+        showNotifAlert(x);
+      }); } catch (e) {} }
       rescheduleNotifications(); // refresh reminders on every launch
       updateClassWidget(); // seed the home-screen widget from cached schedule (refreshed again after sync)
       if (state.setupComplete) {
