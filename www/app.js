@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.223";
+const APP_VERSION = "v0.224";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -881,6 +881,9 @@ document.querySelectorAll(".backdrop").forEach((bd) => bd.addEventListener("clic
 // full-screen busy spinner (for invisible background reads)
 let flowCancel = null; // set while a runNeptunFlow is active; lets the busy "Mégse" abort it
 function showBusy(text, cancelable) { $("busy-text").textContent = text || "Beolvasás…"; $("busy-cancel").hidden = !cancelable; $("busy").classList.remove("hidden"); }
+// Text-less spinner overlay for quick network actions (just the spinner, no label/bar/cancel).
+function spinOn() { const b = $("busy"); if (!b) return; $("busy-text").textContent = ""; $("busy-cancel").hidden = true; $("busy-bar").hidden = true; $("busy-step").hidden = true; b.classList.remove("hidden"); }
+function spinOff() { const b = $("busy"); if (b) b.classList.add("hidden"); }
 function hideBusy() { $("busy").classList.add("hidden"); $("busy-cancel").hidden = true; $("busy-bar").hidden = true; $("busy-step").hidden = true; }
 // Overall progress across a multi-step read (shown beside the spinner).
 function setBusyProgress(done, total, stepLabel) {
@@ -3284,8 +3287,8 @@ async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
-  const ok = await ask({ title: "Címzett-keresés diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld semmit) a címzett-kereső végpontot több paraméter-variánssal egy rövid névrészletre, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt, hogy az új üzenet funkció pontosan működjön." });
+  const ok = await ask({ title: "Üzenetfogadás diagnosztika", okText: "Indítás", cancelText: "Mégse",
+    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld és nem módosít semmit) az üzenetfogadási beállításodat, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt, hogy az üzenetfogadás kapcsoló pontosan működjön." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -3317,19 +3320,11 @@ async function runApiDiagnostics() {
     let sttIds = [];
     try { const ta = await apiGet(sess, "Advancement/GetTermAveragesByTraining", { studentTrainingId: stid }); sttIds = (((ta && ta.data && ta.data.data) || {}).termAveragesByTrainings || []).map((x) => x.studentTrainingTermId).filter(Boolean); } catch (e) {}
     results.push({ termGuids, sttIds });
-    // ÚJ ÜZENET — címzett-keresés (read-only). Probe UserSearch/GetMessageRecipientUsers with a name
-    // filter in a few param shapes (flat vs request./sortAndPage.) to learn the request binding + the
-    // response envelope (result vs items vs array) + item fields (userId, printName, additional*Data).
-    // NOTE: the send endpoint (message/new/send) is a real side-effect → NOT probed here.
-    // Round 2: the search REQUIRES a messageId. For a NEW message the web app passes messageId="" (empty)
-    // or possibly the zero-guid. Probe both, with the name filter, to learn which the server accepts.
-    const q = "BL"; // a short, broad query that should match classmates
-    const ZERO = "00000000-0000-0000-0000-000000000000";
+    // ÜZENETFOGADÁS (read-only) — dump the real GetMessageRelatedSettings object so we can see the exact
+    // shape + the stored allowedIncomingMessageType value (why the toggle reads wrong after restart).
     const eps = [
-      ["UserSearch/GetMessageRecipientUsers", { messageId: "", nameOrNickname: q, firstRow: 0, lastRow: 50 }],
-      ["UserSearch/GetMessageRecipientUsers", { messageId: ZERO, nameOrNickname: q, firstRow: 0, lastRow: 50 }],
-      ["UserSearch/GetMessageRecipientUsers", { messageId: "", nameOrNickname: q }],
-      ["UserSearch/GetMessageRecipientUsers", { messageId: "" }],
+      ["Message/GetMessageRelatedSettings", null],
+      ["Message/GetMessageSendingSettings", null],
     ];
     for (const [ep, params] of eps) {
       $("busy-text").textContent = ep.split("/").pop() + "…";
@@ -3360,7 +3355,7 @@ async function runApiDiagnostics() {
   catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) {}
   const summary = results.filter((r) => r.ep).map((r) => `${r.discovered ? "🔎 " : ""}${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
-  await ask({ title: "Címzett-keresés diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
+  await ask({ title: "Üzenetfogadás diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
@@ -4559,17 +4554,18 @@ async function msgReceiveToggle() {
   const b = $("msg-receive-all"); if (!b) return;
   if (!isNative || !canAutoLogin()) { toast("Előbb állítsd be a Neptun belépést."); return; }
   if (isOffline()) { toast("Nincs internet."); return; }
-  const s = msgRecvCache || await apiMsgSettingsGet();
-  if (!s) { toast("Nem sikerült lekérni a beállítást."); return; }
-  const turnOn = !msgReceivesEveryone(s);
-  s.messageReceptionSettings = s.messageReceptionSettings || {};
-  s.messageReceptionSettings.allowedIncomingMessageType = turnOn ? 1 : 2;
-  const sess = await getApiSession(); if (!sess || !sess.token) { toast("Nincs munkamenet."); return; }
+  spinOn(); // pörgő töltő (szöveg nélkül) a hálózati késleltetés idejére
   try {
+    const s = await apiMsgSettingsGet(); // mindig friss objektumot írunk vissza
+    if (!s || !s.messageReceptionSettings) { toast("Nem sikerült beolvasni a beállítást."); return; }
+    const turnOn = !msgReceivesEveryone(s);
+    s.messageReceptionSettings.allowedIncomingMessageType = turnOn ? 1 : 2;
+    const sess = await getApiSession(); if (!sess || !sess.token) { toast("Nincs munkamenet."); return; }
     const r = await apiPost(sess, "Message/UpdateMessageRelatedSettings", s);
-    if (r && r.status >= 200 && r.status < 300) { msgRecvCache = s; msgReceiveRefresh(); toast(turnOn ? "Mostantól bárki írhat neked." : "Mostantól csak oktatók írhatnak neked."); }
+    if (r && r.status >= 200 && r.status < 300) { msgRecvCache = null; await msgReceiveRefresh(); toast(turnOn ? "Mostantól bárki írhat neked." : "Mostantól csak oktatók írhatnak neked."); }
     else { let d = r && r.data; const msg = d && (d.message || (d.modelStateErrors && d.modelStateErrors[0] && d.modelStateErrors[0].errors && d.modelStateErrors[0].errors[0])); toast(msg || "Nem sikerült menteni a beállítást."); }
   } catch (e) { toast("Hiba a mentéskor."); }
+  finally { spinOff(); }
 }
 function updateBreakMinStatus() { const el = $("breakmin-status"); if (el) el.textContent = (state.breakMin || 20) + " perc"; }
 $("btn-breakmin").onclick = () => {
