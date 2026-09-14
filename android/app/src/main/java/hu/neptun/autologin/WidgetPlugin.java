@@ -19,7 +19,10 @@ public class WidgetPlugin extends Plugin {
     public void setClasses(PluginCall call) {
         Context ctx = getContext();
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        sp.edit().putString("events", call.getString("events", "[]")).apply();
+        sp.edit()
+            .putString("events", call.getString("events", "[]"))
+            .putString("accent", call.getString("accent", "#F5B221"))
+            .apply();
         NextClassWidget.pushUpdate(ctx);
         call.resolve();
     }

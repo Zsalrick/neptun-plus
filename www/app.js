@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.228";
+const APP_VERSION = "v0.229";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2031,6 +2031,17 @@ function examEvents() { return allEvents().filter((e) => e.exam).concat(manualEx
 function currentClass() { const now = Date.now(); return visibleClassEvents().filter((e) => e.S.getTime() <= now && e.E.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
 function nextClass() { const now = Date.now(); return visibleClassEvents().filter((e) => e.S.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
 function nextAssessment() { const now = Date.now(); return examEvents().filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S)[0] || null; }
+// Current theme's accent (--brand-plus) as #RRGGBB, so the native widget's label can match the app theme.
+function widgetAccentHex() {
+  try {
+    let c = getComputedStyle(document.documentElement).getPropertyValue("--brand-plus").trim();
+    if (!c) return "#F5B221";
+    if (c[0] === "#") return c;
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (m) { const p = m[1].split(",").map((x) => parseInt(x.trim(), 10)); return "#" + p.slice(0, 3).map((n) => Math.max(0, Math.min(255, n || 0)).toString(16).padStart(2, "0")).join(""); }
+    return "#F5B221";
+  } catch (e) { return "#F5B221"; }
+}
 // Push the upcoming classes to the native home-screen widget (it picks current/next by the clock itself).
 function updateClassWidget() {
   const W = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Widget;
@@ -2041,7 +2052,7 @@ function updateClassWidget() {
       .filter((e) => e.E && e.E.getTime() > now - 3600000) // keep the current one + everything ahead
       .sort((a, b) => a.S - b.S).slice(0, 40)
       .map((e) => { const p = parseClassSummary(e.summary) || {}; return { s: e.S.getTime(), e: e.E ? e.E.getTime() : 0, n: p.name || e.summary || "Óra", t: p.type || "", r: e.location || "" }; });
-    W.setClasses({ events: JSON.stringify(evs) });
+    W.setClasses({ events: JSON.stringify(evs), accent: widgetAccentHex() });
   } catch (e) {}
 }
 function subjects() {

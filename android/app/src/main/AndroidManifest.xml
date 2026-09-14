@@ -31,11 +31,6 @@
                 android:resource="@xml/widget_next_class_info" />
         </receiver>
 
-        <service
-            android:name=".WidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS"
-            android:exported="false" />
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
