@@ -201,9 +201,11 @@
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
-                <div class="home-search" style="position:relative;margin-bottom:12px">
-                  <span data-icon="search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted,#9aa0a6);pointer-events:none"></span>
-                  <input id="hub-search-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés tárgyra, jegyre, üzenetre…" style="width:100%;box-sizing:border-box;font-size:15px;padding:11px 14px 11px 40px;border-radius:12px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)">
+                <div class="home-search" style="margin-bottom:12px">
+                  <div style="position:relative">
+                    <span data-icon="search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted,#9aa0a6);pointer-events:none"></span>
+                    <input id="hub-search-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés: tárgy, jegy, üzenet, oldal…" style="width:100%;box-sizing:border-box;font-size:15px;padding:11px 14px 11px 40px;border-radius:12px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)">
+                  </div>
                   <div id="hub-search-results" hidden></div>
                 </div>
                 <div class="card hero">
