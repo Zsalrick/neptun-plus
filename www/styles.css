@@ -774,6 +774,10 @@ button.grade-row:active { background: var(--surface-2); }
 .cg-o { width: 52px; height: 42px; border: 0; border-left: 1px solid var(--line-2); border-radius: 0; background: var(--surface-2); color: var(--ink-2); font-family: var(--font-mono); font-size: 15px; font-weight: 600; cursor: pointer; }
 .cg-o:first-child { border-left: 0; }
 .cg-o.on { background: var(--accent); color: var(--accent-ink); }
+/* Mark the real Neptun grade with a small static dot at the top of that cell (kept even when overridden). */
+.cg-o.act { position: relative; }
+.cg-o.act::after { content: ""; position: absolute; top: 5px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: var(--ink-2); }
+.cg-o.act.on::after { background: var(--accent-ink); }
 .calc-out { font-size: 13.5px; line-height: 1.45; }
 .calc-bad { color: var(--danger); }
 

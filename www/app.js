@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.213";
+const APP_VERSION = "v0.214";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1748,11 +1748,11 @@ function renderCalc() {
   html += `<div class="dash-label">Tárgyak · ${rows.length}</div><div class="card">`;
   rows.forEach((r) => {
     const g = calcGradeOf(r);
-    const flag = r.actual != null ? "Meglévő jegy" : "Becslés";
-    const seg = [1, 2, 3, 4, 5].map((n) => `<button class="cg-o${n === g ? " on" : ""}" data-cg="${esc(r.key)}" data-g="${n}" type="button">${n}</button>`).join("");
+    const flag = r.actual == null ? "Becslés" : (g === r.actual ? "Meglévő jegy" : "Módosítva");
+    const seg = [1, 2, 3, 4, 5].map((n) => `<button class="cg-o${n === g ? " on" : ""}${n === r.actual ? " act" : ""}" data-cg="${esc(r.key)}" data-g="${n}" type="button">${n}</button>`).join("");
     html += `<div class="calc-row"><div class="cr-top"><div class="cr-main"><span class="cr-name">${esc(r.name)}</span>`
       + `<span class="cr-sub">${[r.code ? esc(r.code) : "", r.credits ? esc(r.credits + " kr") : ""].filter(Boolean).join(" · ")}</span></div>`
-      + `<span class="cr-flag${r.actual != null ? " set" : ""}">${flag}</span></div>`
+      + `<span class="cr-flag${r.actual != null && g === r.actual ? " set" : ""}">${flag}</span></div>`
       + `<div class="cg-seg">${seg}</div></div>`;
   });
   html += `</div>`;
