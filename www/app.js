@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.238";
+const APP_VERSION = "v0.239";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4523,10 +4523,15 @@ function morningBriefBody(day) {
   try { cls = (visibleClassEvents() || []).filter(inDay).sort((a, b) => a.S - b.S); } catch (e) {}
   try { exs = (examEvents() || []).filter(inDay); } catch (e) {}
   const parts = [];
-  if (cls.length) { const first = cls[0]; parts.push(cls.length + (cls.length === 1 ? " óra" : " óra")); parts.push("első " + hm(first.S) + (first.location ? " · " + first.location : "")); }
-  else parts.push("Nincs órád ma");
-  if (exs.length) parts.push(exs.length + " vizsga/ZH");
-  try { const f = state.finance; if (f && f.toPay && f.toPay.length) { const sum = f.toPay.reduce((s, i) => s + (+i.value || 0), 0); if (sum > 0) parts.push("Befizetendő: " + ftFt(sum, "HUF")); } } catch (e) {}
+  if (cls.length) {
+    const first = cls[0], last = cls[cls.length - 1];
+    const p = parseClassSummary(first.summary);
+    const span = hm(first.S) + (last.E ? "–" + hm(last.E) : "");
+    parts.push(cls.length + " óra " + span);
+    parts.push("első: " + ((p && p.name) || first.summary || "óra") + (first.location ? " (" + first.location + ")" : ""));
+  } else parts.push("Nincs órád ma");
+  if (exs.length) { const e0 = exs.slice().sort((a, b) => a.S - b.S)[0]; const pe = parseClassSummary(e0.summary); parts.push(exs.length + " vizsga/ZH" + (exs.length === 1 ? " " + hm(e0.S) + " " + ((pe && pe.name) || "") : "")); }
+  try { const f = state.finance; if (f && f.toPay && f.toPay.length) { const sum = f.toPay.reduce((s, i) => s + (+i.value || 0), 0); if (sum > 0) parts.push("Befizetendő " + ftFt(sum, "HUF")); } } catch (e) {}
   return parts.join(" · ");
 }
 // Schedule the next morning brief as a one-shot for the next occurrence of the chosen time.
@@ -5385,6 +5390,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
         const x = ev && ev.notification && ev.notification.extra; if (!x) return;
         // Változás-értesítők → a megfelelő képernyőre viszünk, nem a generikus emlékeztető-sheetre.
         if (x.changeKind) { const dest = { messages: "tab-messages", grades: "tab-grades", finance: "tab-fin-topay", timetable: "tab-timetable" }[x.changeKind]; if (dest) { try { openTab(dest); } catch (e) {} } return; }
+        if (x.kind === "brief") { try { openTab("tab-timetable"); } catch (e) {} return; } // reggeli összefoglaló → Órarend
         showNotifAlert(x);
       }); } catch (e) {} }
       rescheduleNotifications(); // refresh reminders on every launch
