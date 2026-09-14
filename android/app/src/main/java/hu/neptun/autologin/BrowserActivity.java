@@ -21,10 +21,17 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.graphics.Typeface;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 // A saját, app-témájú Neptun böngésző. Egy sima WebView + vékony sötét fejléc (vissza · cím ·
 // újratöltés · megnyitás rendszerben · bezár) + töltés-csík. A login scriptet minden oldalbetöltés
@@ -74,10 +81,11 @@ public class BrowserActivity extends Activity {
 
         titleView = new TextView(this);
         titleView.setTextColor(Color.parseColor("#ECEDEE"));
-        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
         titleView.setSingleLine(true);
         titleView.setEllipsize(TextUtils.TruncateAt.END);
-        titleView.setText("Neptun");
+        titleView.setText("Kredit+");
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -2, 1f);
         tlp.leftMargin = dp(4);
         tlp.rightMargin = dp(4);
@@ -125,9 +133,7 @@ public class BrowserActivity extends Activity {
                 bar.setProgress(p);
                 bar.setVisibility(p >= 100 ? View.GONE : View.VISIBLE);
             }
-            @Override public void onReceivedTitle(WebView view, String t) {
-                if (t != null && t.length() > 0 && !t.startsWith("http")) titleView.setText(t);
-            }
+            // A cím fix "Kredit+" marad (branding), az oldalcímet nem írjuk ki.
         });
         web.setDownloadListener(new DownloadListener() {
             @Override public void onDownloadStart(String u, String ua2, String cd, String mt, long len) {
@@ -150,6 +156,19 @@ public class BrowserActivity extends Activity {
         root.addView(bar);
         root.addView(web);
         setContentView(root);
+
+        // Edge-to-edge (Android 15 alapból): a rendszersávok mögé rajzol. A státuszsáv magasságát a
+        // toolbar tetejére, a navigációs sávét a gyökér aljára tesszük paddingként, így a fejléc a
+        // státuszsáv ALATT ül, a sötét toolbar háttere pedig kitölti a státuszsáv mögötti sávot.
+        final int tbSidePad = dp(6), tbBase = dp(4);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        try { new WindowInsetsControllerCompat(getWindow(), root).setAppearanceLightStatusBars(false); } catch (Exception e) { /* ignore */ }
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets sb = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            tb.setPadding(tbSidePad, tbBase + sb.top, tbSidePad, tbBase);
+            root.setPadding(0, 0, 0, sb.bottom);
+            return insets;
+        });
 
         if (url != null && url.length() > 0) web.loadUrl(url);
     }
