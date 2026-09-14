@@ -317,12 +317,9 @@
                 </div>
 
                 <div class="section-label">Üzenetek</div>
-                <div class="card"><div class="card-pad">
-                  <button class="check" id="msg-receive-all" type="button">
-                    <span class="box"><span data-icon="check"></span></span>
-                    <span><span class="c-t">Üzenetet fogadok mindenkitől</span><span class="c-b" id="msg-receive-sub">Ha bekapcsolod, a hallgatótársaid is írhatnak neked a Neptunban, nem csak az oktatók.</span></span>
-                  </button>
-                </div></div>
+                <div class="card">
+                  <button class="row" data-setpage="tab-set-messages"><span class="row-ic"><span data-icon="mail"></span></span><span class="row-main"><span class="row-title">Üzenetfogadás</span><span class="row-sub">Ki írhat neked a Neptunban</span></span><span class="row-chev" data-icon="chev"></span></button>
+                </div>
 
                 <div class="section-label">Biztonság</div>
                 <div class="card">
@@ -450,6 +447,22 @@
                 <div style="flex:1"><div class="wordmark">Téma</div><div class="topbar-sub">Az app hangulata</div></div>
               </header>
               <div class="scroll" id="theme-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-set-messages">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Üzenetfogadás</div><div class="topbar-sub">Ki írhat neked</div></div>
+              </header>
+              <div class="scroll">
+                <p class="hint" style="margin:2px 2px 14px">A Neptunban beállíthatod, ki küldhet neked üzenetet. Alapból sokaknál csak az oktatók engedélyezettek.</p>
+                <div class="card"><div class="card-pad">
+                  <button class="check" id="msg-receive-all" type="button">
+                    <span class="box"><span data-icon="check"></span></span>
+                    <span><span class="c-t">Üzenetet fogadok mindenkitől</span><span class="c-b" id="msg-receive-sub">Ha bekapcsolod, a hallgatótársaid is írhatnak neked a Neptunban, nem csak az oktatók.</span></span>
+                  </button>
+                </div></div>
+              </div>
             </section>
 
             <section class="tabscreen" id="tab-set-security">

@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.222";
+const APP_VERSION = "v0.223";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4547,6 +4547,8 @@ async function apiMsgSettingsGet() {
 function msgReceivesEveryone(s) { const t = s && s.messageReceptionSettings && s.messageReceptionSettings.allowedIncomingMessageType; return ((t | 0) & 1) === 1; }
 async function msgReceiveRefresh() {
   const b = $("msg-receive-all"); if (!b) return;
+  const sec = document.getElementById("tab-set-messages");
+  if (!sec || !sec.classList.contains("active")) return; // only fetch when its sub-page is open
   const sub = $("msg-receive-sub");
   if (!isNative || !canAutoLogin() || isOffline()) return; // leave the toggle as-is if we can't check
   const s = await apiMsgSettingsGet(); if (!s) return;
