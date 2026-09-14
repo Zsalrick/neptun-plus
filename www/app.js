@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.218";
+const APP_VERSION = "v0.219";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -906,7 +906,7 @@ function renderHome() {
   const ready = !!(state.username && state.password);
   $("btn-login").disabled = !ready;
   const warm = isNative && apiSessionValid(60000);
-  $("home-sub").textContent = autoRefreshing ? "Adatok frissítése…" : semLoading ? "Félévek beolvasása…" : warming ? "Munkamenet előkészítése…" : warm ? "Aktív munkamenet" : (ready ? "Készen áll" : "Állítsd be a belépést");
+  $("home-sub").textContent = isOffline() ? "Offline · mentett adatok" : autoRefreshing ? "Adatok frissítése…" : semLoading ? "Félévek beolvasása…" : warming ? "Munkamenet előkészítése…" : warm ? "Aktív munkamenet" : (ready ? "Készen áll" : "Állítsd be a belépést");
   $("login-hint").textContent = !isNative ? "Előnézet. Az alkalmazásban ez automatikusan belép."
     : warm ? "Aktív munkamenet, a belépés azonnali." : "Egy érintés, a többit az alkalmazás elvégzi.";
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
@@ -1114,7 +1114,7 @@ function renderCreditPage() {
     +     leg("s-rem", "Hátralévő", remaining)
     +     `</div>`
     + `</div>`
-    + `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(p.fetchedAt))}</div>`;
+    + `<div class="hint center" style="margin-top:16px">${esc(freshText(p.fetchedAt))}</div>`;
 }
 // Full-screen Pénzügyek page. All data comes from state.finance (syncFinance); no Neptun calls here.
 function ftFt(v, cur) { return (v == null ? "—" : Number(v).toLocaleString("hu")) + " " + (cur === "HUF" || !cur ? "Ft" : cur); }
@@ -1155,7 +1155,7 @@ function renderFinance() {
     + finRow("tab-fin-scholar", "note", "Ösztöndíjak", sch.length ? `${sch.length} tétel` : "Nincs ösztöndíj")
     + finRow("tab-fin-invoices", "doc", "Számlák", inv.length ? `${inv.length} számla` : "Nincs számla")
     + `</div>`;
-  html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(f.fetchedAt))}</div>`;
+  html += `<div class="hint center" style="margin-top:16px">${esc(freshText(f.fetchedAt))}</div>`;
   host.innerHTML = html;
   host.querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast("Számlaszám másolva"); } catch (e) { toast("Számlaszám: " + b.dataset.copy); } });
   host.querySelectorAll("[data-fin]").forEach((b) => b.onclick = () => pushScreen(b.dataset.fin));
@@ -1224,6 +1224,7 @@ function renderFinInvoices() {
 // re-entrancy guard just ignores a second trigger while one is already running.
 let refreshingFin = false;
 async function refreshFinance(viaButton) {
+  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
   if (refreshingFin) return;
   refreshingFin = true;
   if (viaButton) showBusy("Pénzügyek frissítése…", true);
@@ -1269,7 +1270,7 @@ function renderMessages() {
     +   `<input class="input" id="msg-search" placeholder="Keresés tárgy vagy feladó" autocomplete="off" value="${esc(msgQuery)}" /></div>`
     + `</div>`;
   html += `<div id="msg-list"></div>`;
-  html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(m.fetchedAt))}</div>`;
+  html += `<div class="hint center" style="margin-top:16px">${esc(freshText(m.fetchedAt))}</div>`;
   host.innerHTML = html;
   host.querySelectorAll("[data-mtab]").forEach((b) => b.onclick = () => { msgTab = b.dataset.mtab; msgQuery = ""; msgSem = "all"; renderMessages(); });
   const search = $("msg-search"); if (search) search.oninput = (e) => { msgQuery = e.target.value; renderMsgList(); };
@@ -1464,6 +1465,7 @@ function sanitizeHtml(s) {
 }
 let refreshingMsg = false;
 async function refreshMessages(viaButton) {
+  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
   if (refreshingMsg) return;
   refreshingMsg = true;
   if (viaButton) showBusy("Üzenetek frissítése…", true);
@@ -1475,6 +1477,7 @@ async function refreshMessages(viaButton) {
 // Credit refresh (topic-scoped): silent direct API via syncCredit, no "Bejelentkezés" overlay.
 let refreshingCredit = false;
 async function refreshCredit(viaButton) {
+  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
   if (refreshingCredit) return;
   refreshingCredit = true;
   if (viaButton) showBusy("Kredit frissítése…", true);
@@ -1547,7 +1550,7 @@ function renderGrades() {
         + gradeBox(s) + `</button>`;
     }).join("") + `</div>`;
   });
-  html += `<div class="hint center" style="margin-top:16px">Frissítve: ${esc(fmtWhen(gr.fetchedAt))}</div>`;
+  html += `<div class="hint center" style="margin-top:16px">${esc(freshText(gr.fetchedAt))}</div>`;
   host.innerHTML = html;
   const pb = $("grades-period");
   if (pb) pb.onclick = () => openList({ title: "Félév", selected: gradesFilter,
@@ -1590,6 +1593,7 @@ function openGradeDetail(subjectId) {
 }
 let refreshingGrades = false;
 async function refreshGrades(viaButton) {
+  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
   if (refreshingGrades) return;
   refreshingGrades = true;
   if (viaButton) showBusy("Jegyek frissítése…", true);
@@ -1672,6 +1676,7 @@ function renderPeriods() {
     });
     html += `</div>`;
   });
+  html += `<div class="hint center" style="margin-top:16px">${esc(freshText(data.fetchedAt))}</div>`;
   host.innerHTML = html;
   const ps = $("per-status");
   if (ps) ps.onclick = () => openList({ title: "Állapot", selected: periodsStatus,
@@ -1681,6 +1686,7 @@ function renderPeriods() {
     items: [{ value: "all", label: "Minden félév" }].concat(terms.map((t) => ({ value: t, label: t }))), onPick: (v) => { periodsTerm = v; renderPeriods(); } });
 }
 async function refreshPeriods(viaButton) {
+  if (isOffline()) { toast("Nincs internet – a mentett adatokat látod."); return; }
   if (refreshingPeriods) return;
   refreshingPeriods = true;
   if (viaButton) showBusy("Időszakok frissítése…", true);
@@ -1785,6 +1791,7 @@ function renderCalc() {
       + body + `</div>`;
   });
   html += `</div>`;
+  { const cAt = state.courses && state.courses.fetchedAt, gAt = state.grades && state.grades.fetchedAt; const newest = [cAt, gAt].filter(Boolean).sort().pop(); html += `<div class="hint center" style="margin-top:14px">${esc(freshText(newest))}</div>`; }
   host.innerHTML = html;
   wireCalcTerm(terms);
   const byKey = {}; rows.forEach((r) => { byKey[r.key] = r; });
@@ -1927,6 +1934,14 @@ function dayHeading(d) {
   const name = TT_DAYS[d.getDay()]; return name.charAt(0).toUpperCase() + name.slice(1) + ", " + TT_MON[d.getMonth()] + " " + d.getDate() + ".";
 }
 function fmtWhen(iso) { const d = new Date(iso); const now = new Date(); return (sameDay(d, now) ? "ma " : TT_MON[d.getMonth()] + " " + d.getDate() + ". ") + hm(d); }
+function isOffline() { return typeof navigator !== "undefined" && navigator.onLine === false; }
+// Unified freshness line used on every data screen: online → "Frissítve: …", offline → an explicit
+// "Offline · a mentett adatok: …" so it's clear the numbers may be stale.
+function freshText(iso) {
+  const when = iso ? fmtWhen(iso) : null;
+  if (isOffline()) return when ? ("Offline · a mentett adatok: " + when) : "Offline · nincs mentett adat";
+  return when ? ("Frissítve: " + when) : "Frissítve: még soha";
+}
 // Human duration for the timetable break blocks: "2 óra", "1 ó 30 p", "45 perc".
 function fmtDur(ms) {
   const m = Math.round(ms / 60000), h = Math.floor(m / 60), r = m % 60;
@@ -2093,6 +2108,7 @@ $("ex-refresh").onclick = fetchTimetable;
 function updateIcsStatus() { const s = $("ics-status"); if (s) s.textContent = state.icsUrl ? "Beállítva" : "Nincs beállítva"; }
 
 async function fetchTimetable() {
+  if (isOffline()) { toast("Nincs internet – a mentett órarendet látod."); return; }
   if (!state.icsUrl) return openIcs();
   $("tt-sub").textContent = "Frissítés folyamatban"; $("ex-sub").textContent = "Frissítés folyamatban";
   try {
@@ -2186,7 +2202,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, ext
   }
 
   let html = `<div class="controls">${periodBtn(filter)}${extraCtrl}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
-  if (hasFeed) html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${state.ics && state.ics.fetchedAt ? fmtWhen(state.ics.fetchedAt) : "még soha"}</div>`;
+  if (hasFeed) html += `<div class="tt-updated" style="margin:2px 4px 12px">${esc(freshText(state.ics && state.ics.fetchedAt))}</div>`;
   else html += `<div style="height:10px"></div>`;
   if (!list.length) {
     html += `<div class="hint center" style="margin-top:20px">${filter === "upcoming" ? (examMode ? "Nincs közelgő számonkérés." : "Nincs közelgő óra.") : "Nincs esemény ebben az időszakban."}</div>`;
@@ -2423,7 +2439,7 @@ function renderCoAktualis(scroll) {
   const doneCr = items.filter((c) => c.completed).reduce((s, c) => s + (+c.credits || 0), 0);
   $("co-sub").textContent = "Aktuális · " + items.length + " tárgy";
   let html = `<div class="controls"><button class="period-btn" type="button"><span>${coFilter === "all" ? "Összes félév" : esc(coFilter)}</span>${icon("down")}</button></div>`;
-  html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${state.courses && state.courses.fetchedAt ? fmtWhen(state.courses.fetchedAt) : "még soha"}</div>`;
+  html += `<div class="tt-updated" style="margin:2px 4px 12px">${esc(freshText(state.courses && state.courses.fetchedAt))}</div>`;
   html += creditCard(doneCr, totalCr, items.filter((c) => c.completed).length, items.length);
   items.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu")).forEach((c) => { html += courseRow(c); });
   scroll.insertAdjacentHTML("beforeend", html);
@@ -2445,7 +2461,7 @@ function renderCoCurriculum(scroll, freeOnly) {
   $("co-sub").textContent = (freeOnly ? "Szabadon választható" : "Összes") + " · " + list.length + " tárgy";
   let html = "";
   if (cur.program) html += `<div class="co-program">${icon("building")} ${esc(cur.program)}</div>`;
-  html += `<div class="tt-updated" style="margin:2px 4px 12px">Frissítve: ${cur.fetchedAt ? fmtWhen(cur.fetchedAt) : "még soha"}</div>`;
+  html += `<div class="tt-updated" style="margin:2px 4px 12px">${esc(freshText(cur.fetchedAt))}</div>`;
   if (!list.length) { html += `<div class="hint center" style="margin-top:20px">Ebben a csoportban nincs beolvasott tárgy.</div>`; scroll.insertAdjacentHTML("beforeend", html); return; }
   html += creditCard(doneCr, totalCr, list.filter((c) => c.completed).length, list.length);
   list.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu")).forEach((c) => { html += courseRow(c); });
@@ -4975,6 +4991,8 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 // =====================================================================
 renderIcons(document);
 $("version-tag").textContent = APP_VERSION;
+// Re-render the freshness lines + Home status when connectivity flips (offline ⇄ online).
+["online", "offline"].forEach((ev) => window.addEventListener(ev, () => { try { renderHome(); const a = document.querySelector(".tabscreen.active"); if (a) renderForTab(a.id); } catch (e) {} }));
 attachPTR($("tt-scroll"), $("tt-ptr"), fetchTimetable);
 attachPTR($("ex-scroll"), $("ex-ptr"), fetchTimetable);
 attachPTR($("credit-scroll"), $("credit-ptr"), () => refreshCredit(false));       // credit-only refresh
