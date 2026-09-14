@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.220";
+const APP_VERSION = "v0.221";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1822,12 +1822,12 @@ function renderCalcGoal() {
   const rows = calcRows(calcTerm), c = calcCompute(rows);
   const typeLabel = calcTargetType === "suly" ? "Súlyozott átlag" : "Kreditindex";
   const curVal = calcTargetType === "suly" ? c.suly : c.ki;
-  let html = `<div class="goal-intro">Add meg a célod erre a félévre (<b>${esc(calcTerm)}</b>), és megmondom, milyen átlag kell a hátralévő tárgyaidra.</div>`;
-  html += `<div class="card card-pad goal-form">`
+  let html = `<div class="card card-pad goal-form">`
     + `<label class="goal-field"><span class="goal-flabel">Mit célzol meg?</span><button class="period-btn" id="calc-tt" type="button"><span>${typeLabel}</span>${icon("down")}</button></label>`
     + `<label class="goal-field"><span class="goal-flabel">Célérték</span><input class="input" id="calc-tv" inputmode="decimal" placeholder="pl. 4.5" value="${calcTargetVal != null ? calcTargetVal : ""}"></label>`
     + `<div class="goal-cur">Jelenlegi ${esc(typeLabel.toLowerCase())}: <b>${cf2(curVal)}</b></div></div>`;
   html += `<div id="calc-target-out" class="calc-out"></div>`;
+  html += `<div class="goal-note">Kiszámolja, milyen átlagot kell hoznod a hátralévő tárgyaidra, hogy ezt a célt elérd ebben a félévben (${esc(calcTerm)}).</div>`;
   const saved = (state.calcGoals || {})[calcTerm];
   html += `<div class="goal-actions"><button class="btn primary" id="calc-goal-save" type="button">${saved ? "Cél frissítése" : "Cél mentése erre a félévre"}</button>`
     + (saved ? `<button class="btn outline" id="calc-goal-del" type="button">Cél törlése</button>` : "") + `</div>`;
@@ -1853,10 +1853,24 @@ function renderCalcTarget(rows) {
   if (calcTargetVal == null) { out.innerHTML = `<div class="goal-res hint-state">Írd be a célértéket, és megmutatom, milyen átlag kell a hátralévő tárgyakra.</div>`; return; }
   const r = calcTargetSolve(rows, calcTargetType, calcTargetVal);
   if (r.none) { out.innerHTML = `<div class="goal-res">Ehhez a félévhez már minden jegy megvan, nincs mit tervezni.</div>`; return; }
-  if (!r.feasible) { out.innerHTML = `<div class="goal-res bad"><div class="goal-res-lbl">Ez a cél már nem érhető el ezen a féléven. 5,00-nál magasabb átlag kellene a hátralévő ${r.openCr} kreditre.</div></div>`; return; }
-  if (r.trivial) { out.innerHTML = `<div class="goal-res good"><div class="goal-res-lbl">Ez a cél gyakorlatilag biztos: elég átmenned a hátralévő ${r.openN} tárgyon (${r.openCr} kredit).</div></div>`; return; }
-  out.innerHTML = `<div class="goal-res"><div class="goal-res-num">${cf2(r.reqAvg)}</div>`
-    + `<div class="goal-res-lbl">ez a szükséges átlag a hátralévő <b>${r.openN} tárgyra</b> (${r.openCr} kredit)</div></div>`;
+  if (!r.feasible) {
+    out.innerHTML = `<div class="goal-res bad"><div class="goal-res-state">Nem érhető el</div>`
+      + `<div class="goal-res-lbl">Ezen a féléven már nem hozható ki. 5,00 fölötti átlag kellene a hátralévő ${r.openCr} kreditre.</div></div>`;
+    return;
+  }
+  // Feasible. Is the current predicted index already at/above the target?
+  const c = calcCompute(rows);
+  const cur = calcTargetType === "suly" ? c.suly : c.ki;
+  const reached = cur + 1e-9 >= calcTargetVal;
+  if (r.trivial) {
+    out.innerHTML = `<div class="goal-res ok"><div class="goal-res-state">Elérve</div>`
+      + `<div class="goal-res-lbl">Elég átmenned a hátralévő ${r.openN} tárgyon (${r.openCr} kredit).</div></div>`;
+    return;
+  }
+  const cls = reached ? "ok" : "mid", word = reached ? "Elérve" : "Haladó";
+  out.innerHTML = `<div class="goal-res ${cls}"><div class="goal-res-state">${word}</div>`
+    + `<div class="goal-res-num">${cf2(r.reqAvg)}+</div>`
+    + `<div class="goal-res-lbl">ennyi átlag kell a hátralévő <b>${r.openN} tárgyra</b> (${r.openCr} kredit). ${reached ? "A mostani jegyeiddel már megvan." : "A mostani jegyeiddel még nincs meg."}</div></div>`;
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
