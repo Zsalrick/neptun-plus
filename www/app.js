@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.221";
+const APP_VERSION = "v0.222";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4427,6 +4427,7 @@ function syncSettings() {
   syncSecurityToggles();
   { const b = $("app-bootsound"); if (b) b.classList.toggle("on", bootSoundOn()); }
   renderBioSetting();
+  msgReceiveRefresh();
   syncNotifySettings();
   syncSemStatus();
   syncProgStatus();
@@ -4535,6 +4536,39 @@ $("set-bio").onclick = async () => {
   }
   saveState(); renderBioSetting();
 };
+// ---- Üzenetfogadás: ki írhat nekem (allowedIncomingMessageType: FromEveryone=1 / OnlyFromEmployees=2) ----
+// Live Neptun account setting. We READ the whole settings object and, on toggle, echo it back with ONLY
+// that one field changed (safest — never guesses/clears the rest). WRITE endpoint unverified on live.
+let msgRecvCache = null;
+async function apiMsgSettingsGet() {
+  const sess = await getApiSession(); if (!sess || !sess.token) return null;
+  try { const r = await apiGet(sess, "Message/GetMessageRelatedSettings"); return (r && r.data && r.data.data) || null; } catch (e) { return null; }
+}
+function msgReceivesEveryone(s) { const t = s && s.messageReceptionSettings && s.messageReceptionSettings.allowedIncomingMessageType; return ((t | 0) & 1) === 1; }
+async function msgReceiveRefresh() {
+  const b = $("msg-receive-all"); if (!b) return;
+  const sub = $("msg-receive-sub");
+  if (!isNative || !canAutoLogin() || isOffline()) return; // leave the toggle as-is if we can't check
+  const s = await apiMsgSettingsGet(); if (!s) return;
+  msgRecvCache = s; b.classList.toggle("on", msgReceivesEveryone(s));
+  if (sub) sub.textContent = msgReceivesEveryone(s) ? "Bekapcsolva. A hallgatótársaid is írhatnak neked a Neptunban." : "Most csak az oktatók írhatnak neked. Kapcsold be, hogy a hallgatótársaid is tudjanak.";
+}
+async function msgReceiveToggle() {
+  const b = $("msg-receive-all"); if (!b) return;
+  if (!isNative || !canAutoLogin()) { toast("Előbb állítsd be a Neptun belépést."); return; }
+  if (isOffline()) { toast("Nincs internet."); return; }
+  const s = msgRecvCache || await apiMsgSettingsGet();
+  if (!s) { toast("Nem sikerült lekérni a beállítást."); return; }
+  const turnOn = !msgReceivesEveryone(s);
+  s.messageReceptionSettings = s.messageReceptionSettings || {};
+  s.messageReceptionSettings.allowedIncomingMessageType = turnOn ? 1 : 2;
+  const sess = await getApiSession(); if (!sess || !sess.token) { toast("Nincs munkamenet."); return; }
+  try {
+    const r = await apiPost(sess, "Message/UpdateMessageRelatedSettings", s);
+    if (r && r.status >= 200 && r.status < 300) { msgRecvCache = s; msgReceiveRefresh(); toast(turnOn ? "Mostantól bárki írhat neked." : "Mostantól csak oktatók írhatnak neked."); }
+    else { let d = r && r.data; const msg = d && (d.message || (d.modelStateErrors && d.modelStateErrors[0] && d.modelStateErrors[0].errors && d.modelStateErrors[0].errors[0])); toast(msg || "Nem sikerült menteni a beállítást."); }
+  } catch (e) { toast("Hiba a mentéskor."); }
+}
 function updateBreakMinStatus() { const el = $("breakmin-status"); if (el) el.textContent = (state.breakMin || 20) + " perc"; }
 $("btn-breakmin").onclick = () => {
   const items = [];
@@ -4562,6 +4596,7 @@ async function updateUpdateStatus() {
   }
 }
 { const b = $("app-bootsound"); if (b) b.onclick = () => { state.bootSound = !bootSoundOn(); saveState(); b.classList.toggle("on", bootSoundOn()); if (bootSoundOn()) playBootChime(); }; }
+{ const b = $("msg-receive-all"); if (b) b.onclick = msgReceiveToggle; }
 $("btn-check-update").onclick = async () => {
   if (!isNative) { toast("A frissítés a telefonos alkalmazásban működik."); return; }
   if (!window.OTA) { toast("A frissítő nem elérhető."); return; }
