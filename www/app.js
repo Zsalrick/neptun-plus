@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.210";
+const APP_VERSION = "v0.211";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -537,6 +537,7 @@ function renderForTab(id) {
   else if (id === "tab-subject") renderSubject();
   else if (id === "tab-grades") renderGrades();
   else if (id === "tab-periods") renderPeriods();
+  else if (id === "tab-calc") renderCalc();
   else if (id === "tab-credit") renderCreditPage();
   else if (id === "tab-finance") renderFinance();
   else if (id === "tab-fin-topay") renderFinTopay();
@@ -1024,6 +1025,7 @@ const MORE_SERVICES = [
   { id: "finance", group: "Szolgáltatások", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
   { id: "periods", group: "Tanulmányok", label: "Időszakok", sub: () => { const p = state.periods; const a = p && activePeriods(p.items).length; return a ? a + " aktív időszak" : "Mikor mettől meddig"; }, icon: "clock", go: () => pushScreen("tab-periods") },
+  { id: "calc", group: "Tanulmányok", label: "Kalkulátor", sub: "Átlag, kreditindex, célszámítás", icon: "chart", go: () => pushScreen("tab-calc") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", group: "Eszközök", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "reg-course", group: "Ügyintézés", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
@@ -1680,6 +1682,100 @@ async function refreshPeriods(viaButton) {
   finally { refreshingPeriods = false; if (viaButton) hideBusy(); }
   renderPeriods();
   toast(r && r.ok ? "Időszakok frissítve." : "Nem sikerült frissíteni.");
+}
+// ---------- Átlag / kreditindex kalkulátor ----------
+// No combinatorics: forward (pick a predicted grade per subject → live indices) + backward
+// (enter a target index → the single average needed across the remaining credits).
+let calcTerm = null, calcGrades = {}, calcTargetType = "ki", calcTargetVal = null;
+function calcTermList() {
+  const s = new Set();
+  ((state.courses && state.courses.list) || []).forEach((c) => { if (c.semester) s.add(c.semester); });
+  ((state.grades && state.grades.terms) || []).forEach((t) => { if (t.termName) s.add(t.termName); });
+  return [...s].sort((a, b) => (b > a ? 1 : b < a ? -1 : 0)); // newest first
+}
+function calcRows(term) {
+  const rows = [], seen = new Set();
+  const gTerm = ((state.grades && state.grades.terms) || []).find((t) => t.termName === term);
+  const byCode = {}; if (gTerm) gTerm.subjects.forEach((x) => { if (x.code) byCode[x.code] = x; });
+  ((state.courses && state.courses.list) || []).filter((c) => c.semester === term).forEach((c) => {
+    const g = c.code ? byCode[c.code] : null;
+    const v = g ? (g.value != null ? g.value : gradeValue(g.result)) : null;
+    if (c.code) seen.add(c.code);
+    rows.push({ key: c.code || c.subjectId || c.name, name: c.name || (g && g.subject) || "Tárgy", code: c.code || "", credits: +c.credits || 0, actual: (v >= 1 && v <= 5) ? v : null });
+  });
+  if (gTerm) gTerm.subjects.forEach((x) => {
+    if (x.code && seen.has(x.code)) return;
+    const v = x.value != null ? x.value : gradeValue(x.result);
+    rows.push({ key: x.code || x.subjectId || x.subject, name: x.subject || "Tárgy", code: x.code || "", credits: +x.credits || 0, actual: (v >= 1 && v <= 5) ? v : null });
+  });
+  return rows;
+}
+function calcGradeOf(r) { const g = calcGrades[r.key]; return (g >= 1 && g <= 5) ? g : (r.actual != null ? r.actual : 4); }
+function calcCompute(rows) {
+  let n = 0, sumG = 0, cAll = 0, cDone = 0, ptsDone = 0;
+  rows.forEach((r) => { const g = calcGradeOf(r), c = r.credits; if (!g) return; n++; sumG += g; cAll += c; if (g >= 2) { cDone += c; ptsDone += c * g; } });
+  return { n, cAll, cDone, atlag: n ? sumG / n : 0, suly: cDone ? ptsDone / cDone : 0, ki: ptsDone / 30, kki: cAll ? (ptsDone / 30) * (cDone / cAll) : 0 };
+}
+// Assume every subject passes (grade>=2). locked = has a real grade; open = predicted.
+function calcTargetSolve(rows, type, target) {
+  let cAll = 0, lockedPts = 0, openCr = 0, openN = 0;
+  rows.forEach((r) => { const c = r.credits; cAll += c; if (r.actual != null) lockedPts += c * r.actual; else { openCr += c; openN++; } });
+  if (openCr <= 0) return { none: true };
+  const needPts = (type === "suly") ? (target * cAll - lockedPts) : (30 * target - lockedPts);
+  const reqAvg = needPts / openCr;
+  return { reqAvg, openCr, openN, feasible: reqAvg <= 5.0001, trivial: reqAvg <= 1.0001 };
+}
+const cf2 = (x) => (Math.round(x * 100) / 100).toFixed(2);
+function renderCalc() {
+  const host = $("calc-scroll"); if (!host) return;
+  const terms = calcTermList();
+  if (!terms.length) {
+    host.innerHTML = `<div class="empty" style="flex:none;padding:52px 32px 8px"><div class="empty-ic">${icon("chart")}</div>`
+      + `<h2>Nincs adat</h2><p>Előbb olvasd be a tárgyaidat és jegyeidet, hogy számolni tudjak.</p>`
+      + `<button class="btn primary narrow" id="calc-read" style="margin-top:4px">${icon("chart")} Beolvasás</button></div>`;
+    const b = $("calc-read"); if (b) b.onclick = () => openDataSync(["courses", "grades"]);
+    return;
+  }
+  if (!calcTerm || terms.indexOf(calcTerm) < 0) calcTerm = terms[0];
+  const rows = calcRows(calcTerm), c = calcCompute(rows);
+  let html = `<div class="controls" style="margin-bottom:12px"><button class="period-btn" id="calc-term" type="button"><span>${esc(calcTerm)}</span>${icon("down")}</button></div>`;
+  html += `<div class="card calc-idx">`
+    + `<div class="ci"><span class="ci-v">${cf2(c.atlag)}</span><span class="ci-l">Átlag</span></div>`
+    + `<div class="ci"><span class="ci-v">${cf2(c.suly)}</span><span class="ci-l">Súlyozott</span></div>`
+    + `<div class="ci"><span class="ci-v">${cf2(c.ki)}</span><span class="ci-l">Kreditindex</span></div>`
+    + `<div class="ci"><span class="ci-v">${cf2(c.kki)}</span><span class="ci-l">Korrigált</span></div></div>`;
+  if (!rows.length) { host.innerHTML = html + `<div class="dash-empty" style="padding:20px 4px">Ehhez a félévhez nincs tárgy.</div>`; wireCalcTerm(terms); return; }
+  html += `<div class="dash-label">Tárgyak · ${rows.length}</div><div class="card">`;
+  rows.forEach((r) => {
+    const g = calcGradeOf(r);
+    const tag = r.actual != null ? `<span class="cg-tag">jegy</span>` : `<span class="cg-tag tip">tipp</span>`;
+    const seg = [1, 2, 3, 4, 5].map((n) => `<button class="cg-o${n === g ? " on" : ""}" data-cg="${esc(r.key)}" data-g="${n}" type="button">${n}</button>`).join("");
+    html += `<div class="calc-row"><div class="cr-main"><span class="cr-name">${esc(r.name)}</span>`
+      + `<span class="cr-sub">${[r.code ? esc(r.code) : "", r.credits ? esc(r.credits + " kr") : ""].filter(Boolean).join(" · ")} ${tag}</span></div>`
+      + `<div class="cg-seg">${seg}</div></div>`;
+  });
+  html += `</div>`;
+  html += `<div class="dash-label">Cél</div><div class="card card-pad">`
+    + `<div class="controls" style="margin-bottom:10px"><button class="period-btn view-btn" id="calc-tt" type="button"><span>${calcTargetType === "suly" ? "Súlyozott átlag" : "Kreditindex"}</span>${icon("down")}</button>`
+    + `<input class="input" id="calc-tv" inputmode="decimal" placeholder="Cél (pl. 4.5)" value="${calcTargetVal != null ? calcTargetVal : ""}" style="max-width:150px"></div>`
+    + `<div id="calc-target-out" class="calc-out"></div></div>`;
+  host.innerHTML = html;
+  wireCalcTerm(terms);
+  host.querySelectorAll("[data-cg]").forEach((b) => b.onclick = () => { calcGrades[b.dataset.cg] = +b.dataset.g; renderCalc(); });
+  $("calc-tt").onclick = () => openList({ title: "Cél típusa", selected: calcTargetType, items: [{ value: "ki", label: "Kreditindex" }, { value: "suly", label: "Súlyozott átlag" }], onPick: (v) => { calcTargetType = v; renderCalc(); } });
+  const tvEl = $("calc-tv");
+  tvEl.oninput = () => { const v = parseFloat(tvEl.value.replace(",", ".")); calcTargetVal = isFinite(v) ? v : null; renderCalcTarget(rows); };
+  renderCalcTarget(rows);
+}
+function wireCalcTerm(terms) { const b = $("calc-term"); if (b) b.onclick = () => openList({ title: "Félév", selected: calcTerm, items: terms.map((t) => ({ value: t, label: t })), onPick: (v) => { calcTerm = v; calcGrades = {}; renderCalc(); } }); }
+function renderCalcTarget(rows) {
+  const out = $("calc-target-out"); if (!out) return;
+  if (calcTargetVal == null) { out.innerHTML = `<span class="hint" style="margin:0">Írd be a célt, és megmondom, milyen átlag kell a hátralévő tárgyakra.</span>`; return; }
+  const r = calcTargetSolve(rows, calcTargetType, calcTargetVal);
+  if (r.none) { out.innerHTML = `<span class="hint" style="margin:0">Ehhez a félévhez már minden jegy megvan.</span>`; return; }
+  if (!r.feasible) { out.innerHTML = `<div class="calc-bad">Ez a cél már nem érhető el ezen a féléven (5-nél magasabb átlag kellene a hátralévő ${r.openCr} kreditre).</div>`; return; }
+  if (r.trivial) { out.innerHTML = `<div class="calc-good">Ez a cél gyakorlatilag biztos: elég átmenned a hátralévő ${r.openN} tárgyon (${r.openCr} kredit).</div>`; return; }
+  out.innerHTML = `<div class="calc-good">A hátralévő <b>${r.openN} tárgy</b> (${r.openCr} kredit) átlagának legalább <b>${cf2(r.reqAvg)}</b>-nak kell lennie.</div>`;
 }
 function renderProgress() {
   const el = $("hub-credit"); if (!el) return;
@@ -4253,12 +4349,13 @@ function syncNotifySettings() {
     const c = (state.notify && state.notify[key]) || { enabled: false, leads: [] };
     const chips = (c.leads || []).map((m) => `<button class="lead-chip" data-cat="${key}" data-lead="${m}">${esc(fmtLead(m))} <span class="lx">${icon("x")}</span></button>`).join("");
     const canAdd = (c.leads || []).length < 3;
-    return `<div class="card notify-cat"><div class="card-pad">
-      <button class="check" data-nt="${key}"><span class="box"><span data-icon="check"></span></span>
+    const leadRow = c.enabled ? `<div class="lead-row"><span class="lead-lbl">Emlékeztető</span>${chips}
+        ${canAdd ? `<button class="lead-add" data-addcat="${key}">${icon("plus")} ${chips ? "Még" : "Hozzáadás"}</button>` : ""}</div>` : "";
+    return `<div class="card notify-cat">
+      <button class="check flat" data-nt="${key}"><span class="box"><span data-icon="check"></span></span>
         <span><span class="c-t">${esc(label)}</span><span class="c-b">${esc(desc || ("Emlékeztető " + label.toLowerCase() + " előtt."))}</span></span></button>
-      <div class="lead-row">${chips || `<span class="hint" style="margin:0">Nincs emlékeztető.</span>`}
-        ${canAdd ? `<button class="lead-add" data-addcat="${key}">${icon("plus")} Emlékeztető</button>` : ""}</div>
-    </div></div>`;
+      ${leadRow}
+    </div>`;
   }).join("");
   renderIcons(host);
   host.querySelectorAll("[data-nt]").forEach((b) => b.onclick = () => toggleNotifyCat(b.dataset.nt));
