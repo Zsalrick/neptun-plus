@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.234";
+const APP_VERSION = "v0.235";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -60,7 +60,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -99,7 +99,10 @@ function defaultState() {
       zh: { enabled: false, leads: [1440, 120] },
       vizsga: { enabled: false, leads: [1440] },
       periods: { enabled: false, leads: [1440, 60] }, // időszak nyitása/zárulása előtt (1 nap + 1 óra)
+      changes: { enabled: false }, // új jegy / üzenet / befizetendő / órarend-változás appnyitáskor (nincs lead)
+      brief: { enabled: false, time: "07:00" }, // reggeli összefoglaló egy adott időpontban
     },
+    seen: null, // { gradeKeys, offered, msgs, toPay, classes:[{k,t}], at } — a legutóbb "látott" állapot a változás-értesítőkhöz
     calcGoals: {}, // { "<félév>": { type:"ki"|"suly", val:Number } } — mentett cél a kalkulátorhoz
     calcPreds: {}, // { "<félév>": { "<tárgykulcs>": jegy } } — a kalkulátorban beállított becsült jegyek
   };
@@ -129,6 +132,8 @@ function migrate(s) {
     s.notify = { classes: { enabled: on, leads: [lead] }, zh: d.notify.zh, vizsga: d.notify.vizsga };
   }
   ["classes", "zh", "vizsga", "periods"].forEach((c) => { if (!s.notify[c]) s.notify[c] = { enabled: d.notify[c].enabled, leads: d.notify[c].leads.slice() }; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
+  if (!s.notify.changes) s.notify.changes = { enabled: false };
+  if (!s.notify.brief) s.notify.brief = { enabled: false, time: "07:00" };
   if (!s.calcGoals || typeof s.calcGoals !== "object") s.calcGoals = {};
   if (!s.calcPreds || typeof s.calcPreds !== "object") s.calcPreds = {};
   // Multi-profile migration: wrap the existing single identity as profile #1.
@@ -2891,6 +2896,7 @@ async function autoRefreshAll(reason) {
       try { renderHome(); } catch (e) {}
     }
     try { refreshAgendas(); } catch (e) {}
+    try { await notifyChanges(); } catch (e) {} // változás-értesítők (új jegy/üzenet/befizetendő/órarend)
   } catch (e) { dbg("autoRefreshAll: " + (e && e.message ? e.message : e)); } // never reject → boot can't hang on us
   finally { autoRefreshing = false; try { renderHome(); } catch (e) {} }
 }
@@ -4422,9 +4428,88 @@ async function rescheduleNotifications() {
   add(exams.filter((e) => !e.manual), cfg.vizsga, "Közelgő vizsga", "vizsga");
   add(periodNotifEvents("start"), cfg.periods, "Időszak nyílik", "period");
   add(periodNotifEvents("end"), cfg.periods, "Időszak zárul", "period");
+  scheduleMorningBrief(out);
   if (!out.length) return;
   out.sort((a, b) => a.schedule.at - b.schedule.at);
   try { await ln.schedule({ notifications: out.slice(0, 64) }); } catch (e) { /* ignore */ }
+}
+// ---- Change alerts (Változás-értesítők) ----
+// A compact "what we've seen" snapshot; notifyChanges() diffs the fresh data against the previous one.
+function changeSnapshot() {
+  const g = state.grades || {}, m = state.messages || {}, f = state.finance || {};
+  const gradeKeys = [];
+  (g.terms || []).forEach((t) => (t.subjects || []).forEach((s) => { if (s.value || s.result) gradeKeys.push((s.code || s.subject || "?") + "|" + (s.value || s.result)); }));
+  const now = Date.now(), wEnd = now + 7 * 864e5;
+  let classes = [];
+  try { classes = (visibleClassEvents() || []).filter((e) => e.S && e.S.getTime() > now && e.S.getTime() < wEnd).map((e) => ({ k: occKey(e), t: e.S.getTime() })); } catch (e) {}
+  return {
+    gradeKeys,
+    offered: (g.offered || []).map((o) => o.id).filter(Boolean),
+    msgs: (m.received || []).map((x) => x.id).filter(Boolean),
+    toPay: (f.toPay || []).map((x) => x.id).filter(Boolean),
+    classes, at: now,
+  };
+}
+// Fire a local notification for anything new since we last looked. First run only records the baseline.
+async function notifyChanges() {
+  if (!isNative) return;
+  const cur = changeSnapshot();
+  const prev = state.seen;
+  state.seen = cur; saveState();
+  const cat = (state.notify && state.notify.changes) || {};
+  if (!prev || !cat.enabled) return; // no baseline yet, or category off → just record
+  const ln = LN(); if (!ln) return;
+  try { const p = await ln.checkPermissions(); if (p.display !== "granted") return; } catch (e) { return; }
+  const setOf = (a) => new Set(a || []);
+  const news = [];
+  // Új jegy — label the single new one from live data.
+  const pg = setOf(prev.gradeKeys), ng = cur.gradeKeys.filter((k) => !pg.has(k));
+  if (ng.length) {
+    let label = ng.length + " új jegy";
+    if (ng.length === 1) { let hit = null; (state.grades.terms || []).forEach((t) => (t.subjects || []).forEach((s) => { if (((s.code || s.subject || "?") + "|" + (s.value || s.result)) === ng[0]) hit = s; })); if (hit) label = (hit.subject || hit.code || "Tárgy") + " · " + (hit.result || hit.value); }
+    news.push({ kind: "grades", title: "Új jegy", body: label });
+  }
+  // Megajánlott jegy
+  const po = setOf(prev.offered), no = cur.offered.filter((k) => !po.has(k));
+  if (no.length) news.push({ kind: "grades", title: "Megajánlott jegy", body: no.length === 1 ? "1 új megajánlott jegy vár rád" : no.length + " új megajánlott jegy" });
+  // Új üzenet
+  const pm = setOf(prev.msgs), nm = (state.messages.received || []).filter((x) => x.id && !pm.has(x.id));
+  if (nm.length) news.push({ kind: "messages", title: "Új üzenet", body: nm.length === 1 ? [nm[0].from, nm[0].subject].filter(Boolean).join(" · ") : nm.length + " új üzenet" });
+  // Új befizetendő
+  const pp = setOf(prev.toPay), np = (state.finance.toPay || []).filter((x) => x.id && !pp.has(x.id));
+  if (np.length) news.push({ kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel" });
+  // Órarend változott (a következő 7 napon belül új vagy elmaradó óra)
+  const curK = setOf(cur.classes.map((c) => c.k)), prevK = setOf((prev.classes || []).map((c) => c.k));
+  const added = cur.classes.filter((c) => !prevK.has(c.k)).length;
+  const removed = (prev.classes || []).filter((c) => c.t > Date.now() && !curK.has(c.k)).length;
+  if (added || removed) news.push({ kind: "timetable", title: "Órarend változott", body: [added ? added + " új óra" : "", removed ? removed + " elmaradó óra" : ""].filter(Boolean).join(" · ") });
+  if (!news.length) return;
+  const notifs = news.slice(0, 6).map((n, i) => ({ id: 1300000000 + i, title: n.title, body: n.body, schedule: { at: new Date(Date.now() + 1500 + i * 400), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { changeKind: n.kind } }));
+  try { await ln.schedule({ notifications: notifs }); } catch (e) { /* ignore */ }
+}
+// ---- Morning brief (Reggeli összefoglaló) ----
+// One-liner about a given day: hány óra, első óra, vizsga/ZH, befizetendő.
+function morningBriefBody(day) {
+  const d0 = new Date(day); d0.setHours(0, 0, 0, 0); const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+  const inDay = (e) => e.S && e.S >= d0 && e.S < d1;
+  let cls = [], exs = [];
+  try { cls = (visibleClassEvents() || []).filter(inDay).sort((a, b) => a.S - b.S); } catch (e) {}
+  try { exs = (examEvents() || []).filter(inDay); } catch (e) {}
+  const parts = [];
+  if (cls.length) { const first = cls[0]; parts.push(cls.length + (cls.length === 1 ? " óra" : " óra")); parts.push("első " + hm(first.S) + (first.location ? " · " + first.location : "")); }
+  else parts.push("Nincs órád ma");
+  if (exs.length) parts.push(exs.length + " vizsga/ZH");
+  try { const f = state.finance; if (f && f.toPay && f.toPay.length) { const sum = f.toPay.reduce((s, i) => s + (+i.value || 0), 0); if (sum > 0) parts.push("Befizetendő: " + ftFt(sum, "HUF")); } } catch (e) {}
+  return parts.join(" · ");
+}
+// Schedule the next morning brief as a one-shot for the next occurrence of the chosen time.
+// Re-runs on every open/resume (rescheduleNotifications), so its body reflects the freshest data.
+function scheduleMorningBrief(out) {
+  const b = state.notify && state.notify.brief; if (!b || !b.enabled) return;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(b.time || "07:00"); if (!m) return;
+  const at = new Date(); at.setHours(+m[1], +m[2], 0, 0);
+  if (at.getTime() <= Date.now() + 30000) at.setDate(at.getDate() + 1);
+  out.push({ id: 1290000001, title: "Mai nap", body: morningBriefBody(at), schedule: { at, allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { kind: "brief" } });
 }
 // Highlighted in-app alert shown when a reminder push is tapped.
 function showNotifAlert(x) {
@@ -4481,33 +4566,47 @@ function syncProgStatus() {
   el.textContent = (p && p.total) ? (p.done + "/" + p.total + " kredit · " + fmtWhen(p.fetchedAt)) : "Nincs beolvasva";
 }
 // Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
-const NOTIFY_CATS = [["classes", "Órák", "Emlékeztető óra előtt."], ["zh", "ZH", "Emlékeztető ZH előtt."], ["vizsga", "Vizsgák", "Emlékeztető vizsga előtt."], ["periods", "Időszakok", "Nyitás és zárulás előtt (pl. tárgyfelvétel, vizsgajelentkezés)."]];
+const NOTIFY_CATS = [["classes", "Órák", "Emlékeztető óra előtt."], ["zh", "ZH", "Emlékeztető ZH előtt."], ["vizsga", "Vizsgák", "Emlékeztető vizsga előtt."], ["periods", "Időszakok", "Nyitás és zárulás előtt (pl. tárgyfelvétel, vizsgajelentkezés)."], ["changes", "Változások", "Új jegy, üzenet, befizetendő vagy órarend-változás, amikor megnyitod az appot.", true]];
 const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 const EXAM_LEADS = [10, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080];
 function syncNotifySettings() {
   const host = $("notify-cats"); if (!host) return;
-  host.innerHTML = `<div class="card">` + NOTIFY_CATS.map(([key, label, desc]) => {
+  const br = (state.notify && state.notify.brief) || { enabled: false, time: "07:00" };
+  host.innerHTML = `<div class="card">` + NOTIFY_CATS.map(([key, label, desc, noLeads]) => {
     const c = (state.notify && state.notify[key]) || { enabled: false, leads: [] };
     const chips = (c.leads || []).map((m) => `<button class="lead-chip" data-cat="${key}" data-lead="${m}">${esc(fmtLead(m))} <span class="lx">${icon("x")}</span></button>`).join("");
     const canAdd = (c.leads || []).length < 3;
-    const leadRow = c.enabled ? `<div class="lead-row"><span class="lead-lbl">Emlékeztető</span>${chips}
+    const leadRow = (!noLeads && c.enabled) ? `<div class="lead-row"><span class="lead-lbl">Emlékeztető</span>${chips}
         ${canAdd ? `<button class="lead-add" data-addcat="${key}">${icon("plus")} ${chips ? "Még" : "Hozzáadás"}</button>` : ""}</div>` : "";
     return `<div class="notify-cat">
       <button class="check flat" data-nt="${key}"><span class="box"><span data-icon="check"></span></span>
         <span><span class="c-t">${esc(label)}</span><span class="c-b">${esc(desc || ("Emlékeztető " + label.toLowerCase() + " előtt."))}</span></span></button>
       ${leadRow}
     </div>`;
-  }).join("") + `</div>`;
+  }).join("")
+    + `<div class="notify-cat">
+      <button class="check flat" data-nt="brief"><span class="box"><span data-icon="check"></span></span>
+        <span><span class="c-t">Reggeli összefoglaló</span><span class="c-b">Napi értesítés a mai órákról, vizsgákról és a befizetendőről.</span></span></button>
+      ${br.enabled ? `<div class="lead-row"><span class="lead-lbl">Időpont</span><input type="time" id="brief-time" value="${esc(br.time || "07:00")}" style="font-family:var(--font-mono,inherit);font-size:15px;padding:6px 10px;border-radius:10px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)"></div>` : ""}
+    </div></div>`;
   renderIcons(host);
-  host.querySelectorAll("[data-nt]").forEach((b) => b.onclick = () => toggleNotifyCat(b.dataset.nt));
+  host.querySelectorAll("[data-nt]").forEach((b) => b.onclick = () => b.dataset.nt === "brief" ? toggleBrief() : toggleNotifyCat(b.dataset.nt));
   host.querySelectorAll(".lead-chip").forEach((b) => b.onclick = () => { removeLead(b.dataset.cat, +b.dataset.lead); });
   host.querySelectorAll("[data-addcat]").forEach((b) => b.onclick = () => addLead(b.dataset.addcat));
+  { const t = $("brief-time"); if (t) t.onchange = () => { state.notify.brief.time = t.value || "07:00"; saveState(); rescheduleNotifications(); }; }
   NOTIFY_CATS.forEach(([key]) => { const el = host.querySelector(`[data-nt="${key}"]`); if (el) el.classList.toggle("on", !!(state.notify[key] && state.notify[key].enabled)); });
+  { const el = host.querySelector(`[data-nt="brief"]`); if (el) el.classList.toggle("on", !!br.enabled); }
 }
 async function toggleNotifyCat(key) {
   const c = state.notify[key];
   if (!c.enabled) { if (isNative && !(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell a telefon beállításaiban."); return; } c.enabled = true; }
   else c.enabled = false;
+  saveState(); syncNotifySettings(); rescheduleNotifications();
+}
+async function toggleBrief() {
+  const b = state.notify.brief;
+  if (!b.enabled) { if (isNative && !(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell a telefon beállításaiban."); return; } b.enabled = true; }
+  else b.enabled = false;
   saveState(); syncNotifySettings(); rescheduleNotifications();
 }
 function removeLead(key, m) { const c = state.notify[key]; c.leads = (c.leads || []).filter((x) => x !== m); saveState(); syncNotifySettings(); rescheduleNotifications(); }
