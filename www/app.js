@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.246";
+const APP_VERSION = "v0.247";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -667,22 +667,24 @@ function renderSearchResults() {
 }
 // Kezdőlapi kereső: a bejelentkezés fölötti sávban. Fókuszban jelennek meg a találatok alatta,
 // kikattintva eltűnnek (a 180 ms késleltetés engedi, hogy egy találat koppintása még beérkezzen).
-let hubSearchFocused = false;
 function wireHubSearch() {
   const inp = $("hub-search-input"); if (!inp || inp.__wired) return; inp.__wired = true;
-  inp.addEventListener("focus", () => { hubSearchFocused = true; renderHubSearch(); });
-  inp.addEventListener("blur", () => { setTimeout(() => { hubSearchFocused = false; renderHubSearch(); }, 180); });
-  inp.addEventListener("input", () => { renderHubSearch(); });
+  inp.addEventListener("input", renderHubSearch);
 }
+// A mező TARTALMA vezérel: ha van benne szöveg → kereső nézet (a kezdőlap többi része elrejtve, csak a
+// találatok látszanak); ha üres → vissza a főmenü (hero + widgetek).
 function renderHubSearch() {
   const box = $("hub-search-results"), inp = $("hub-search-input"); if (!box || !inp) return;
+  const active = inp.value.trim().length > 0;
+  const hide = [document.querySelector("#tab-home .hero"), $("hub-widgets"), $("version-tag")];
+  hide.forEach((el) => { if (el) el.style.display = active ? "none" : ""; });
+  if (!active) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false; box.style.marginTop = "8px";
   const q = searchNorm(inp.value).trim();
-  if (!hubSearchFocused || q.length < 2) { box.hidden = true; box.innerHTML = ""; return; }
+  if (q.length < 2) { box.innerHTML = `<div class="dash-empty" style="padding:20px 6px">Írj be legalább 2 karaktert. Tárgyra, jegyre, üzenetre és oldalakra kereshetsz.</div>`; return; }
   const groups = searchGroups(q);
-  box.hidden = false;
-  box.style.marginTop = "8px";
-  box.innerHTML = groups.length ? searchGroupsHtml(groups) : `<div class="dash-empty" style="padding:16px 4px">Nincs találat erre: „${esc(inp.value)}".</div>`;
-  box.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => searchGo(b.dataset.go));
+  box.innerHTML = groups.length ? searchGroupsHtml(groups) : `<div class="dash-empty" style="padding:20px 6px">Nincs találat erre: „${esc(inp.value)}".</div>`;
+  box.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => { inp.value = ""; renderHubSearch(); searchGo(b.dataset.go); });
 }
 applyTheme(currentTheme()); // keep DOM in sync on load (the <head> inline script prevents the first-paint flash)
 // Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
@@ -1011,6 +1013,7 @@ function renderHome() {
   if (hp) { hp.onclick = openProfilePicker; hp.classList.toggle("has-multi", (state.profiles || []).length > 1); }
   wireHubSearch();
   renderHub();
+  renderHubSearch(); // a kereső nézet szinkronban a mező tartalmával (üres → főmenü)
 }
 // ---- Customizable Kezdőlap hub: a registry of widgets + a saved, ordered list of the enabled ones ----
 function hubCard(cls) { const b = document.createElement("button"); b.type = "button"; b.className = "card " + (cls || ""); return b; }
