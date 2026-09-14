@@ -5,7 +5,8 @@
   "plugins": {
     "CapacitorHttp": { "enabled": true },
     "CapacitorUpdater": { "autoUpdate": false, "directUpdate": false },
-    "LocalNotifications": { "smallIcon": "ic_stat_neptun", "iconColor": "#ECEDEE" }
+    "LocalNotifications": { "smallIcon": "ic_stat_neptun", "iconColor": "#ECEDEE" },
+    "BackgroundRunner": { "label": "hu.neptun.autologin.check", "src": "runner.js", "event": "checkNeptun", "repeat": true, "interval": 30, "autoStart": true }
   },
   "cordova": {
     "preferences": {

@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.235";
+const APP_VERSION = "v0.236";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2886,6 +2886,7 @@ async function autoRefreshAll(reason) {
   if (onBoot) { setBootText(fresh ? "Adatok lekérdezése" : "Adatok frissítése"); bootProgress(0, DATA_TASKS.length); }
   try {
     const sess = await getApiSession(); if (!sess) return; // no token → nothing to read
+    try { seedBackgroundRunner(sess); } catch (e) {} // háttér-runner feltöltése (creds + on/off)
     let done = 0;
     for (const t of DATA_TASKS) {
       // On auto-start, skip rarely-changing topics (félévek/tárgyak/mintatanterv) if still fresh — big speedup.
@@ -4371,6 +4372,25 @@ $("acc-search").addEventListener("input", (e) => renderAccounts(e.target.value))
 
 // ---------- local notifications (reminders) ----------
 function LN() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
+function BR() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BackgroundRunner; }
+// Seed the background runner (closed-app checks) with creds + base + on/off. It self-gates: with
+// np_enabled != "1" or no creds it does nothing. Android may still throttle/kill the job (OEM battery
+// optimizations), so this is best-effort — the reliable path is the in-app diff on open (notifyChanges).
+async function seedBackgroundRunner(sess) {
+  const br = BR(); if (!br || !isNative) return;
+  const on = !!(state.notify && state.notify.changes && state.notify.changes.enabled);
+  const details = {
+    enabled: on ? "1" : "0",
+    base: (sess && sess.base) || (typeof apiSession !== "undefined" && apiSession && apiSession.base) || "",
+    username: state.username || "",
+    password: state.password || "",
+    no2fa: state.no2fa ? "1" : "0",
+    totpSecret: (state.totp && state.totp.secret) || "",
+    totpDigits: String((state.totp && state.totp.digits) || 6),
+    totpPeriod: String((state.totp && state.totp.period) || 30),
+  };
+  try { await br.dispatchEvent({ label: "hu.neptun.autologin.check", event: "saveCreds", details }); } catch (e) {}
+}
 // Human lead label: "30 perc", "1 óra", "1 ó 30 p", "1 nap", "2 nap", "1 hét".
 function fmtLead(min) {
   if (min % 10080 === 0) return (min / 10080) + " hét";
@@ -4566,7 +4586,7 @@ function syncProgStatus() {
   el.textContent = (p && p.total) ? (p.done + "/" + p.total + " kredit · " + fmtWhen(p.fetchedAt)) : "Nincs beolvasva";
 }
 // Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
-const NOTIFY_CATS = [["classes", "Órák", "Emlékeztető óra előtt."], ["zh", "ZH", "Emlékeztető ZH előtt."], ["vizsga", "Vizsgák", "Emlékeztető vizsga előtt."], ["periods", "Időszakok", "Nyitás és zárulás előtt (pl. tárgyfelvétel, vizsgajelentkezés)."], ["changes", "Változások", "Új jegy, üzenet, befizetendő vagy órarend-változás, amikor megnyitod az appot.", true]];
+const NOTIFY_CATS = [["classes", "Órák", "Emlékeztető óra előtt."], ["zh", "ZH", "Emlékeztető ZH előtt."], ["vizsga", "Vizsgák", "Emlékeztető vizsga előtt."], ["periods", "Időszakok", "Nyitás és zárulás előtt (pl. tárgyfelvétel, vizsgajelentkezés)."], ["changes", "Változások", "Új jegy, üzenet, befizetendő vagy órarend-változás. Megnyitáskor részletesen, a háttérben pedig kb. félóránként ellenőrzi (ezt a telefon energiakezelése lassíthatja).", true]];
 const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 const EXAM_LEADS = [10, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080];
 function syncNotifySettings() {
@@ -4602,6 +4622,7 @@ async function toggleNotifyCat(key) {
   if (!c.enabled) { if (isNative && !(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell a telefon beállításaiban."); return; } c.enabled = true; }
   else c.enabled = false;
   saveState(); syncNotifySettings(); rescheduleNotifications();
+  if (key === "changes") { try { seedBackgroundRunner(); } catch (e) {} } // háttér on/off azonnal
 }
 async function toggleBrief() {
   const b = state.notify.brief;

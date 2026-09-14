@@ -24,6 +24,27 @@ allprojects {
     }
 }
 
+// Force a consistent JVM target (17) across every module. The background-runner plugin's Kotlin
+// compiles at 17 while javac defaulted to 21 under JDK 21 → "Inconsistent JVM-target" build failure.
+// Pinning both here keeps all plugin modules aligned regardless of the local JDK.
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android {
+                compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
+                }
+            }
+        }
+        project.tasks.configureEach { t ->
+            if (t.class.name.contains('KotlinCompile')) {
+                try { t.kotlinOptions { jvmTarget = "17" } } catch (ignored) {}
+            }
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
