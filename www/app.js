@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.230";
+const APP_VERSION = "v0.231";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5202,11 +5202,15 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
     if (isNative && window.OTA && window.OTA.configured()) {
       setBootText("Frissítés keresése");
       try {
-        await Promise.race([
-          window.OTA.check({ current: APP_VERSION, apply: "now", onFound: () => setBootText("Új verzió letöltése"),
-            onError: (e) => setBootText("Frissítés kihagyva") }),
-          new Promise((r) => setTimeout(r, 12000)), // don't let a slow network hold the app hostage
-        ]);
+        let otaFound = false;
+        const checkP = window.OTA.check({ current: APP_VERSION, apply: "now",
+          onFound: () => { otaFound = true; setBootText("Új verzió letöltése"); },
+          onError: (e) => setBootText("Frissítés kihagyva") });
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        // If GitHub hasn't answered (no update found) within 5s, stop waiting and go into the app.
+        await Promise.race([checkP, wait(5000)]);
+        // But if an update WAS found and is downloading, give it more time to finish + apply.
+        if (otaFound) await Promise.race([checkP, wait(20000)]);
       } catch (e) { /* proceed into the app regardless */ }
     }
     setBootText("Betöltés");
