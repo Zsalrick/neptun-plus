@@ -48,8 +48,8 @@ public class BrowserActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(glyph);
         t.setTextColor(Color.parseColor("#ECEDEE"));
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
-        int p = dp(8);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 25);
+        int p = dp(11);
         t.setPadding(p, p, p, p);
         t.setGravity(Gravity.CENTER);
         t.setOnClickListener(onClick);
@@ -92,15 +92,13 @@ public class BrowserActivity extends Activity {
         titleView.setLayoutParams(tlp);
 
         TextView refresh = iconButton("↻", v -> web.reload());
-        TextView openExt = iconButton("↗", v -> {
-            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(web.getUrl()))); } catch (Exception e) { /* ignore */ }
-        });
+        // Nincs "megnyitás rendszerben": a külső böngészőben nincs meg a session/token → kijelentkezve
+        // látszana, ami félrevezető. A saját böngésző a lényeg, itt marad a munkamenet.
         TextView close = iconButton("✕", v -> finish());
 
         tb.addView(back);
         tb.addView(titleView);
         tb.addView(refresh);
-        tb.addView(openExt);
         tb.addView(close);
 
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
