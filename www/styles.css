@@ -781,6 +781,31 @@ button.grade-row:active { background: var(--surface-2); }
 .calc-out { font-size: 13.5px; line-height: 1.45; }
 .calc-bad { color: var(--danger); }
 
+/* Célszámítás sub-page */
+.goal-intro { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); margin: 2px 2px 14px; }
+.goal-form { display: flex; flex-direction: column; gap: 16px; }
+.goal-field { display: flex; flex-direction: column; gap: 7px; }
+.goal-flabel { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.goal-field .period-btn { width: 100%; justify-content: space-between; }
+.goal-field .input { width: 100%; }
+.goal-cur { font-size: 13px; color: var(--ink-3); padding-top: 2px; border-top: 1px solid var(--line); }
+.goal-cur b { color: var(--ink); font-family: var(--font-mono); }
+.goal-res { margin-top: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 18px; text-align: center; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.goal-res.hint-state { color: var(--ink-3); }
+.goal-res-num { font-family: var(--font-mono); font-size: 44px; font-weight: 600; color: var(--ink); line-height: 1; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.goal-res-lbl { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.goal-res.bad .goal-res-lbl { color: var(--danger); }
+.goal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+/* Saved-goal status on the Kalkulátor page — quiet row, state shown by a coloured word (no pill/dot). */
+.calc-goal { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 12px 15px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); text-align: left; }
+.calc-goal .cg-l { font-size: 13px; color: var(--ink-2); }
+.calc-goal .cg-s { font-size: 13px; font-weight: 650; white-space: nowrap; }
+.calc-goal.gs-ok .cg-s { color: #5fa878; }
+.calc-goal.gs-mid .cg-s { color: #c99a3d; }
+.calc-goal.gs-bad .cg-s { color: var(--danger); }
+/* 0-credit (criterion) subject — no grade picker, just a note. */
+.cg-zero { align-self: center; font-size: 12.5px; color: var(--ink-3); padding: 8px 0 2px; }
+
 /* ---------- Bottom nav island ---------- */
 .nav-island { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
   min-height: var(--nav-h); background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px;
