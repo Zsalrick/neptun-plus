@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.244";
+const APP_VERSION = "v0.245";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -604,10 +604,7 @@ function renderSearch() {
   const inp = $("search-input"); if (inp) { inp.value = searchQ; inp.oninput = () => { searchQ = inp.value; renderSearchResults(); }; setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60); }
   renderSearchResults();
 }
-function renderSearchResults() {
-  const host = $("search-scroll"); if (!host) return;
-  const q = searchNorm(searchQ).trim();
-  if (q.length < 2) { host.innerHTML = `<div class="dash-empty" style="padding:24px 16px">Írj be legalább 2 karaktert. Tárgyra, jegyre és üzenetre kereshetsz a lementett adataidban.</div>`; return; }
+function searchGroups(q) {
   const hit = (...vals) => vals.some((v) => searchNorm(v).indexOf(q) >= 0);
   const groups = [];
   const subjSeen = {}, subj = [];
@@ -620,11 +617,39 @@ function renderSearchResults() {
   const ms = [];
   [...((state.messages && state.messages.received) || []), ...((state.messages && state.messages.sent) || [])].forEach((m) => { if (hit(m.subject, m.from, m.to)) ms.push({ title: m.subject || "(nincs tárgy)", sub: [m.from || m.to, m.date ? fmtWhen(m.date) : ""].filter(Boolean).join(" · "), tab: "tab-messages" }); });
   if (ms.length) groups.push(["Üzenetek", ms.slice(0, 12)]);
-  if (!groups.length) { host.innerHTML = `<div class="dash-empty" style="padding:24px 16px">Nincs találat erre: „${esc(searchQ)}".</div>`; return; }
-  host.innerHTML = groups.map(([label, items]) => `<div class="dash-label">${esc(label)}</div><div class="card">`
+  return groups;
+}
+function searchGroupsHtml(groups) {
+  return groups.map(([label, items]) => `<div class="dash-label">${esc(label)}</div><div class="card">`
     + items.map((it) => `<button class="row" data-go="${esc(it.tab)}" type="button"><span class="row-main"><span class="row-title">${esc(it.title)}</span>${it.sub ? `<span class="row-sub">${esc(it.sub)}</span>` : ""}</span><span class="row-chev">${icon("chev")}</span></button>`).join("")
     + `</div>`).join("");
+}
+function renderSearchResults() {
+  const host = $("search-scroll"); if (!host) return;
+  const q = searchNorm(searchQ).trim();
+  if (q.length < 2) { host.innerHTML = `<div class="dash-empty" style="padding:24px 16px">Írj be legalább 2 karaktert. Tárgyra, jegyre és üzenetre kereshetsz a lementett adataidban.</div>`; return; }
+  const groups = searchGroups(q);
+  host.innerHTML = groups.length ? searchGroupsHtml(groups) : `<div class="dash-empty" style="padding:24px 16px">Nincs találat erre: „${esc(searchQ)}".</div>`;
   host.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => openTab(b.dataset.go));
+}
+// Kezdőlapi kereső: a bejelentkezés fölötti sávban. Fókuszban jelennek meg a találatok alatta,
+// kikattintva eltűnnek (a 180 ms késleltetés engedi, hogy egy találat koppintása még beérkezzen).
+let hubSearchFocused = false;
+function wireHubSearch() {
+  const inp = $("hub-search-input"); if (!inp || inp.__wired) return; inp.__wired = true;
+  inp.addEventListener("focus", () => { hubSearchFocused = true; renderHubSearch(); });
+  inp.addEventListener("blur", () => { setTimeout(() => { hubSearchFocused = false; renderHubSearch(); }, 180); });
+  inp.addEventListener("input", () => { renderHubSearch(); });
+}
+function renderHubSearch() {
+  const box = $("hub-search-results"), inp = $("hub-search-input"); if (!box || !inp) return;
+  const q = searchNorm(inp.value).trim();
+  if (!hubSearchFocused || q.length < 2) { box.hidden = true; box.innerHTML = ""; return; }
+  const groups = searchGroups(q);
+  box.hidden = false;
+  box.style.marginTop = "8px";
+  box.innerHTML = groups.length ? searchGroupsHtml(groups) : `<div class="dash-empty" style="padding:16px 4px">Nincs találat erre: „${esc(inp.value)}".</div>`;
+  box.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => openTab(b.dataset.go));
 }
 applyTheme(currentTheme()); // keep DOM in sync on load (the <head> inline script prevents the first-paint flash)
 // Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
@@ -951,6 +976,7 @@ function renderHome() {
   $("server-chip").style.display = state.servers.length > 1 ? "" : "none";
   const hp = $("home-profile");
   if (hp) { hp.onclick = openProfilePicker; hp.classList.toggle("has-multi", (state.profiles || []).length > 1); }
+  wireHubSearch();
   renderHub();
 }
 // ---- Customizable Kezdőlap hub: a registry of widgets + a saved, ordered list of the enabled ones ----
@@ -1071,7 +1097,6 @@ const MORE_SERVICES = [
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
   { id: "periods", group: "Tanulmányok", label: "Időszakok", sub: () => { const p = state.periods; const a = p && activePeriods(p.items).length; return a ? a + " aktív időszak" : "Mikor mettől meddig"; }, icon: "clock", go: () => pushScreen("tab-periods") },
   { id: "calc", group: "Tanulmányok", label: "Kalkulátor", sub: "Átlag, kreditindex, célszámítás", icon: "chart", go: () => pushScreen("tab-calc") },
-  { id: "search", group: "Eszközök", label: "Keresés", sub: "Tárgy, jegy, üzenet", icon: "search", go: () => pushScreen("tab-search") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", group: "Eszközök", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "reg-course", group: "Ügyintézés", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },

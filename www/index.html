@@ -201,6 +201,11 @@
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
+                <div class="home-search" style="position:relative;margin-bottom:12px">
+                  <span data-icon="search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted,#9aa0a6);pointer-events:none"></span>
+                  <input id="hub-search-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés tárgyra, jegyre, üzenetre…" style="width:100%;box-sizing:border-box;font-size:15px;padding:11px 14px 11px 40px;border-radius:12px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)">
+                  <div id="hub-search-results" hidden></div>
+                </div>
                 <div class="card hero">
                   <div class="hero-top">
                     <div style="min-width:0">
@@ -257,7 +262,7 @@
             <section class="tabscreen" id="tab-timetable">
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Órarend</div><div class="topbar-sub" id="tt-sub">Feliratkozási link szükséges</div></div>
-                <button class="iconbtn" id="tt-image" title="Kép mentése"><span data-icon="image"></span></button>
+                <button class="iconbtn" id="tt-image" title="Kép mentése"><span data-icon="download"></span></button>
                 <button class="iconbtn" id="tt-refresh" title="Frissítés" hidden><span data-icon="refresh"></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
