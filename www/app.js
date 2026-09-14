@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.232";
+const APP_VERSION = "v0.233";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -3312,8 +3312,8 @@ async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
-  const ok = await ask({ title: "Üzenetfogadás diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld és nem módosít semmit) az üzenetfogadási beállításodat, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt, hogy az üzenetfogadás kapcsoló pontosan működjön." });
+  const ok = await ask({ title: "Oktató diagnosztika", okText: "Indítás", cancelText: "Mégse",
+    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld és nem módosít semmit) egy tárgyad oktatóinak adatait, a személykártyát és a fogadóóra végpontokat, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -3321,55 +3321,43 @@ async function runApiDiagnostics() {
   let cancelled = false;
   try {
     const sess = await getApiSession(true);
-    if (!sess || !sess.token) { hideBusy(); await ask({ title: "Jegyek diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
-    let termId = "", termText = "";
-    try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; termId = (t && t.actualTermId) || ""; } catch (e) {}
-    try { const tr = await apiGet(sess, "RegistrySheet/GetStudentTrainingTerms"); const t0 = tr && tr.data && tr.data.data && tr.data.data[0]; termText = (t0 && t0.text) || ""; } catch (e) {}
-    const page = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.pageSize": 50, "sortAndPage.term": termId };
-    const pageNoTerm = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50 };
-    const pageTermText = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 50, "sortAndPage.term": termText };
-    // Üzenetek (Messages) endpoints — names known from the v0.143 JS grep; here we probe them to learn
-    // the response shapes. Direct GET via CapacitorHttp; list endpoints try both no-param and paged.
-    void termId; void termText; void pageTermText; void pageNoTerm;
-    // JEGYEK / ÁTLAGOK discovery. Probe the results-card, averages and exam-results endpoints with a
-    // few param variants (studentTrainingId / termId) so we learn which bind and their shapes.
-    let trainIds = [];
-    try { const mt = await apiGet(sess, "MyTrainings"); const list = (mt && mt.data && mt.data.data) || []; trainIds = list.map((t) => t.studentTrainingId).filter(Boolean); } catch (e) {}
-    const stid = trainIds[0] || "";
-    results.push({ studentTrainingIds: trainIds, actualTermId: termId });
-    const p500 = { "sortAndPage.firstRow": 0, "sortAndPage.lastRow": 500 };
-    // Complete grades discovery: the leckekönyv (certificate) results + per-term taken subjects with
-    // results + offered grades + mid-term task results (to cover gyakorlati/megajánlott/etc. grades).
-    let termGuids = [];
-    try { const tr = await apiGet(sess, "RegistrySheet/GetStudentTrainingTerms"); termGuids = ((tr && tr.data && tr.data.data) || []).map((t) => t.value).filter(Boolean); } catch (e) {}
-    let sttIds = [];
-    try { const ta = await apiGet(sess, "Advancement/GetTermAveragesByTraining", { studentTrainingId: stid }); sttIds = (((ta && ta.data && ta.data.data) || {}).termAveragesByTrainings || []).map((x) => x.studentTrainingTermId).filter(Boolean); } catch (e) {}
-    results.push({ termGuids, sttIds });
-    // ÜZENETFOGADÁS (read-only) — dump the real GetMessageRelatedSettings object so we can see the exact
-    // shape + the stored allowedIncomingMessageType value (why the toggle reads wrong after restart).
-    const eps = [
-      ["Message/GetMessageRelatedSettings", null],
-      ["Message/GetMessageSendingSettings", null],
-    ];
-    for (const [ep, params] of eps) {
+    if (!sess || !sess.token) { hideBusy(); await ask({ title: "Oktató diagnosztika", okText: "OK", body: "Nem sikerült tokent szerezni." }); return; }
+    const probe = async (ep, params) => {
       $("busy-text").textContent = ep.split("/").pop() + "…";
-      try { const r = await apiGet(sess, ep, params || undefined); results.push({ ep, verb: "GET", params: params || undefined, status: r.status, data: r.data }); }
-      catch (e) { results.push({ ep, verb: "GET", params: params || undefined, error: String(e && e.message || e) }); }
+      try { const r = await apiGet(sess, ep, params); results.push({ ep, verb: "GET", params: params || undefined, status: r.status, data: r.data }); return r.data && r.data.data; }
+      catch (e) { results.push({ ep, verb: "GET", params: params || undefined, error: String(e && e.message || e) }); return null; }
+    };
+    // ---- TANÁR / OKTATÓ felderítés (csak olvas) ----
+    // 1) egy valós kurzus (courseId + subjectId + termId) az órarendből, hogy a tanár-végpontok kössenek
+    let ev = null, cTermId = "";
+    try {
+      let ids = []; try { const mt = await apiGet(sess, "MyTrainings"); ids = ((mt.data && mt.data.data) || []).map((t) => t.studentTrainingId).filter(Boolean); } catch (e) {}
+      const now = Date.now(), span = 150 * 864e5;
+      const cp = { startDate: new Date(now - span).toISOString(), endDate: new Date(now + span).toISOString(), studentTrainingIds: ids, isClassesVisible: true, isExamsVisible: false, isFinalExamsVisible: false, isOnlineMeetingsVisible: false, isOtherEventsVisible: false, isPeriodsVisible: false, isTasksVisible: false };
+      const r = await apiGet(sess, "Calendar/GetCalendarEvents", cp);
+      ev = ((r.data && r.data.data) || []).find((x) => x.courseId && x.subjectId) || null;
+    } catch (e) {}
+    results.push({ pickedEvent: ev ? { courseId: ev.courseId, subjectId: ev.subjectId, classInstanceId: ev.classInstanceId, courseTutor: ev.courseTutor, summary: ev.summary } : null });
+    if (ev) { try { const cd = await apiGet(sess, "Calendar/GetCourseDetails", { classInstanceId: ev.classInstanceId, webexMeetingId: ev.webexMeetingId || "", isInstitutionalCalendar: false }); cTermId = (cd.data && cd.data.data && cd.data.data.termId) || ""; } catch (e) {} }
+    const base = ev ? { courseId: ev.courseId, subjectId: ev.subjectId, termId: cTermId } : null;
+    // 2) tanár-listás végpontok — a NYERS objektumot dumpoljuk, hogy MINDEN mezőt lássunk (email/tel?)
+    let firstTutor = null;
+    if (base) {
+      const tutors = await probe("SubjectCourse/GetSubjectCourseTutors", base);
+      if (Array.isArray(tutors) && tutors.length) firstTutor = tutors[0];
+      await probe("SubjectCourse/GetSubjectDetails", base);
     }
-    // Endpoint names already known from the v0.143 grep — skip the slow JS re-discovery this run;
-    // we only need the Message list shapes above.
-    let discovered = [], discDebug = "skipped (targeted message probe)";
-    const known = new Set(results.map((r) => r.ep));
-    for (const ep of discovered) {
-      if (known.has(ep)) continue; known.add(ep);
-      $("busy-text").textContent = ep.split("/").pop() + "…";
-      try {
-        let r = await apiGet(sess, ep);
-        if (r && r.status === 400) { try { const r2 = await apiGet(sess, ep, page); if (r2 && r2.status < 400) r = r2; } catch (e) {} }
-        results.push({ ep, discovered: true, status: r.status, data: r.data });
-      } catch (e) { results.push({ ep, discovered: true, error: String(e && e.message || e) }); }
+    results.push({ firstTutorFields: firstTutor ? Object.keys(firstTutor) : null });
+    // 3) egy tanár személykártyája — jár-e email/telefon egy hallgatónak?
+    const tId = firstTutor && (firstTutor.employeeId || firstTutor.userId || firstTutor.id);
+    if (tId) {
+      await probe("UserSearch/GetUserData", { userId: tId });
+      await probe("UserSearch/GetUserData", { userId: tId, personGroupId: "" });
     }
-    results.push({ discoveredEndpoints: discovered, _debug: discDebug });
+    // 4) fogadóóra / konzultáció (csak olvas + listáz)
+    let consTerm = "";
+    try { const r = await apiGet(sess, "Consultation/GetTerms"); const arr = (r.data && r.data.data) || []; consTerm = (arr[0] && (arr[0].value || arr[0].id)) || ""; results.push({ ep: "Consultation/GetTerms", status: r.status, data: r.data }); } catch (e) { results.push({ ep: "Consultation/GetTerms", error: String(e && e.message || e) }); }
+    await probe("Consultation/GetConsultations", consTerm ? { termId: consTerm } : undefined);
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("finance diag: " + (e && e.message ? e.message : e)); }
   hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
@@ -3380,7 +3368,7 @@ async function runApiDiagnostics() {
   catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
   try { await navigator.clipboard.writeText(json); } catch (e) {}
   const summary = results.filter((r) => r.ep).map((r) => `${r.discovered ? "🔎 " : ""}${esc(r.ep)} → ${r.error ? "HIBA" : r.status}`).join("<br>");
-  await ask({ title: "Üzenetfogadás diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
+  await ask({ title: "Oktató diagnosztika", okText: "OK", cancelText: "Bezárás", body: `${fileMsg}<br>A vágólapra is másoltam.<br><br>${summary}` });
 }
 $("btn-apidiag").onclick = runApiDiagnostics;
 function hasSemesters() { return !!(state.semesters && state.semesters.list && state.semesters.list.length); }
