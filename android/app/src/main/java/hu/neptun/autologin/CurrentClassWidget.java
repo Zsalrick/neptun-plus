@@ -4,10 +4,10 @@ import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 
-// "Következő óra" home-screen widget. Drawing lives in WidgetRender (shared with the current-class one).
-public class NextClassWidget extends AppWidgetProvider {
+// "Jelenlegi óra" home-screen widget. Drawing lives in WidgetRender (shared with the next-class one).
+public class CurrentClassWidget extends AppWidgetProvider {
     @Override
     public void onUpdate(Context ctx, AppWidgetManager mgr, int[] ids) {
-        for (int id : ids) WidgetRender.render(ctx, mgr, id, false);
+        for (int id : ids) WidgetRender.render(ctx, mgr, id, true);
     }
 }

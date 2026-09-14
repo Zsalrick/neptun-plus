@@ -21,7 +21,20 @@
         </activity>
 
         <receiver
+            android:name=".CurrentClassWidget"
+            android:label="@string/widget_current_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_current_info" />
+        </receiver>
+
+        <receiver
             android:name=".NextClassWidget"
+            android:label="@string/widget_next_label"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

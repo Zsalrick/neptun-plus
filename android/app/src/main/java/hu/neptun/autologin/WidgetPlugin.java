@@ -23,7 +23,7 @@ public class WidgetPlugin extends Plugin {
             .putString("events", call.getString("events", "[]"))
             .putString("accent", call.getString("accent", "#F5B221"))
             .apply();
-        NextClassWidget.pushUpdate(ctx);
+        WidgetRender.pushAll(ctx);
         call.resolve();
     }
 }
