@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.243";
+const APP_VERSION = "v0.244";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -547,6 +547,7 @@ function renderForTab(id) {
   else if (id === "tab-subject") renderSubject();
   else if (id === "tab-grades") renderGrades();
   else if (id === "tab-periods") renderPeriods();
+  else if (id === "tab-search") renderSearch();
   else if (id === "tab-calc") renderCalc();
   else if (id === "tab-calc-goal") renderCalcGoal();
   else if (id === "tab-credit") renderCreditPage();
@@ -595,6 +596,35 @@ function renderThemePage() {
       + `<span class="row-chev theme-check">${t.id === cur ? icon("check") : ""}</span></button>`).join("")
     + `</div>`;
   host.querySelectorAll("[data-theme-id]").forEach((b) => b.onclick = () => { applyTheme(b.dataset.themeId); renderThemePage(); });
+}
+// ---- Keresés: az appon belül már lementett adatokban (tárgyak, jegyek, üzenetek) ----
+let searchQ = "";
+function searchNorm(s) { return String(s || "").toLowerCase(); }
+function renderSearch() {
+  const inp = $("search-input"); if (inp) { inp.value = searchQ; inp.oninput = () => { searchQ = inp.value; renderSearchResults(); }; setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60); }
+  renderSearchResults();
+}
+function renderSearchResults() {
+  const host = $("search-scroll"); if (!host) return;
+  const q = searchNorm(searchQ).trim();
+  if (q.length < 2) { host.innerHTML = `<div class="dash-empty" style="padding:24px 16px">Írj be legalább 2 karaktert. Tárgyra, jegyre és üzenetre kereshetsz a lementett adataidban.</div>`; return; }
+  const hit = (...vals) => vals.some((v) => searchNorm(v).indexOf(q) >= 0);
+  const groups = [];
+  const subjSeen = {}, subj = [];
+  ((state.courses && state.courses.list) || []).forEach((c) => { if (hit(c.name, c.code)) { const k = c.code || c.name; if (!subjSeen[k]) { subjSeen[k] = 1; subj.push({ title: c.name || c.code, sub: [c.code, c.semester].filter(Boolean).join(" · "), tab: "tab-courses" }); } } });
+  [...((state.curriculum && state.curriculum.required) || []), ...((state.curriculum && state.curriculum.free) || [])].forEach((c) => { if (hit(c.name, c.code)) { const k = c.code || c.name; if (!subjSeen[k]) { subjSeen[k] = 1; subj.push({ title: c.name || c.code, sub: [c.code, c.completed ? "teljesített" : ""].filter(Boolean).join(" · "), tab: "tab-courses" }); } } });
+  if (subj.length) groups.push(["Tárgyak", subj.slice(0, 12)]);
+  const gr = [];
+  ((state.grades && state.grades.terms) || []).forEach((t) => (t.subjects || []).forEach((s) => { if (hit(s.subject, s.code, s.result)) gr.push({ title: s.subject || s.code, sub: [s.result, t.termName].filter(Boolean).join(" · "), tab: "tab-grades" }); }));
+  if (gr.length) groups.push(["Jegyek", gr.slice(0, 12)]);
+  const ms = [];
+  [...((state.messages && state.messages.received) || []), ...((state.messages && state.messages.sent) || [])].forEach((m) => { if (hit(m.subject, m.from, m.to)) ms.push({ title: m.subject || "(nincs tárgy)", sub: [m.from || m.to, m.date ? fmtWhen(m.date) : ""].filter(Boolean).join(" · "), tab: "tab-messages" }); });
+  if (ms.length) groups.push(["Üzenetek", ms.slice(0, 12)]);
+  if (!groups.length) { host.innerHTML = `<div class="dash-empty" style="padding:24px 16px">Nincs találat erre: „${esc(searchQ)}".</div>`; return; }
+  host.innerHTML = groups.map(([label, items]) => `<div class="dash-label">${esc(label)}</div><div class="card">`
+    + items.map((it) => `<button class="row" data-go="${esc(it.tab)}" type="button"><span class="row-main"><span class="row-title">${esc(it.title)}</span>${it.sub ? `<span class="row-sub">${esc(it.sub)}</span>` : ""}</span><span class="row-chev">${icon("chev")}</span></button>`).join("")
+    + `</div>`).join("");
+  host.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => openTab(b.dataset.go));
 }
 applyTheme(currentTheme()); // keep DOM in sync on load (the <head> inline script prevents the first-paint flash)
 // Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
@@ -929,7 +959,7 @@ function openTab(tab) { if (typeof MAIN_TABS !== "undefined" && MAIN_TABS.includ
 const HUB_WIDGETS = [
   { id: "current-class", label: "Jelenlegi óra", desc: "A most zajló órád, amíg tart.", render(host) { const e = currentClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Jelenlegi óra", "tab-timetable", true); } },
   { id: "next-class", label: "Következő óra", desc: "A soron következő órád ideje és terme.", render(host) { const e = nextClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Következő óra", "tab-timetable"); } },
-  { id: "next-exam", label: "Következő számonkérés", desc: "A legközelebbi ZH vagy vizsga.", render(host) { const e = nextAssessment(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Következő számonkérés", "tab-exams"); } },
+  { id: "next-exam", label: "Következő számonkérés", desc: "A legközelebbi ZH vagy vizsga, hátralévő napokkal.", render(host) { const e = nextAssessment(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Következő számonkérés", "tab-exams", false, true); } },
   { id: "credit", label: "Kreditek", desc: "Teljesített kreditek aránya és mérősávja.", render(host) { const p = state.progress; if (!p || !p.total) return; const pct = Math.round(p.done / p.total * 100); const el = hubCard("cred clickable"); el.onclick = () => pushScreen("tab-credit"); el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div><div class="cred-bar"><div class="cred-fill" style="width:${pct}%"></div></div>`; host.appendChild(el); } },
   { id: "messages", label: "Olvasatlan üzenetek", desc: "Hány olvasatlan Neptun üzeneted van.", render(host) { const m = state.messages; if (!m || !m.fetchedAt) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-messages"); el.innerHTML = `<span class="hs-ic">${icon("mail")}</span><span class="hs-main"><span class="hs-val">${m.unread || 0}</span><span class="hs-lbl">olvasatlan üzenet</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
   { id: "balance", label: "Egyenleg", desc: "A gyűjtőszámlád aktuális egyenlege.", render(host) { const f = state.finance; const a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); if (!a || a.balance == null) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-finance"); el.innerHTML = `<span class="hs-ic">${icon("wallet")}</span><span class="hs-main"><span class="hs-val">${a.balance.toLocaleString("hu")} Ft</span><span class="hs-lbl">gyűjtőszámla egyenleg</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
@@ -1041,6 +1071,7 @@ const MORE_SERVICES = [
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
   { id: "periods", group: "Tanulmányok", label: "Időszakok", sub: () => { const p = state.periods; const a = p && activePeriods(p.items).length; return a ? a + " aktív időszak" : "Mikor mettől meddig"; }, icon: "clock", go: () => pushScreen("tab-periods") },
   { id: "calc", group: "Tanulmányok", label: "Kalkulátor", sub: "Átlag, kreditindex, célszámítás", icon: "chart", go: () => pushScreen("tab-calc") },
+  { id: "search", group: "Eszközök", label: "Keresés", sub: "Tárgy, jegy, üzenet", icon: "search", go: () => pushScreen("tab-search") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", group: "Eszközök", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
   { id: "reg-course", group: "Ügyintézés", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
@@ -1123,7 +1154,27 @@ function renderCreditPage() {
     +     leg("s-rem", "Hátralévő", remaining)
     +     `</div>`
     + `</div>`
+    + diplomaBlock(p, remaining)
     + `<div class="hint center" style="margin-top:16px">${esc(freshText(p.fetchedAt))}</div>`;
+}
+// Diploma-haladás: becsült hátralévő félévek (30 kr/félév) + a mintatanterv tárgyainak készültsége.
+function diplomaBlock(p, remaining) {
+  const semLeft = remaining > 0 ? Math.ceil(remaining / 30) : 0;
+  const cur = state.curriculum;
+  const req = (cur && cur.required) || [];
+  const subTot = req.length;
+  const subDone = req.filter((x) => x.completed).length;
+  const subPct = subTot ? Math.round(subDone / subTot * 100) : 0;
+  const stat = (val, lbl) => `<div style="min-width:120px"><div style="font-size:22px;font-weight:700;font-family:var(--font-mono,inherit)">${esc(val)}</div><div style="font-size:12.5px;color:var(--muted,#9aa0a6);margin-top:2px">${esc(lbl)}</div></div>`;
+  let h = `<div class="dash-label">Diploma-haladás</div><div class="card" style="padding:16px">`;
+  h += `<div class="dip-stats" style="display:flex;gap:18px;flex-wrap:wrap">`
+    + stat(semLeft <= 0 ? "Kész" : "≈ " + semLeft + " félév", semLeft <= 0 ? "minden kredit megvan" : "van hátra (30 kr/félév)")
+    + (subTot ? stat(subPct + "%", subDone + " / " + subTot + " tantervi tárgy kész") : "")
+    + `</div>`;
+  if (subTot) h += `<div class="cred-bar" style="margin-top:14px"><div class="cred-fill" style="width:${subPct}%"></div></div>`;
+  h += `<div class="hint" style="margin-top:12px">${remaining} kredit van hátra a ${p.total} kredites képzésből.${subTot ? "" : " A tantervi arányhoz olvasd be a mintatantervet."}</div>`;
+  h += `</div>`;
+  return h;
 }
 // Full-screen Pénzügyek page. All data comes from state.finance (syncFinance); no Neptun calls here.
 function ftFt(v, cur) { return (v == null ? "—" : Number(v).toLocaleString("hu")) + " " + (cur === "HUF" || !cur ? "Ft" : cur); }
@@ -1899,7 +1950,9 @@ async function openCreditPopup() {
     body: "<b>" + p.done + " / " + p.total + "</b> teljesített kredit (" + pct + "%)<br>Ebből szabadon választható: <b>" + (p.free || 0) + "</b> kredit<br><br>Frissítve: " + esc(fmtWhen(p.fetchedAt)) });
   if (ok) grabProgress();
 }
-function nextIsland(el, e, headText, tab, now) {
+function daysUntil(d) { const a = new Date(); a.setHours(0, 0, 0, 0); const b = new Date(d); b.setHours(0, 0, 0, 0); return Math.round((b - a) / 864e5); }
+function countdownPhrase(d) { const n = daysUntil(d); return n <= 0 ? "ma" : n === 1 ? "holnap" : n + " nap múlva"; }
+function nextIsland(el, e, headText, tab, now, countdown) {
   if (!el) return;
   el.classList.toggle("nc-now", !!now);
   if (!e) { el.classList.add("hidden"); return; }
@@ -1907,8 +1960,11 @@ function nextIsland(el, e, headText, tab, now) {
   const time = now ? `${hm(e.S)}–${hm(e.E)}` : hm(e.S);
   const p = e.manual ? null : parseClassSummary(e.summary);
   const title = p ? p.name : (e.summary || "");
-  const meta = (p ? [p.type, p.teacher, e.location] : [e.location]).filter(Boolean).join(" · ");
-  el.innerHTML = `<div class="nc-head">${headText} · ${esc(dayHeading(e.S))}</div>`
+  let meta = (p ? [p.type, p.teacher, e.location] : [e.location]).filter(Boolean).join(" · ");
+  // Számonkérésnél a fejlécben "N nap múlva", a dátum a meta sorba kerül.
+  let head = `${headText} · ${dayHeading(e.S)}`;
+  if (countdown) { head = `${headText} · ${countdownPhrase(e.S)}`; meta = [dayHeading(e.S), meta].filter(Boolean).join(" · "); }
+  el.innerHTML = `<div class="nc-head">${esc(head)}</div>`
     + `<div class="nc-row"><span class="nc-time">${time}</span><div class="nc-body"><div class="nc-title">${esc(title)}</div>${meta ? `<div class="nc-meta">${esc(meta)}</div>` : ""}</div></div>`;
   el.onclick = () => navTo(tab);
 }
@@ -1916,7 +1972,7 @@ function renderNextClass() {
   nextIsland($("current-class"), currentClass(), "Jelenlegi óra", "tab-timetable", true);
   nextIsland($("next-class"), nextClass(), "Következő óra", "tab-timetable");
 }
-function renderNextExam() { nextIsland($("next-exam"), nextAssessment(), "Következő számonkérés", "tab-exams"); }
+function renderNextExam() { nextIsland($("next-exam"), nextAssessment(), "Következő számonkérés", "tab-exams", false, true); }
 let lastCode = "";
 async function totpTick() {
   if (!hasTotp() || state.no2fa) return;
@@ -2154,6 +2210,88 @@ $("ics-save").onclick = () => {
 };
 $("btn-ics").onclick = openIcs;
 $("tt-refresh").onclick = fetchTimetable;
+{ const ti = $("tt-image"); if (ti) ti.onclick = saveTimetableImage; }
+// ---- Órarend képként (a heti nézet PNG-be, megosztható) ----
+function currentWeekClasses() {
+  const now = new Date(), dow = (now.getDay() + 6) % 7; // 0 = hétfő
+  const mon = new Date(now); mon.setHours(0, 0, 0, 0); mon.setDate(now.getDate() - dow);
+  const end = new Date(mon); end.setDate(mon.getDate() + 7);
+  return { mon, list: (visibleClassEvents() || []).filter((e) => e.S >= mon && e.S < end).sort((a, b) => a.S - b.S) };
+}
+function cvRoundRect(ctx, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function cvClip(ctx, text, maxW) { text = String(text || ""); if (ctx.measureText(text).width <= maxW) return text; while (text.length > 1 && ctx.measureText(text + "…").width > maxW) text = text.slice(0, -1); return text + "…"; }
+function cvWrap(ctx, text, x, y, maxW, lineH, maxLines) {
+  const words = String(text || "").split(/\s+/); let line = "", n = 0;
+  for (let i = 0; i < words.length; i++) {
+    const t = line ? line + " " + words[i] : words[i];
+    if (ctx.measureText(t).width > maxW && line) { ctx.fillText(line, x, y + n * lineH); n++; line = words[i]; if (n === maxLines - 1) { line = cvClip(ctx, line + " " + words.slice(i + 1).join(" "), maxW); break; } }
+    else line = t;
+  }
+  ctx.fillText(cvClip(ctx, line, maxW), x, y + n * lineH);
+}
+async function saveTimetableImage() {
+  if (!isNative && !(window.cordova)) { /* preview: still allow via <a> download */ }
+  const { mon, list } = currentWeekClasses();
+  if (!list.length) { toast("Ezen a héten nincs órád."); return; }
+  let maxDow = 4; // legalább hétfő-péntek
+  list.forEach((e) => { const d = (e.S.getDay() + 6) % 7; if (d > maxDow) maxDow = d; });
+  const days = maxDow + 1;
+  let minH = 8, maxH = 20;
+  list.forEach((e) => { minH = Math.min(minH, e.S.getHours()); maxH = Math.max(maxH, e.E.getHours() + (e.E.getMinutes() > 0 ? 1 : 0)); });
+  minH = Math.max(0, minH); maxH = Math.min(24, Math.max(maxH, minH + 4));
+  const scale = 2, pad = 16, gutter = 50, colW = 150, headH = 60, hourH = 56;
+  const W = pad * 2 + gutter + days * colW, H = pad * 2 + headH + (maxH - minH) * hourH + 10;
+  const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
+  const ctx = cv.getContext("2d"); ctx.scale(scale, scale);
+  const cs = getComputedStyle(document.documentElement);
+  const col = (n, d) => { const v = (cs.getPropertyValue(n) || "").trim(); return v || d; };
+  const bg = col("--bg", "#0e1116"), card = col("--card", "#161a21"), fg = col("--fg", "#e8eaed"), muted = col("--muted", "#9aa0a6"), line = col("--line", "#2a2f37");
+  const accent = (typeof widgetAccentHex === "function" ? widgetAccentHex() : "") || "#f5b221";
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = fg; ctx.font = "700 18px sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("Órarend · " + TT_MON[mon.getMonth()] + " " + mon.getDate() + ".", pad, pad + 14);
+  const gridX = pad + gutter, gridY = pad + headH;
+  ctx.textBaseline = "middle";
+  for (let h = minH; h <= maxH; h++) {
+    const y = gridY + (h - minH) * hourH;
+    ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(gridX, y + 0.5); ctx.lineTo(W - pad, y + 0.5); ctx.stroke();
+    ctx.fillStyle = muted; ctx.font = "12px sans-serif"; ctx.textAlign = "right"; ctx.fillText((h < 10 ? "0" : "") + h + ":00", gridX - 8, y);
+  }
+  const DAYS = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
+  for (let d = 0; d < days; d++) {
+    const x = gridX + d * colW;
+    ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(x + 0.5, gridY); ctx.lineTo(x + 0.5, H - pad); ctx.stroke();
+    const dd = new Date(mon); dd.setDate(mon.getDate() + d);
+    ctx.textAlign = "center"; ctx.fillStyle = fg; ctx.font = "600 13px sans-serif"; ctx.fillText(DAYS[d], x + colW / 2, pad + headH / 2 + 2);
+    ctx.fillStyle = muted; ctx.font = "11px sans-serif"; ctx.fillText(TT_MON[dd.getMonth()] + " " + dd.getDate() + ".", x + colW / 2, pad + headH / 2 + 20);
+  }
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  list.forEach((e) => {
+    const d = (e.S.getDay() + 6) % 7; if (d >= days) return;
+    const startH = e.S.getHours() + e.S.getMinutes() / 60, endH = e.E.getHours() + e.E.getMinutes() / 60;
+    const x = gridX + d * colW + 3, y = gridY + (startH - minH) * hourH + 2;
+    const bh = Math.max(28, (endH - startH) * hourH - 4), bw = colW - 6;
+    cvRoundRect(ctx, x, y, bw, bh, 8); ctx.fillStyle = card; ctx.fill();
+    ctx.fillStyle = accent; cvRoundRect(ctx, x, y, 4, bh, 2); ctx.fill();
+    const p = parseClassSummary(e.summary);
+    ctx.fillStyle = fg; ctx.font = "600 12px sans-serif"; cvWrap(ctx, (p && p.name) || e.summary || "Óra", x + 10, y + 7, bw - 16, 14, 2);
+    if (bh > 42) { ctx.fillStyle = muted; ctx.font = "11px sans-serif"; ctx.fillText(cvClip(ctx, hm(e.S) + "–" + hm(e.E) + (e.location ? " · " + e.location : ""), bw - 16), x + 10, y + bh - 17); }
+  });
+  ctx.fillStyle = muted; ctx.font = "11px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic";
+  ctx.fillText("Kredit+", W - pad, H - pad + 4);
+  const dataUrl = cv.toDataURL("image/png");
+  const name = "orarend-" + mon.getFullYear() + "-" + (mon.getMonth() + 1) + "-" + mon.getDate() + ".png";
+  const dl = DLP();
+  if (isNative && dl && dl.saveToDownloads) {
+    try {
+      const r = await dl.saveToDownloads({ base64: dataUrl.split(",")[1], fileName: name, mime: "image/png" });
+      const open = await ask({ title: "Órarend kép", okText: "Megnyitás", cancelText: "Kész", body: "Elmentve a Letöltések közé: <b>" + esc(name) + "</b>. Onnan meg tudod osztani." });
+      if (open && r && r.uri) { try { await dl.open({ uri: r.uri, mime: "image/png" }); } catch (e) { toast("Nem sikerült megnyitni."); } }
+    } catch (e) { toast("Nem sikerült menteni: " + (e && e.message ? e.message : e)); }
+  } else {
+    try { const a = document.createElement("a"); a.href = dataUrl; a.download = name; a.click(); toast("Kép letöltve."); } catch (e) { toast("A kép mentése a telefonos alkalmazásban működik."); }
+  }
+}
 $("ex-refresh").onclick = fetchTimetable;
 function updateIcsStatus() { const s = $("ics-status"); if (s) s.textContent = state.icsUrl ? "Beállítva" : "Nincs beállítva"; }
 

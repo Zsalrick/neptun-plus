@@ -257,6 +257,7 @@
             <section class="tabscreen" id="tab-timetable">
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Órarend</div><div class="topbar-sub" id="tt-sub">Feliratkozási link szükséges</div></div>
+                <button class="iconbtn" id="tt-image" title="Kép mentése"><span data-icon="image"></span></button>
                 <button class="iconbtn" id="tt-refresh" title="Frissítés" hidden><span data-icon="refresh"></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
@@ -627,6 +628,15 @@
               </header>
               <div class="ptr" id="periods-ptr" data-icon="refresh"></div>
               <div class="scroll" id="periods-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-search">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Keresés</div><div class="topbar-sub">Tárgy, jegy, üzenet</div></div>
+              </header>
+              <div style="padding:10px 16px 2px"><input id="search-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés tárgyra, jegyre, üzenetre…" style="width:100%;box-sizing:border-box;font-size:16px;padding:11px 14px;border-radius:12px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)"></div>
+              <div class="scroll" id="search-scroll"></div>
             </section>
 
             <section class="tabscreen" id="tab-calc">
