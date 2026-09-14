@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_item_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_bg"
+    android:padding="18dp"
+    android:gravity="center_vertical">
+
+    <TextView
+        android:id="@+id/w_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#F5B221"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.08"
+        android:maxLines="1"
+        android:text="KÖVETKEZŐ ÓRA" />
+
+    <TextView
+        android:id="@+id/w_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:textColor="#F2F3F5"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:lineSpacingMultiplier="1.05"
+        android:text="Tárgy" />
+
+    <TextView
+        android:id="@+id/w_sub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="#9AA4AC"
+        android:textSize="15sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:text="" />
+</LinearLayout>
