@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.225";
+const APP_VERSION = "v0.226";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2031,6 +2031,19 @@ function examEvents() { return allEvents().filter((e) => e.exam).concat(manualEx
 function currentClass() { const now = Date.now(); return visibleClassEvents().filter((e) => e.S.getTime() <= now && e.E.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
 function nextClass() { const now = Date.now(); return visibleClassEvents().filter((e) => e.S.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
 function nextAssessment() { const now = Date.now(); return examEvents().filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S)[0] || null; }
+// Push the upcoming classes to the native home-screen widget (it picks current/next by the clock itself).
+function updateClassWidget() {
+  const W = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Widget;
+  if (!W || !isNative) return;
+  try {
+    const now = Date.now();
+    const evs = visibleClassEvents()
+      .filter((e) => e.E && e.E.getTime() > now - 3600000) // keep the current one + everything ahead
+      .sort((a, b) => a.S - b.S).slice(0, 40)
+      .map((e) => { const p = parseClassSummary(e.summary) || {}; return { s: e.S.getTime(), e: e.E ? e.E.getTime() : 0, n: p.name || e.summary || "Óra", t: p.type || "", r: e.location || "" }; });
+    W.setClasses({ events: JSON.stringify(evs) });
+  } catch (e) {}
+}
 function subjects() {
   const set = new Set();
   classEvents().forEach((e) => { if (e.summary) set.add(e.summary); });
@@ -4224,7 +4237,7 @@ function renderCourseSeg(e) {
   if (!h) h = `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni a tárgy adatait." : "Nincs több adat."}</div>`;
   host.innerHTML = h;
 }
-function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); rescheduleNotifications(); }
+function refreshAgendas() { renderTimetable(); renderExams(); renderHome(); rescheduleNotifications(); updateClassWidget(); }
 
 // =====================================================================
 //  DLC / add-ons (szak-specific downloads from GitHub)
@@ -5199,6 +5212,7 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
       const ln = LN();
       if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => { const x = ev && ev.notification && ev.notification.extra; if (x) showNotifAlert(x); }); } catch (e) {} }
       rescheduleNotifications(); // refresh reminders on every launch
+      updateClassWidget(); // seed the home-screen widget from cached schedule (refreshed again after sync)
       if (state.setupComplete) {
         setTimeout(dailyBackup, 2500);
         firstEver = missingTaskIds().length >= DATA_TASKS.length; // truly nothing cached (first ever launch)

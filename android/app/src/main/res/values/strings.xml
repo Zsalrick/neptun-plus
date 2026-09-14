@@ -4,4 +4,5 @@
     <string name="title_activity_main">Kredit+</string>
     <string name="package_name">hu.neptun.autologin</string>
     <string name="custom_url_scheme">hu.neptun.autologin</string>
+    <string name="widget_next_class_desc">A jelenlegi vagy következő órád a kezdőképernyőn.</string>
 </resources>
