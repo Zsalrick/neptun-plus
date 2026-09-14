@@ -4,12 +4,12 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <StackView
+    <AdapterViewFlipper
         android:id="@+id/w_stack"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:loopViews="false"
-        android:gravity="center" />
+        android:autoStart="true"
+        android:flipInterval="5000" />
 
     <TextView
         android:id="@+id/w_empty"
