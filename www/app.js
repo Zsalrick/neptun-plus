@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.216";
+const APP_VERSION = "v0.217";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1693,9 +1693,13 @@ async function refreshPeriods(viaButton) {
 // No combinatorics: forward (pick a predicted grade per subject → live indices) + backward
 // (enter a target index → the single average needed across the remaining credits).
 let calcTerm = null, calcTargetType = "ki", calcTargetVal = null;
-// Predicted grades are saved per term in state.calcPreds so they survive app restarts.
-function calcPredMap() { const m = (state.calcPreds || (state.calcPreds = {})); return m[calcTerm] || (m[calcTerm] = {}); }
-function calcSetPred(key, g) { calcPredMap()[key] = g; saveState(); }
+let calcSession = {}; // { term: { key: grade } } — what-if overrides for ALREADY-graded subjects; in-memory only (revert on restart)
+// Predictions for not-yet-graded subjects persist per term (state.calcPreds); overrides of real grades don't.
+function calcSetGrade(r, g) {
+  if (!r) return;
+  if (r.actual != null) { (calcSession[calcTerm] || (calcSession[calcTerm] = {}))[r.key] = g; } // session-only, not saved
+  else { const m = (state.calcPreds || (state.calcPreds = {})); (m[calcTerm] || (m[calcTerm] = {}))[r.key] = g; saveState(); }
+}
 function calcTermList() {
   const s = new Set();
   ((state.courses && state.courses.list) || []).forEach((c) => { if (c.semester) s.add(c.semester); });
@@ -1719,7 +1723,10 @@ function calcRows(term) {
   });
   return rows;
 }
-function calcGradeOf(r) { const g = ((state.calcPreds || {})[calcTerm] || {})[r.key]; return (g >= 1 && g <= 5) ? g : (r.actual != null ? r.actual : 4); }
+function calcGradeOf(r) {
+  if (r.actual != null) { const s = (calcSession[calcTerm] || {})[r.key]; return (s >= 1 && s <= 5) ? s : r.actual; }
+  const p = ((state.calcPreds || {})[calcTerm] || {})[r.key]; return (p >= 1 && p <= 5) ? p : 4;
+}
 function calcCompute(rows) {
   let n = 0, sumG = 0, cAll = 0, cDone = 0, ptsDone = 0;
   // 0-credit subjects (criterion, e.g. testnevelés) carry no weight and no numeric grade → skip entirely.
@@ -1780,7 +1787,8 @@ function renderCalc() {
   html += `</div>`;
   host.innerHTML = html;
   wireCalcTerm(terms);
-  host.querySelectorAll("[data-cg]").forEach((b) => b.onclick = () => { calcSetPred(b.dataset.cg, +b.dataset.g); renderCalc(); });
+  const byKey = {}; rows.forEach((r) => { byKey[r.key] = r; });
+  host.querySelectorAll("[data-cg]").forEach((b) => b.onclick = () => { calcSetGrade(byKey[b.dataset.cg], +b.dataset.g); renderCalc(); });
   const gs = $("calc-goal-status"); if (gs) gs.onclick = () => openCalcGoal();
   wireGoalBtn(gbtn);
 }
