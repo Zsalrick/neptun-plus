@@ -386,9 +386,8 @@ button.grade-row:active { background: var(--surface-2); }
 .svc-row { width: 100%; }
 .svc-row.soon { opacity: .55; }
 .svc-row .svc-badge { position: static; margin-left: auto; flex: none; }
-.svc-badge { position: absolute; top: 12px; right: 12px; font-size: 9px; font-weight: 700; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--brand-plus); border: 1px solid rgba(245,178,33,.4);
-  border-radius: 999px; padding: 3px 7px; }
+.svc-badge { position: absolute; top: 12px; right: 12px; font-size: 11px; font-weight: 600; letter-spacing: .01em;
+  color: var(--ink-3); background: var(--surface-2); border-radius: 6px; padding: 3px 8px; }
 
 /* ---------- Data-sync result rows ---------- */
 .sync-res { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; }
@@ -549,8 +548,9 @@ button.grade-row:active { background: var(--surface-2); }
 .sync-tag.miss { color: var(--accent-ink); background: var(--ink); }
 .next-card.sync-cta { border-color: var(--ink-3); background: var(--surface-2); }
 
-/* Reminder category cards: one flat card = borderless toggle row + lead-times */
-.notify-cat { margin-bottom: 10px; }
+/* Reminder categories: one grouped card, hairline dividers between rows (no card-per-item) */
+.notify-cat { border-bottom: 1px solid var(--line); }
+.notify-cat:last-child { border-bottom: 0; }
 .check.flat, .check.flat.on { border-color: transparent; background: transparent; border-radius: var(--radius); padding: 14px 14px 10px; }
 .lead-lbl { font-size: 12px; font-weight: 550; color: var(--ink-3); margin-right: 2px; }
 .lead-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 0; padding: 0 14px 14px 47px; }

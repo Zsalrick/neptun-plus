@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.224";
+const APP_VERSION = "v0.225";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -555,6 +555,7 @@ function renderForTab(id) {
   else if (id === "tab-event") renderDetail();
   else if (id === "tab-profile") renderProfilePage();
   else if (id === "tab-set-theme") renderThemePage();
+  else if (id === "tab-set-messages") { syncSettings(); msgReceiveRefresh(); } // fetch the live setting when this page opens
   else if (id === "tab-settings" || id.indexOf("tab-set-") === 0) syncSettings();
 }
 // ---- Színtéma: device-local preference (localStorage, NOT the profile state → no backend migrate) ----
@@ -4422,7 +4423,6 @@ function syncSettings() {
   syncSecurityToggles();
   { const b = $("app-bootsound"); if (b) b.classList.toggle("on", bootSoundOn()); }
   renderBioSetting();
-  msgReceiveRefresh();
   syncNotifySettings();
   syncSemStatus();
   syncProgStatus();
@@ -4448,18 +4448,18 @@ const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 const EXAM_LEADS = [10, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080];
 function syncNotifySettings() {
   const host = $("notify-cats"); if (!host) return;
-  host.innerHTML = NOTIFY_CATS.map(([key, label, desc]) => {
+  host.innerHTML = `<div class="card">` + NOTIFY_CATS.map(([key, label, desc]) => {
     const c = (state.notify && state.notify[key]) || { enabled: false, leads: [] };
     const chips = (c.leads || []).map((m) => `<button class="lead-chip" data-cat="${key}" data-lead="${m}">${esc(fmtLead(m))} <span class="lx">${icon("x")}</span></button>`).join("");
     const canAdd = (c.leads || []).length < 3;
     const leadRow = c.enabled ? `<div class="lead-row"><span class="lead-lbl">Emlékeztető</span>${chips}
         ${canAdd ? `<button class="lead-add" data-addcat="${key}">${icon("plus")} ${chips ? "Még" : "Hozzáadás"}</button>` : ""}</div>` : "";
-    return `<div class="card notify-cat">
+    return `<div class="notify-cat">
       <button class="check flat" data-nt="${key}"><span class="box"><span data-icon="check"></span></span>
         <span><span class="c-t">${esc(label)}</span><span class="c-b">${esc(desc || ("Emlékeztető " + label.toLowerCase() + " előtt."))}</span></span></button>
       ${leadRow}
     </div>`;
-  }).join("");
+  }).join("") + `</div>`;
   renderIcons(host);
   host.querySelectorAll("[data-nt]").forEach((b) => b.onclick = () => toggleNotifyCat(b.dataset.nt));
   host.querySelectorAll(".lead-chip").forEach((b) => b.onclick = () => { removeLead(b.dataset.cat, +b.dataset.lead); });
@@ -4542,8 +4542,6 @@ async function apiMsgSettingsGet() {
 function msgReceivesEveryone(s) { const t = s && s.messageReceptionSettings && s.messageReceptionSettings.allowedIncomingMessageType; return ((t | 0) & 1) === 1; }
 async function msgReceiveRefresh() {
   const b = $("msg-receive-all"); if (!b) return;
-  const sec = document.getElementById("tab-set-messages");
-  if (!sec || !sec.classList.contains("active")) return; // only fetch when its sub-page is open
   const sub = $("msg-receive-sub");
   if (!isNative || !canAutoLogin() || isOffline()) return; // leave the toggle as-is if we can't check
   const s = await apiMsgSettingsGet(); if (!s) return;
