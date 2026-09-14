@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.240";
+const APP_VERSION = "v0.241";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5037,15 +5037,19 @@ $("btn-login").onclick = async () => {
   if (isNative) return nativeLogin(srv, apiSessionValid(60000) ? apiSession.token : "");
   return browserPreviewLogin(srv);
 };
+const BROWSER_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36";
 function nativeLogin(srv, token) {
-  const iab = window.cordova && window.cordova.InAppBrowser;
-  if (!iab) { toast("InAppBrowser plugin hiányzik (lásd README)."); return; }
   const code = state.no2fa ? "" : lastCode;
   // API-first login (new Neptun): authenticate via the API, drop the token in, and load the
   // dashboard already logged in — independent of the login page's layout. Falls back to filling
   // the form (works on the standard Angular login) if the API isn't there / doesn't return a token.
   // If we already hold a still-valid warm token, inject it straight in → instant, no re-auth / no 2FA.
   const script = buildLoginScript(state.username, state.password, code, token || "");
+  // A saját, app-témájú böngésző (BrowserActivity) — ha elérhető. Egyébként a stock InAppBrowser.
+  const AB = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AppBrowser;
+  if (AB) { try { AB.open({ url: srv.url, script, ua: BROWSER_UA }); toast(token ? "Belépés (aktív munkamenet)…" : "Belépés folyamatban…"); return; } catch (e) { /* fall through to IAB */ } }
+  const iab = window.cordova && window.cordova.InAppBrowser;
+  if (!iab) { toast("InAppBrowser plugin hiányzik (lásd README)."); return; }
   // Letisztult sáv: URL és előre/vissza nyilak elrejtve, csak a "Kész" gomb marad. A lapozás a
   // telefon vissza gombjával megy (hardwareback). Sötét, app-témájú toolbar.
   const opts = ["location=yes", "hideurlbar=yes", "hidenavigationbuttons=yes", "zoom=yes", "hardwareback=yes", "footer=no",
