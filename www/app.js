@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.239";
+const APP_VERSION = "v0.240";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5046,7 +5046,9 @@ function nativeLogin(srv, token) {
   // the form (works on the standard Angular login) if the API isn't there / doesn't return a token.
   // If we already hold a still-valid warm token, inject it straight in → instant, no re-auth / no 2FA.
   const script = buildLoginScript(state.username, state.password, code, token || "");
-  const opts = ["location=yes", "hideurlbar=no", "hidenavigationbuttons=no", "zoom=yes", "hardwareback=yes", "footer=no",
+  // Letisztult sáv: URL és előre/vissza nyilak elrejtve, csak a "Kész" gomb marad. A lapozás a
+  // telefon vissza gombjával megy (hardwareback). Sötét, app-témájú toolbar.
+  const opts = ["location=yes", "hideurlbar=yes", "hidenavigationbuttons=yes", "zoom=yes", "hardwareback=yes", "footer=no",
     "toolbarcolor=#141518", "navigationbuttoncolor=#ecedee", "closebuttoncolor=#ecedee", "closebuttoncaption=Kész"].join(",");
   const ref = iab.open(srv.url, "_blank", opts);
   ref.addEventListener("loadstop", () => { try { ref.executeScript({ code: script }); } catch (e) { /* ignore */ } });
