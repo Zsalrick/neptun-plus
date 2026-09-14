@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.209";
+const APP_VERSION = "v0.210";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -97,6 +97,7 @@ function defaultState() {
       classes: { enabled: false, leads: [30] },
       zh: { enabled: false, leads: [1440, 120] },
       vizsga: { enabled: false, leads: [1440] },
+      periods: { enabled: false, leads: [1440, 60] }, // időszak nyitása/zárulása előtt (1 nap + 1 óra)
     },
   };
 }
@@ -124,7 +125,7 @@ function migrate(s) {
     const on = !!s.notify.enabled, lead = s.notify.lead || 30;
     s.notify = { classes: { enabled: on, leads: [lead] }, zh: d.notify.zh, vizsga: d.notify.vizsga };
   }
-  ["classes", "zh", "vizsga"].forEach((c) => { if (!s.notify[c]) s.notify[c] = d.notify[c]; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
+  ["classes", "zh", "vizsga", "periods"].forEach((c) => { if (!s.notify[c]) s.notify[c] = { enabled: d.notify[c].enabled, leads: d.notify[c].leads.slice() }; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
   // Multi-profile migration: wrap the existing single identity as profile #1.
   ensureProfiles(s);
   // Keep catalog universities' server URLs in sync with the app's list (so fixes to
@@ -4140,7 +4141,22 @@ async function ensureNotifPermission() {
   try { let p = await ln.checkPermissions(); if (p.display !== "granted") p = await ln.requestPermissions(); return p.display === "granted"; }
   catch (e) { return false; }
 }
-// Cancel everything we scheduled, then re-schedule classes + ZH + exams per their enabled reminders.
+// Pseudo-events for the Időszakok reminders: one per period opening ("start") or closing ("end"),
+// so the generic scheduler below can treat them like any other timed event. Names are softened from
+// the Neptun ALL-CAPS to sentence case (see DESIGN.md).
+function periodNotifEvents(which) {
+  const p = state.periods; if (!p || !p.items) return [];
+  const out = [];
+  p.items.forEach((it) => {
+    const t = which === "start" ? it.from : it.to;
+    if (!t) return;
+    const S = new Date(t); if (isNaN(S)) return;
+    const name = (typeof periodSentence === "function") ? periodSentence(it.name || it.type || "Időszak") : (it.name || it.type || "Időszak");
+    out.push({ S, E: null, summary: name, location: "", _which: which });
+  });
+  return out;
+}
+// Cancel everything we scheduled, then re-schedule classes + ZH + exams + periods per their enabled reminders.
 async function rescheduleNotifications() {
   const ln = LN(); if (!ln || !isNative) return;
   try {
@@ -4167,6 +4183,8 @@ async function rescheduleNotifications() {
   const exams = examEvents();
   add(exams.filter((e) => e.manual), cfg.zh, "Közelgő ZH", "zh");
   add(exams.filter((e) => !e.manual), cfg.vizsga, "Közelgő vizsga", "vizsga");
+  add(periodNotifEvents("start"), cfg.periods, "Időszak nyílik", "period");
+  add(periodNotifEvents("end"), cfg.periods, "Időszak zárul", "period");
   if (!out.length) return;
   out.sort((a, b) => a.schedule.at - b.schedule.at);
   try { await ln.schedule({ notifications: out.slice(0, 64) }); } catch (e) { /* ignore */ }
@@ -4226,18 +4244,18 @@ function syncProgStatus() {
   el.textContent = (p && p.total) ? (p.done + "/" + p.total + " kredit · " + fmtWhen(p.fetchedAt)) : "Nincs beolvasva";
 }
 // Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
-const NOTIFY_CATS = [["classes", "Órák"], ["zh", "ZH"], ["vizsga", "Vizsgák"]];
+const NOTIFY_CATS = [["classes", "Órák", "Emlékeztető óra előtt."], ["zh", "ZH", "Emlékeztető ZH előtt."], ["vizsga", "Vizsgák", "Emlékeztető vizsga előtt."], ["periods", "Időszakok", "Nyitás és zárulás előtt (pl. tárgyfelvétel, vizsgajelentkezés)."]];
 const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 const EXAM_LEADS = [10, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080];
 function syncNotifySettings() {
   const host = $("notify-cats"); if (!host) return;
-  host.innerHTML = NOTIFY_CATS.map(([key, label]) => {
+  host.innerHTML = NOTIFY_CATS.map(([key, label, desc]) => {
     const c = (state.notify && state.notify[key]) || { enabled: false, leads: [] };
     const chips = (c.leads || []).map((m) => `<button class="lead-chip" data-cat="${key}" data-lead="${m}">${esc(fmtLead(m))} <span class="lx">${icon("x")}</span></button>`).join("");
     const canAdd = (c.leads || []).length < 3;
     return `<div class="card notify-cat"><div class="card-pad">
       <button class="check" data-nt="${key}"><span class="box"><span data-icon="check"></span></span>
-        <span><span class="c-t">${esc(label)}</span><span class="c-b">Emlékeztető ${esc(label.toLowerCase())} előtt.</span></span></button>
+        <span><span class="c-t">${esc(label)}</span><span class="c-b">${esc(desc || ("Emlékeztető " + label.toLowerCase() + " előtt."))}</span></span></button>
       <div class="lead-row">${chips || `<span class="hint" style="margin:0">Nincs emlékeztető.</span>`}
         ${canAdd ? `<button class="lead-add" data-addcat="${key}">${icon("plus")} Emlékeztető</button>` : ""}</div>
     </div></div>`;
