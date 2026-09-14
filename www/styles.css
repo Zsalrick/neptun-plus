@@ -235,8 +235,8 @@ button.row:active { background: var(--surface-2); }
 .save-bar .btn { flex: 1; width: auto; }
 
 /* Credit page */
-.cred-hero { padding: 28px 20px 22px; text-align: center; box-shadow: var(--shadow-sm); }
-.ch-num { font-family: var(--font-mono); font-weight: 700; font-size: 46px; line-height: 1; letter-spacing: -.01em; }
+.cred-hero { padding: 30px 20px 24px; text-align: center; box-shadow: var(--shadow-sm); }
+.ch-num { font-family: var(--font-mono); font-weight: 600; font-size: 56px; line-height: .95; letter-spacing: -.035em; }
 .ch-cap { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-top: 9px; }
 .ch-pctline { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 11px; }
 /* stacked composition graph: kötelező / szabadon választható / hátralévő */
@@ -760,12 +760,16 @@ button.grade-row:active { background: var(--surface-2); }
 .period-row.off .pd-name { color: var(--ink-2); font-weight: 500; }
 /* Kalkulátor */
 /* Index summary — 2×2 grid so every label stays fully readable (no truncation) */
-.calc-idx { display: grid; grid-template-columns: 1fr 1fr; padding: 0; }
-.calc-idx .ci { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 20px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.calc-idx .ci:nth-child(2n) { border-right: 0; }
-.calc-idx .ci:nth-last-child(-n+2) { border-bottom: 0; }
-.ci-v { font-family: var(--font-mono); font-size: 27px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; }
-.ci-l { font-size: 12.5px; color: var(--ink-2); }
+/* Stat hero — one monumental figure + a quiet supporting trio (focal point, scale contrast). Reused across screens. */
+.stat-hero { text-align: center; padding: 10px 8px 4px; margin-bottom: 14px; }
+.stat-hero-v { font-family: var(--font-mono); font-size: 66px; font-weight: 600; color: var(--ink);
+  line-height: .95; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.stat-hero-l { font-size: 13px; color: var(--ink-2); margin-top: 10px; }
+.stat-hero-sub { display: flex; margin-top: 22px; border-top: 1px solid var(--line); }
+.chs { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px 6px 2px; }
+.chs + .chs { border-left: 1px solid var(--line); }
+.chs-v { font-family: var(--font-mono); font-size: 20px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.chs-l { font-size: 12px; color: var(--ink-3); }
 /* Row: name + meta on top (full width, no truncation), grade picker centered below */
 .calc-row { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .calc-row:last-child { border-bottom: 0; }

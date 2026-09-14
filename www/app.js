@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.247";
+const APP_VERSION = "v0.248";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1631,6 +1631,15 @@ function renderGrades() {
   }
   const idx = gr.averages && gr.averages.indices, perTerm = (gr.averages && gr.averages.perTerm) || [];
   let html = "";
+  // Headline: the corrected credit index is the number students care about most — render it monumentally.
+  if (idx && (idx.korrigalt != null || idx.kreditIndex != null)) {
+    const heroV = idx.korrigalt != null ? idx.korrigalt : idx.kreditIndex;
+    const heroL = (idx.korrigalt != null ? "Korrigált kreditindex" : "Kreditindex") + (idx.termName ? " · " + idx.termName : "");
+    const showSub = idx.korrigalt != null && idx.kreditIndex != null;
+    html += `<div class="stat-hero"><div class="stat-hero-v">${esc(String(heroV))}</div><div class="stat-hero-l">${esc(heroL)}</div>`
+      + (showSub ? `<div class="stat-hero-sub"><div class="chs"><span class="chs-v">${esc(String(idx.kreditIndex))}</span><span class="chs-l">Kreditindex (korrekció nélkül)</span></div></div>` : "")
+      + `</div>`;
+  }
   // Megajánlott jegyek — accept/reject right here.
   const offered = gr.offered || [];
   if (offered.length) {
@@ -1884,11 +1893,13 @@ function renderCalc() {
   if (!calcTerm || terms.indexOf(calcTerm) < 0) calcTerm = terms[0];
   const rows = calcRows(calcTerm), c = calcCompute(rows);
   let html = `<div class="controls" style="margin-bottom:12px"><button class="period-btn" id="calc-term" type="button"><span>${esc(calcTerm)}</span>${icon("down")}</button></div>`;
-  html += `<div class="card calc-idx">`
-    + `<div class="ci"><span class="ci-v">${cf2(c.atlag)}</span><span class="ci-l">Átlag</span></div>`
-    + `<div class="ci"><span class="ci-v">${cf2(c.suly)}</span><span class="ci-l">Súlyozott</span></div>`
-    + `<div class="ci"><span class="ci-v">${cf2(c.ki)}</span><span class="ci-l">Kreditindex</span></div>`
-    + `<div class="ci"><span class="ci-v">${cf2(c.kki)}</span><span class="ci-l">Korrigált</span></div></div>`;
+  html += `<div class="stat-hero">`
+    + `<div class="stat-hero-v">${cf2(c.suly)}</div><div class="stat-hero-l">Súlyozott átlag</div>`
+    + `<div class="stat-hero-sub">`
+    + `<div class="chs"><span class="chs-v">${cf2(c.atlag)}</span><span class="chs-l">Átlag</span></div>`
+    + `<div class="chs"><span class="chs-v">${cf2(c.ki)}</span><span class="chs-l">Kreditindex</span></div>`
+    + `<div class="chs"><span class="chs-v">${cf2(c.kki)}</span><span class="chs-l">Korrigált</span></div>`
+    + `</div></div>`;
   // Saved goal for this term → coloured status (Elérve / Haladó / Nem érhető el).
   const goal = (state.calcGoals || {})[calcTerm];
   if (goal && goal.val != null) {
