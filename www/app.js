@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.255";
+const APP_VERSION = "v0.256";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2275,7 +2275,9 @@ $("ics-save").onclick = () => {
 };
 $("btn-ics").onclick = openIcs;
 $("tt-refresh").onclick = fetchTimetable;
-{ const ti = $("tt-image"); if (ti) ti.onclick = saveTimetableImage; }
+{ const ti = $("tt-image"); if (ti) ti.onclick = () => openExportAt("orarend-het"); }
+// Megnyitja az Export képernyőt egy adott típussal előválasztva (pl. az órarend kép-gombjáról).
+function openExportAt(id) { if (typeof EXPORTS !== "undefined" && EXPORTS.some((e) => e.id === id)) { exportCfg.what = id; exportCfg.f = exportDefaults(exportDef()); } pushScreen("tab-export"); }
 // ---- Órarend képként (a heti nézet PNG-be, megosztható) ----
 function weekClassesFrom(mon) { // mondayOf() lentebb van definiálva (függvénydeklaráció → hoistolódik)
   const end = new Date(mon); end.setDate(mon.getDate() + 7);
