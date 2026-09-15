@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.250";
+const APP_VERSION = "v0.251";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2387,7 +2387,8 @@ function exPalette() {
   const cs = getComputedStyle(document.documentElement); const col = (n, d) => { const v = (cs.getPropertyValue(n) || "").trim(); return v || d; };
   return { bg: col("--bg", "#0e1116"), card: col("--card", "#161a21"), fg: col("--fg", "#e8eaed"), muted: col("--muted", "#9aa0a6"), line: col("--line", "#2a2f37"), accent: (typeof widgetAccentHex === "function" ? widgetAccentHex() : "") || "#f5b221" };
 }
-function exWho() { return [state.neptunCode || state.username || "", state.university || ""].filter(Boolean).join(" · "); }
+// Megosztható képre SOHA nem tesszük rá a Neptun kódot/belépési nevet — csak az egyetemet.
+function exWho() { return state.university || ""; }
 // Bizonyítvány-kép egy félév jegyeiről: fejléc + tárgytáblázat (Kód · Tárgy · Kr · Jegy) + átlag lábléc.
 function exportCertificate(term) {
   const subs = (term.subjects || []).filter((s) => s.subject || s.code);
