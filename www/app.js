@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.254";
+const APP_VERSION = "v0.255";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2443,6 +2443,9 @@ function exWeeks(sem) { const seen = {}; (visibleClassEvents() || []).forEach((e
 function exWeekLabel(ts, i) { const m = new Date(ts); return (i + 1) + ". hét · " + TT_MON[m.getMonth()] + " " + m.getDate() + "."; }
 function exDays(sem) { const seen = {}; (visibleClassEvents() || []).forEach((e) => { if (!exInSem(e.S, sem)) return; const d = new Date(e.S); d.setHours(0, 0, 0, 0); seen[d.getTime()] = 1; }); return Object.keys(seen).map(Number).sort((a, b) => a - b); }
 function exSemFilter() { return { id: "sem", label: "Félév", options: () => exSemList().map((s) => ({ v: s.key, label: s.key })) }; }
+function exSemFilterAll() { return { id: "sem", label: "Félév", options: () => [{ v: "", label: "Mind" }].concat(exSemList().map((s) => ({ v: s.key, label: s.key }))) }; }
+// Pénzügyi/időszak tétel egy félévbe esik-e: elsődlegesen a term mező, különben a megadott dátum tartomány szerint.
+function exItemInSem(term, dateVal, sem) { if (!sem) return true; if (term && term === sem) return true; if (term && exSemList().some((s) => s.key === term)) return false; const d = dateVal ? new Date(dateVal) : null; return d && !isNaN(d) ? exInSem(d, sem) : false; }
 function exGradeOf(code) { let hit = null; if (!code) return null; exGradeTerms().forEach((t) => (t.subjects || []).forEach((s) => { if (s.code === code) hit = s; })); return hit; }
 const EXPORTS = [
   { id: "orarend-het", label: "Órarend · heti", group: "Órarend",
@@ -2462,7 +2465,7 @@ const EXPORTS = [
     },
     name: (f) => "orarend-" + exFmtDate(new Date(+f.day)) },
   { id: "vizsgak", label: "Vizsgák, számonkérések", group: "Órarend",
-    filters: [{ id: "sem", label: "Félév", options: () => [{ v: "", label: "Mind" }].concat(exSemList().map((s) => ({ v: s.key, label: s.key }))) }, { id: "scope", label: "Mit", options: () => [{ v: "next", label: "Csak a közelgők" }, { v: "all", label: "Összes" }] }],
+    filters: [exSemFilterAll(), { id: "scope", label: "Mit", options: () => [{ v: "next", label: "Csak a közelgők" }, { v: "all", label: "Összes" }] }],
     ok: () => (examEvents() || []).length > 0,
     doc: (f) => {
       const now = Date.now();
@@ -2551,48 +2554,52 @@ const EXPORTS = [
     },
     name: (f) => "mintatanterv-" + (f.st || "all") },
   { id: "penzugy", label: "Pénzügyi kivonat", group: "Pénzügy",
-    filters: [{ id: "kind", label: "Mit", options: () => [{ v: "topay", label: "Befizetendő" }, { v: "imp", label: "Kiírt tételek" }, { v: "tx", label: "Tranzakciók" }, { v: "inv", label: "Számlák" }] }],
+    filters: [{ id: "kind", label: "Mit", options: () => [{ v: "topay", label: "Befizetendő" }, { v: "imp", label: "Kiírt tételek" }, { v: "tx", label: "Tranzakciók" }, { v: "inv", label: "Számlák" }] }, exSemFilterAll()],
     ok: () => !!(state.finance && state.finance.fetchedAt),
     doc: (f) => {
-      const fi = state.finance || {};
-      if (f.kind === "tx") return { title: "Tranzakciók", subtitle: (fi.transactions || []).length + " tétel",
-        columns: [{ label: "Dátum", w: 150, dim: true }, { label: "Megnevezés" }, { label: "Állapot", w: 150, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
-        rows: (fi.transactions || []).map((t) => [exFmtDate(t.date), t.note || t.type || "", t.status || "", (t.sign || "") + ftFt(t.value, t.currency)]) };
-      if (f.kind === "inv") return { title: "Számlák", subtitle: (fi.invoices || []).length + " db",
-        columns: [{ label: "Dátum", w: 150, dim: true }, { label: "Megnevezés" }, { label: "Sorszám", w: 190, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
-        rows: (fi.invoices || []).map((v) => [exFmtDate(v.date), v.name || "", v.number || "", ftFt(v.value, v.currency)]) };
-      if (f.kind === "imp") return { title: "Kiírt tételek", subtitle: (fi.impositions || []).length + " tétel",
-        columns: [{ label: "Megnevezés" }, { label: "Félév", w: 110, dim: true }, { label: "Határidő", w: 140, dim: true }, { label: "Állapot", w: 110, dim: true }, { label: "Összeg", w: 130, align: "right", strong: true }],
-        rows: (fi.impositions || []).map((i) => [i.name, i.term || "", exFmtDate(i.dueDate), i.paidAt ? "Rendezve" : "Nyitott", ftFt(i.value, i.currency)]) };
-      const tp = fi.toPay || [];
-      return { title: "Befizetendő", subtitle: tp.length + " tétel",
+      const fi = state.finance || {}, semTag = f.sem ? " · " + f.sem : "";
+      if (f.kind === "tx") { const list = (fi.transactions || []).filter((t) => exItemInSem(null, t.date, f.sem));
+        return { title: "Tranzakciók" + semTag, subtitle: list.length + " tétel",
+          columns: [{ label: "Dátum", w: 150, dim: true }, { label: "Megnevezés" }, { label: "Állapot", w: 150, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
+          rows: list.map((t) => [exFmtDate(t.date), t.note || t.type || "", t.status || "", (t.sign || "") + ftFt(t.value, t.currency)]) }; }
+      if (f.kind === "inv") { const list = (fi.invoices || []).filter((v) => exItemInSem(null, v.date, f.sem));
+        return { title: "Számlák" + semTag, subtitle: list.length + " db",
+          columns: [{ label: "Dátum", w: 150, dim: true }, { label: "Megnevezés" }, { label: "Sorszám", w: 190, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
+          rows: list.map((v) => [exFmtDate(v.date), v.name || "", v.number || "", ftFt(v.value, v.currency)]) }; }
+      if (f.kind === "imp") { const list = (fi.impositions || []).filter((i) => exItemInSem(i.term, i.dueDate, f.sem));
+        return { title: "Kiírt tételek" + semTag, subtitle: list.length + " tétel",
+          columns: [{ label: "Megnevezés" }, { label: "Félév", w: 110, dim: true }, { label: "Határidő", w: 140, dim: true }, { label: "Állapot", w: 110, dim: true }, { label: "Összeg", w: 130, align: "right", strong: true }],
+          rows: list.map((i) => [i.name, i.term || "", exFmtDate(i.dueDate), i.paidAt ? "Rendezve" : "Nyitott", ftFt(i.value, i.currency)]) }; }
+      const tp = (fi.toPay || []).filter((i) => exItemInSem(i.term, i.dueDate, f.sem));
+      return { title: "Befizetendő" + semTag, subtitle: tp.length + " tétel",
         columns: [{ label: "Megnevezés" }, { label: "Tárgy", w: 200, dim: true }, { label: "Határidő", w: 150, dim: true }, { label: "Összeg", w: 130, align: "right", strong: true }],
         rows: tp.map((i) => [i.name, i.subjectName || "", exFmtDate(i.dueDate), ftFt(i.value, i.currency)]),
         footer: "Összesen " + ftFt(tp.reduce((a, i) => a + (+i.value || 0), 0), "HUF") };
     },
-    name: (f) => "penzugy-" + (f.kind || "topay") },
+    name: (f) => "penzugy-" + (f.kind || "topay") + (f.sem ? "-" + f.sem : "") },
   { id: "osztondij", label: "Ösztöndíjak, kifizetések", group: "Pénzügy",
-    filters: [], ok: () => !!(state.finance && (state.finance.scholarships || []).length),
-    doc: () => {
-      const s = ((state.finance || {}).scholarships) || [];
-      return { title: "Ösztöndíjak, kifizetések", subtitle: s.length + " tétel",
+    filters: [exSemFilterAll()], ok: () => !!(state.finance && (state.finance.scholarships || []).length),
+    doc: (f) => {
+      const s = (((state.finance || {}).scholarships) || []).filter((x) => exItemInSem(x.term, x.date, f.sem));
+      return { title: "Ösztöndíjak, kifizetések" + (f.sem ? " · " + f.sem : ""), subtitle: s.length + " tétel",
         columns: [{ label: "Megnevezés" }, { label: "Félév", w: 120, dim: true }, { label: "Dátum", w: 150, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
         rows: s.map((x) => [x.name, x.term || "", exFmtDate(x.date), ftFt(x.amount, x.currency)]),
         footer: "Összesen " + ftFt(s.reduce((a, x) => a + (+x.amount || 0), 0), "HUF") };
     },
-    name: () => "osztondijak" },
+    name: (f) => "osztondijak" + (f.sem ? "-" + f.sem : "") },
   { id: "idoszakok", label: "Időszakok, határidők", group: "Egyéb",
-    filters: [{ id: "scope", label: "Mit", options: () => [{ v: "open", label: "Aktív és közelgő" }, { v: "all", label: "Összes" }] }],
+    filters: [exSemFilterAll(), { id: "scope", label: "Mit", options: () => [{ v: "open", label: "Aktív és közelgő" }, { v: "all", label: "Összes" }] }],
     ok: () => !!(state.periods && (state.periods.items || []).length),
     doc: (f) => {
       const now = Date.now();
       let list = (((state.periods || {}).items) || []).slice().sort((a, b) => new Date(a.from) - new Date(b.from));
+      if (f.sem) list = list.filter((p) => exItemInSem(p.termName || p.term, p.from, f.sem));
       if (f.scope !== "all") list = list.filter((p) => !p.to || new Date(p.to).getTime() >= now);
-      return { title: "Időszakok, határidők", subtitle: f.scope === "all" ? "Összes" : "Aktív és közelgő",
+      return { title: "Időszakok, határidők" + (f.sem ? " · " + f.sem : ""), subtitle: [f.sem || "Minden félév", f.scope === "all" ? "összes" : "aktív és közelgő"].join(" · "),
         columns: [{ label: "Időszak", strong: true }, { label: "Típus", w: 230, dim: true }, { label: "Kezdet", w: 150 }, { label: "Vége", w: 150 }],
         rows: list.map((p) => [p.name || p.type, p.type || "", exFmtDate(p.from), exFmtDate(p.to)]) };
     },
-    name: (f) => "idoszakok-" + (f.scope || "open") },
+    name: (f) => "idoszakok-" + (f.sem ? f.sem + "-" : "") + (f.scope || "open") },
 ];
 // ---- Export képernyő: összeállító + élő előnézet ----
 let exportCfg = { what: "orarend-het", f: {} };
@@ -2609,7 +2616,10 @@ function exportDefaults(def) {
   const f = {};
   (def.filters || []).forEach((fl) => {
     const opts = fl.options(f) || [];
-    if (fl.id === "sem") { let cur = ""; try { cur = (typeof semObj === "function") ? semObj(new Date()).key : ""; } catch (e) {} f.sem = opts.some((o) => o.v === cur) ? cur : (opts.length ? opts[opts.length - 1].v : ""); }
+    if (fl.id === "sem") {
+      if (opts.some((o) => o.v === "")) { f.sem = ""; } // van "Mind" opció (pénzügy/időszak/vizsga) → alapból Mind
+      else { let cur = ""; try { cur = (typeof semObj === "function") ? semObj(new Date()).key : ""; } catch (e) {} f.sem = opts.some((o) => o.v === cur) ? cur : (opts.length ? opts[opts.length - 1].v : ""); }
+    }
     else f[fl.id] = opts.length ? opts[0].v : "";
   });
   if (def.id === "orarend-het") { const ws = exWeeks(f.sem), now = mondayOf(new Date()).getTime(); const hit = ws.find((t) => t >= now); f.week = String(hit != null ? hit : (ws[0] || now)); }
