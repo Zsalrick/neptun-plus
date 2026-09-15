@@ -297,3 +297,52 @@ le, és nem kell fizetniük.
 7. Teszt end-to-end egy tesztelői fiókkal.
 
 Kérdés/nem világos rész esetén írj a repo-ban, és frissítjük ezt a fájlt.
+
+---
+
+## 11. Email küldés (feliratkozás-megerősítés + tesztelő jelentkezés) — a WEBSITE Workerben
+
+Ezt a website agent csinálja, mert a `/api/subscribe` és `/api/tester-signup` a website Workerében
+(`kreditplus-web`) él (lásd a website infra memóriát).
+
+**Fontos buktató:** a **Cloudflare Email Routing CSAK BEJÖVŐ** (forward a Gmailre). Kimenő tranzakciós
+emailt (megerősítés) **nem tud küldeni**. Ahhoz külső tranzakciós email-API kell a Workerből `fetch`-csel.
+
+### Szolgáltató: Resend (ajánlott)
+- Cloudflare Workers-barát, egy `fetch` hívás, ingyenes keret (~100 email/nap, 3 000/hó) bőven elég az
+  induláshoz. Alternatíva: Postmark, Brevo, SES. (A régi ingyenes MailChannels+Cloudflare út 2024-ben
+  megszűnt, azt NE.)
+- **Küldő cím:** `noreply@kreditplus.hu`. A Resendhez **`send.kreditplus.hu` aldomaint** verifikálj, így
+  a gyökér MX (Email Routing bejövő) érintetlen marad.
+- **DNS (Cloudflare):** a Resend által adott **DKIM** (CNAME/TXT), **SPF** (TXT) és egy **DMARC** (TXT,
+  pl. `v=DMARC1; p=none; rua=mailto:...`). DKIM+SPF+DMARC nélkül spambe megy. Teszt: mail-tester.com.
+- **Secret:** `RESEND_API_KEY` (Worker secret).
+
+### Worker → Resend (vázlat)
+```js
+async function sendEmail(env, to, subject, html) {
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + env.RESEND_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: "Kredit+ <noreply@kreditplus.hu>", to, subject, html }),
+  });
+}
+```
+
+### Feliratkozás = DUPLA opt-in
+1. `POST /api/subscribe {email}` → `subscribers` sor `confirmed=0`, `token=uuid`.
+2. `sendEmail(email, "Erősítsd meg a feliratkozást", ...)` egy linkkel:
+   `https://kreditplus.hu/api/confirm?token=<token>`.
+3. `GET /api/confirm?token=` → a sort `confirmed=1`-re állítja, és egy „Megerősítve" oldalt mutat.
+   (GDPR + jobb kézbesíthetőség, kevesebb spam-panasz.)
+
+### Tesztelő jelentkezés
+1. `POST /api/tester-signup {email, neptunCode?}` → `testers` sor.
+2. `sendEmail(email, "Köszönjük a jelentkezést", ...)`: köszönet + következő lépések. Tartalmazza, hogy
+   **jóváhagyás után** felkerül a Google Play tesztelői listára, és **élethosszig tartó (lifetime)**
+   prémiumot kap (lásd §6 Tesztelők). A Play-listára vétel + a **lifetime kód** kiadása kézi/utólagos
+   (nem automatikus, hogy csak valódi tesztelők kapják).
+
+### Copy szabály
+Az email szövege is a DESIGN.md szerint: nincs gondolatjel (– —), tömör, magyar. Legyen benne
+leiratkozási/adatkezelési lábléc (GDPR).
