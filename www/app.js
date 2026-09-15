@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.253";
+const APP_VERSION = "v0.254";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2436,18 +2436,22 @@ function exDoc(spec) {
 // ---- Export típusok ----
 function exGradeTerms() { return (state.grades && state.grades.terms) || []; }
 function exCourseSems() { const c = state.courses || {}; const s = (c.semesters && c.semesters.length) ? c.semesters : [...new Set((c.list || []).map((x) => x.semester))]; return s.filter(Boolean); }
-function exWeeks() { const seen = {}; (visibleClassEvents() || []).forEach((e) => { seen[mondayOf(e.S).getTime()] = 1; }); return Object.keys(seen).map(Number).sort((a, b) => a - b); }
+function exSemList() { try { return (typeof allSemesters === "function" ? allSemesters() : []).slice().sort((a, b) => a.start - b.start); } catch (e) { return []; } }
+function exSemRange(sem) { if (!sem) return null; try { return semKeyToObj(sem); } catch (e) { return null; } }
+function exInSem(d, sem) { const r = exSemRange(sem); return !r || (d >= r.start && d < r.end); }
+function exWeeks(sem) { const seen = {}; (visibleClassEvents() || []).forEach((e) => { if (!exInSem(e.S, sem)) return; seen[mondayOf(e.S).getTime()] = 1; }); return Object.keys(seen).map(Number).sort((a, b) => a - b); }
 function exWeekLabel(ts, i) { const m = new Date(ts); return (i + 1) + ". hét · " + TT_MON[m.getMonth()] + " " + m.getDate() + "."; }
-function exDays() { const seen = {}; (visibleClassEvents() || []).forEach((e) => { const d = new Date(e.S); d.setHours(0, 0, 0, 0); seen[d.getTime()] = 1; }); return Object.keys(seen).map(Number).sort((a, b) => a - b); }
+function exDays(sem) { const seen = {}; (visibleClassEvents() || []).forEach((e) => { if (!exInSem(e.S, sem)) return; const d = new Date(e.S); d.setHours(0, 0, 0, 0); seen[d.getTime()] = 1; }); return Object.keys(seen).map(Number).sort((a, b) => a - b); }
+function exSemFilter() { return { id: "sem", label: "Félév", options: () => exSemList().map((s) => ({ v: s.key, label: s.key })) }; }
 function exGradeOf(code) { let hit = null; if (!code) return null; exGradeTerms().forEach((t) => (t.subjects || []).forEach((s) => { if (s.code === code) hit = s; })); return hit; }
 const EXPORTS = [
   { id: "orarend-het", label: "Órarend · heti", group: "Órarend",
-    filters: [{ id: "week", label: "Hét", options: () => exWeeks().map((ts, i) => ({ v: String(ts), label: exWeekLabel(ts, i) })) }],
+    filters: [exSemFilter(), { id: "week", label: "Hét", options: (f) => exWeeks(f.sem).map((ts, i) => ({ v: String(ts), label: exWeekLabel(ts, i) })) }],
     ok: () => exWeeks().length > 0,
     canvas: (f) => timetableCanvas(new Date(+f.week)),
     name: (f) => "orarend-" + exFmtDate(new Date(+f.week)) },
   { id: "orarend-nap", label: "Órarend · napi", group: "Órarend",
-    filters: [{ id: "day", label: "Nap", options: () => exDays().map((ts) => ({ v: String(ts), label: exFmtDate(ts) })) }],
+    filters: [exSemFilter(), { id: "day", label: "Nap", options: (f) => exDays(f.sem).map((ts) => ({ v: String(ts), label: exFmtDate(ts) })) }],
     ok: () => exDays().length > 0,
     doc: (f) => {
       const d0 = new Date(+f.day), d1 = new Date(d0); d1.setDate(d0.getDate() + 1);
@@ -2458,17 +2462,18 @@ const EXPORTS = [
     },
     name: (f) => "orarend-" + exFmtDate(new Date(+f.day)) },
   { id: "vizsgak", label: "Vizsgák, számonkérések", group: "Órarend",
-    filters: [{ id: "scope", label: "Mit", options: () => [{ v: "next", label: "Csak a közelgők" }, { v: "all", label: "Összes" }] }],
+    filters: [{ id: "sem", label: "Félév", options: () => [{ v: "", label: "Mind" }].concat(exSemList().map((s) => ({ v: s.key, label: s.key }))) }, { id: "scope", label: "Mit", options: () => [{ v: "next", label: "Csak a közelgők" }, { v: "all", label: "Összes" }] }],
     ok: () => (examEvents() || []).length > 0,
     doc: (f) => {
       const now = Date.now();
       let list = (examEvents() || []).slice().sort((a, b) => a.S - b.S);
+      if (f.sem) list = list.filter((e) => exInSem(e.S, f.sem));
       if (f.scope !== "all") list = list.filter((e) => e.E.getTime() >= now);
-      return { title: "Vizsgák, számonkérések", subtitle: f.scope === "all" ? "Összes" : "Közelgő",
+      return { title: "Vizsgák, számonkérések", subtitle: [f.sem || "Minden félév", f.scope === "all" ? "összes" : "közelgő"].join(" · "),
         columns: [{ label: "Dátum", w: 150, strong: true }, { label: "Idő", w: 100 }, { label: "Esemény" }, { label: "Hely", w: 160, dim: true }],
         rows: list.map((e) => { const p = e.manual ? null : parseClassSummary(e.summary); return [exFmtDate(e.S), hm(e.S), (p && p.name) || e.summary, e.location]; }) };
     },
-    name: () => "vizsgak" },
+    name: (f) => "vizsgak" + (f.sem ? "-" + f.sem : "") },
   { id: "jegyek-felev", label: "Jegyek · félév", group: "Tanulmányok",
     filters: [{ id: "term", label: "Félév", options: () => exGradeTerms().map((t) => ({ v: t.termName, label: t.termName })) }],
     ok: () => exGradeTerms().length > 0,
@@ -2599,12 +2604,16 @@ function exportEnsureFilters() {
     if (!opts.some((o) => o.v === f[fl.id])) f[fl.id] = opts.length ? opts[0].v : "";
   });
 }
-// Ésszerű kezdőérték: az aktuális (vagy az első olyan) hét/nap, ahol már van óra.
+// Ésszerű kezdőérték: az aktuális félév, azon belül az aktuális (vagy az első olyan) hét/nap, ahol van óra.
 function exportDefaults(def) {
   const f = {};
-  (def.filters || []).forEach((fl) => { const opts = fl.options(f) || []; f[fl.id] = opts.length ? opts[0].v : ""; });
-  if (def.id === "orarend-het") { const ws = exWeeks(), now = mondayOf(new Date()).getTime(); const hit = ws.find((t) => t >= now); f.week = String(hit != null ? hit : (ws[0] || now)); }
-  if (def.id === "orarend-nap") { const ds = exDays(), t0 = new Date(); t0.setHours(0, 0, 0, 0); const hit = ds.find((t) => t >= t0.getTime()); f.day = String(hit != null ? hit : (ds[0] || t0.getTime())); }
+  (def.filters || []).forEach((fl) => {
+    const opts = fl.options(f) || [];
+    if (fl.id === "sem") { let cur = ""; try { cur = (typeof semObj === "function") ? semObj(new Date()).key : ""; } catch (e) {} f.sem = opts.some((o) => o.v === cur) ? cur : (opts.length ? opts[opts.length - 1].v : ""); }
+    else f[fl.id] = opts.length ? opts[0].v : "";
+  });
+  if (def.id === "orarend-het") { const ws = exWeeks(f.sem), now = mondayOf(new Date()).getTime(); const hit = ws.find((t) => t >= now); f.week = String(hit != null ? hit : (ws[0] || now)); }
+  if (def.id === "orarend-nap") { const ds = exDays(f.sem), t0 = new Date(); t0.setHours(0, 0, 0, 0); const hit = ds.find((t) => t >= t0.getTime()); f.day = String(hit != null ? hit : (ds[0] || t0.getTime())); }
   return f;
 }
 function buildExportCanvas() {
