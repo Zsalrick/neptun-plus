@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.258";
+const APP_VERSION = "v0.259";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5127,17 +5127,18 @@ async function notifyChanges() {
     }
   }
   if (!news.length) return;
-  // 1) In-app értesítési központ — mindig, akkor is, ha az OS push tiltva van.
-  news.slice(0, 6).forEach((n) => logNotif({ kind: n.kind, title: n.title, body: n.body, detail: n.detail, target: n.target }));
-  // 2) OS push — csak ha van engedély.
+  // 1) In-app értesítési központ — mindig, akkor is, ha az OS push tiltva van. Megjegyezzük az id-t,
+  //    hogy a push megnyomásakor pont ezt a bejegyzést tudjuk megnyitni.
+  const logged = news.slice(0, 6).map((n) => ({ n, id: logNotif({ kind: n.kind, title: n.title, body: n.body, detail: n.detail, target: n.target }) }));
+  // 2) OS push — csak ha van engedély. A push a saját napló-bejegyzését nyitja meg (extra.notifId).
   const ln = LN(); if (!ln) return;
   try { const p = await ln.checkPermissions(); if (p.display !== "granted") return; } catch (e) { return; }
-  const notifs = news.slice(0, 6).map((n, i) => ({ id: 1300000000 + i, title: n.title, body: n.body, schedule: { at: new Date(Date.now() + 1500 + i * 400), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { changeKind: n.kind } }));
+  const notifs = logged.map((L, i) => ({ id: 1300000000 + i, title: L.n.title, body: L.n.body, schedule: { at: new Date(Date.now() + 1500 + i * 400), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { changeKind: L.n.kind, notifId: L.id } }));
   try { await ln.schedule({ notifications: notifs }); } catch (e) { /* ignore */ }
 }
 // ---- Értesítési központ (in-app napló) ----
 function pruneNotifLog() { const cut = Date.now() - 30 * 864e5; state.notifLog = (state.notifLog || []).filter((n) => n.at >= cut).slice(0, 200); }
-function logNotif(o) { if (!o) return; state.notifLog = state.notifLog || []; state.notifLog.unshift({ id: uid(), at: Date.now(), read: false, kind: o.kind || "", title: o.title || "", body: o.body || "", detail: o.detail || "", target: o.target || null }); pruneNotifLog(); saveState(); updateNotifBell(); }
+function logNotif(o) { if (!o) return null; const id = uid(); state.notifLog = state.notifLog || []; state.notifLog.unshift({ id, at: Date.now(), read: false, kind: o.kind || "", title: o.title || "", body: o.body || "", detail: o.detail || "", target: o.target || null }); pruneNotifLog(); saveState(); updateNotifBell(); return id; }
 function notifUnread() { return (state.notifLog || []).filter((n) => !n.read).length; }
 function updateNotifBell() { const b = $("notif-bell-badge"); if (!b) return; const n = notifUnread(); b.textContent = n > 99 ? "99+" : String(n); b.hidden = !n; }
 const NOTIF_ICON = { grades: "note", messages: "mail", finance: "wallet", timetable: "calendar", brief: "clock", periods: "clock" };
@@ -5170,6 +5171,7 @@ function renderNotifDetail() {
   const n = (state.notifLog || []).find((x) => x.id === detailNotifId);
   const ttl = $("notif-title"); if (ttl) ttl.textContent = n ? n.title : "Értesítés";
   if (!n) { host.innerHTML = `<div class="dash-empty" style="padding:32px">Az értesítés már nem elérhető.</div>`; return; }
+  if (!n.read) { n.read = true; saveState(); updateNotifBell(); } // push-ból megnyitva is olvasottá válik
   const when = new Date(n.at);
   host.innerHTML = `<div class="card kv" style="padding:16px"><div class="dash-label" style="margin:0 0 6px">${esc(n.title)}</div>`
     + `<div class="hint" style="margin:0 0 12px">${esc(dayHeading(when))} · ${esc(hm(when))}</div>`
@@ -6057,8 +6059,10 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
       const ln = LN();
       if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => {
         const x = ev && ev.notification && ev.notification.extra; if (!x) return;
-        // Változás-értesítők → a megfelelő képernyőre viszünk, nem a generikus emlékeztető-sheetre.
-        if (x.changeKind) { const dest = { messages: "tab-messages", grades: "tab-grades", finance: "tab-fin-topay", timetable: "tab-timetable" }[x.changeKind]; if (dest) { try { openTab(dest); } catch (e) {} } return; }
+        // Változás-értesítő push → a saját bejegyzését nyitja az Értesítésekben (részletes leírás + Megnyitás).
+        if (x.notifId && (state.notifLog || []).some((n) => n.id === x.notifId)) { try { detailNotifId = x.notifId; pushScreen("tab-notif"); } catch (e) {} return; }
+        // Régi/háttér változás-push (nincs bejegyzés) → az Értesítések lista.
+        if (x.changeKind) { try { pushScreen("tab-notifs"); } catch (e) {} return; }
         if (x.kind === "brief") { try { openTab("tab-timetable"); } catch (e) {} return; } // reggeli összefoglaló → Órarend
         showNotifAlert(x);
       }); } catch (e) {} }
