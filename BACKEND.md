@@ -5,9 +5,32 @@ Cél: a website agent fel tudja építeni a Cloudflare oldalt (infra + deploy), 
 (MAIN) API-igényeivel** tökéletesen illeszkedjen. Az API-szerződés itt van rögzítve — mindkét track
 ehhez épít.
 
-> Rövid üzleti cél: 299 Ft/hó előfizetés, 14 napos ingyenes próba. Aki **ajánlói kóddal** regisztrál,
-> 14 helyett **31 nap** próbát kap, és a **kód gazdája is +31 napot** kap. Fizetés és azonosítás a
-> **Google Play Billing**-en keresztül, ezért **nincs saját jelszavas fiók**.
+> Rövid üzleti cél: előfizetés (havi / féléves / éves), 14 napos ingyenes próba. Aki **ajánlói kóddal**
+> regisztrál, 14 helyett **31 nap** próbát kap, és a **kód gazdája is +31 napot** kap. Fizetés és
+> azonosítás a **Google Play Billing**-en keresztül, ezért **nincs saját jelszavas fiók**.
+
+---
+
+## 0. Csomagok / árazás (FONTOS — a website MINDHÁRMAT mutassa)
+
+**Három előfizetési csomag van, nem csak a havi.** A weboldal és a Play Console is mindhármat
+tartalmazza:
+
+| Csomag | Számlázási időszak | Play base plan | Ár |
+|---|---|---|---|
+| Havi | 1 hónap (P1M) | `monthly` | **299 Ft / hó** |
+| Féléves | 6 hónap (P6M) | `semester` | **KITÖLTENDŐ** (a user adja meg) |
+| Éves | 12 hónap (P1Y) | `yearly` | **KITÖLTENDŐ** (a user adja meg) |
+
+- **Google Play felépítés:** EGY előfizetési termék (`kreditplus`), alatta **három base plan**
+  (monthly / semester / yearly). A 6 hónap (P6M) és az 1 év (P1Y) is támogatott Play billing-időszak.
+- A féléves és éves csomagnál érdemes látható **megtakarítást** mutatni a havihoz képest (pl. „2 hónap
+  ajándék" jellegű üzenet) — a konkrét árakat a user adja meg, addig ne találj ki számot.
+- Az app és a backend a base plan / product azonosítóból tudja, melyik csomag aktív; az entitlement
+  szempontjából mindegy, a lejárati dátum (`play_until`) számít.
+
+> A féléves és éves ÁR még hiányzik. Amíg a user meg nem adja, a weboldalon a havi (299 Ft) menjen ki,
+> a másik kettő helyére „hamarosan" vagy üres ár, de a CSOMAG maga jelenjen meg.
 
 ---
 
@@ -239,8 +262,8 @@ visszatérítéskor a bónusz visszavonása. Nem kötelező az MVP-hez, de a hel
    Integrity-vel.*
 2. **Van felső korlát** az ajánlásból szerezhető napokra? (pl. max 12 hónap). *Ajánlásom: igen, pl. 365 nap.*
 3. **Trial hossz** kód nélkül: 14 nap, kóddal 31 nap — fix? *Igen, hacsak nem akarsz kampányt.*
-4. **Előfizetés termék(ek):** csak havi (`kreditplus_monthly`, 299 Ft), vagy éves is? A `productId`-kat a
-   Play Console-ban te hozod létre, és ide beírjuk.
+4. **Előfizetés termék(ek):** rögzítve a §0-ban — EGY `kreditplus` termék, három base plan (monthly
+   299 Ft / semester / yearly). A féléves és éves ÁR a usertől még hiányzik → pótolni a §0 táblában.
 5. **API domain:** `api.<domain>` szub-domain vagy `/api/*` a Pages-en? *Ajánlásom: külön `api.` szub.*
 
 ---

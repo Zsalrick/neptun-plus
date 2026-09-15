@@ -106,13 +106,23 @@ Ha több Neptun-fiókod van, mindet kezelheted, és gyorsan váltasz köztük.
 
 ---
 
-## Miért fizetős (a 299 Ft/hó indoklása, ha kell egy blokk)
+## Árak és csomagok (FONTOS: három csomag van, mind menjen ki)
 
-- Egy kávénál is olcsóbb havonta, cserébe minden félévben időt és idegességet spórolsz.
-- Ingyenes próbaidőszakkal indul, hogy kipróbálhasd fizetés előtt.
+A weboldal **mindhárom** csomagot mutassa, ne csak a havit:
+
+| Csomag | Ár |
+|---|---|
+| Havi | 299 Ft / hó |
+| Féléves | KITÖLTENDŐ (a user adja meg) |
+| Éves | KITÖLTENDŐ (a user adja meg) |
+
+- A féléves és éves csomagnál mutass megtakarítást a havihoz képest (a konkrét összeget a user adja meg,
+  addig ne találj ki árat, a helyén „hamarosan" vagy üres).
+- Ingyenes próbaidőszakkal indul (14 nap, ajánlói kóddal 31 nap, lásd BACKEND.md).
 - Folyamatosan fejlődik, az új funkciók automatikusan érkeznek.
+- Egy kávénál is olcsóbb havonta, cserébe minden félévben időt és idegességet spórolsz.
 
-(A pontos próbaidő és az ajánlói kód részletei a BACKEND.md szerint: 14 nap, ajánlói kóddal 31 nap.)
+(A csomagok pontos Play-felépítése és a productId-k a BACKEND.md §0-ban.)
 
 ---
 
