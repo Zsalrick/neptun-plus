@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.252";
+const APP_VERSION = "v0.253";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2620,27 +2620,77 @@ function renderExport() {
   if (!avail.some((e) => e.id === exportCfg.what)) { exportCfg.what = avail[0].id; exportCfg.f = exportDefaults(exportDef()); }
   exportEnsureFilters();
   const def = exportDef();
-  const chip = (active, label, attrs) => `<button class="chip" ${attrs} type="button" style="${active ? "border-color:var(--brand-plus);color:var(--fg)" : "opacity:.7"}">${esc(label)}</button>`;
-  let h = `<div id="export-preview" style="min-height:120px;display:flex;justify-content:center;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:14px;overflow:auto"></div>`;
-  [...new Set(avail.map((e) => e.group))].forEach((g) => {
-    h += `<div class="dash-label">${esc(g)}</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">`
-      + avail.filter((e) => e.group === g).map((e) => chip(exportCfg.what === e.id, e.label, `data-what="${esc(e.id)}"`)).join("") + `</div>`;
-  });
+  const canCsv = !!def.doc;
+  // Tappable preview → opens the zoom viewer.
+  let h = `<button id="export-preview" class="export-preview" type="button" aria-label="Előnézet megnyitása nagyításhoz"></button>`
+    + `<div class="hint center" style="margin:2px 0 20px">Koppints az előnézetre a nagyításhoz.</div>`;
+  // What to export — a single grouped, searchable dropdown (was a wall of chips).
+  h += `<div class="dash-label">Mit exportálsz?</div>`
+    + `<button class="period-btn" id="exp-what" type="button" style="margin-bottom:16px"><span>${esc(def.label)}</span>${icon("down")}</button>`;
+  // Each parameter (hét, nap, félév…) — its own dropdown.
   (def.filters || []).forEach((fl) => {
     const opts = fl.options(exportCfg.f) || [];
     if (!opts.length) return;
-    h += `<div class="dash-label">${esc(fl.label)}</div><div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:4px">`
-      + opts.map((o) => chip(exportCfg.f[fl.id] === o.v, o.label, `data-f="${esc(fl.id)}" data-v="${esc(o.v)}"`)).join("") + `</div>`;
+    const cur = opts.find((o) => o.v === exportCfg.f[fl.id]) || opts[0];
+    h += `<div class="dash-label">${esc(fl.label)}</div>`
+      + `<button class="period-btn" data-fdd="${esc(fl.id)}" type="button" style="margin-bottom:16px"><span>${esc(cur.label)}</span>${icon("down")}</button>`;
   });
-  h += `<div style="display:flex;gap:10px;margin-top:16px">`
-    + `<button class="btn primary" id="exp-save" style="flex:1">${icon("download")} Mentés (PNG)</button>`
-    + `<button class="btn tonal" id="exp-csv" style="flex:0 0 auto">CSV</button></div>`;
+  // Save actions — stacked full width (PNG on top, CSV under it).
+  h += `<div class="export-actions">`
+    + `<button class="btn primary lg" id="exp-save">${icon("download")} Mentés képként (PNG)</button>`
+    + `<button class="btn tonal" id="exp-csv"${canCsv ? "" : " disabled"}>${icon("doc")} Mentés táblázatként (CSV)</button></div>`;
   host.innerHTML = h;
-  host.querySelectorAll("[data-what]").forEach((b) => b.onclick = () => { exportCfg.what = b.dataset.what; exportCfg.f = exportDefaults(exportDef()); renderExport(); });
-  host.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { exportCfg.f[b.dataset.f] = b.dataset.v; exportEnsureFilters(); renderExport(); });
+  $("exp-what").onclick = () => openList({
+    title: "Mit exportálsz?", searchable: avail.length > 8, selected: exportCfg.what,
+    items: avail.map((e) => ({ value: e.id, label: e.label, sub: e.group })),
+    onPick: (v) => { exportCfg.what = v; exportCfg.f = exportDefaults(exportDef()); renderExport(); },
+  });
+  host.querySelectorAll("[data-fdd]").forEach((btn) => {
+    const fid = btn.dataset.fdd, fl = (def.filters || []).find((x) => x.id === fid); if (!fl) return;
+    btn.onclick = () => {
+      const opts = fl.options(exportCfg.f) || [];
+      openList({ title: fl.label, searchable: opts.length > 8, selected: exportCfg.f[fid],
+        items: opts.map((o) => ({ value: o.v, label: o.label })),
+        onPick: (v) => { exportCfg.f[fid] = v; exportEnsureFilters(); renderExport(); } });
+    };
+  });
   { const b = $("exp-save"); if (b) b.onclick = exportSave; }
-  { const b = $("exp-csv"); if (b) b.onclick = exportCsv; }
+  { const b = $("exp-csv"); if (b && canCsv) b.onclick = exportCsv; }
+  { const p = $("export-preview"); if (p) p.onclick = () => { let cv = null; try { cv = buildExportCanvas(); } catch (e) {} if (cv) openExportZoom(cv); }; }
   renderExportPreview();
+}
+// Full-screen zoomable viewer for the export preview (pinch, drag-pan, double-tap to reset).
+function openExportZoom(srcCanvas) {
+  let url; try { url = srcCanvas.toDataURL("image/png"); } catch (e) { return; }
+  const ov = document.createElement("div"); ov.className = "zoom-ov";
+  ov.innerHTML = `<button class="zoom-close iconbtn" type="button" aria-label="Bezárás">${icon("x")}</button>`
+    + `<div class="zoom-stage"><img class="zoom-img" src="${url}" alt="Előnézet" draggable="false"></div>`
+    + `<div class="zoom-hint">Csippentéssel nagyíthatsz. Dupla koppintás a visszaállításhoz.</div>`;
+  document.body.appendChild(ov);
+  const img = ov.querySelector(".zoom-img"), stage = ov.querySelector(".zoom-stage");
+  let z = 1, tx = 0, ty = 0;
+  const apply = () => { img.style.transform = `translate(${tx}px,${ty}px) scale(${z})`; };
+  const close = () => ov.remove();
+  ov.querySelector(".zoom-close").onclick = close;
+  const pts = new Map(); let startDist = 0, startZ = 1, anchor = null, startTx = 0, startTy = 0, lastTap = 0;
+  stage.addEventListener("pointerdown", (e) => {
+    stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, e);
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; startDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); startZ = z; }
+    else { anchor = { x: e.clientX, y: e.clientY }; startTx = tx; startTy = ty; }
+  });
+  stage.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, e);
+    if (pts.size === 2 && startDist) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); z = Math.max(1, Math.min(6, startZ * (d / startDist))); apply(); }
+    else if (pts.size === 1 && z > 1 && anchor) { tx = startTx + (e.clientX - anchor.x); ty = startTy + (e.clientY - anchor.y); apply(); }
+  });
+  const up = (e) => {
+    pts.delete(e.pointerId); if (pts.size < 2) startDist = 0;
+    if (z <= 1.01) { z = 1; tx = 0; ty = 0; apply(); }
+    const now = Date.now(); if (now - lastTap < 300) { z = z > 1 ? 1 : 2.5; tx = 0; ty = 0; apply(); } lastTap = now;
+  };
+  stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+  // Tap the dark margin to close.
+  ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
 }
 function renderExportPreview() {
   const box = $("export-preview"); if (!box) return;
