@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.249";
+const APP_VERSION = "v0.250";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2295,9 +2295,14 @@ function cvWrap(ctx, text, x, y, maxW, lineH, maxLines) {
   ctx.fillText(cvClip(ctx, line, maxW), x, y + n * lineH);
 }
 async function saveTimetableImage() {
-  if (!isNative && !(window.cordova)) { /* preview: still allow via <a> download */ }
+  const cv = timetableCanvas();
+  if (!cv) { toast("Ezen a héten nincs órád."); return; }
+  const { mon } = currentWeekClasses();
+  await saveCanvasPng(cv, "orarend-" + mon.getFullYear() + "-" + (mon.getMonth() + 1) + "-" + mon.getDate() + ".png");
+}
+function timetableCanvas() {
   const { mon, list } = currentWeekClasses();
-  if (!list.length) { toast("Ezen a héten nincs órád."); return; }
+  if (!list.length) return null;
   let maxDow = 4; // legalább hétfő-péntek
   list.forEach((e) => { const d = (e.S.getDay() + 6) % 7; if (d > maxDow) maxDow = d; });
   const days = maxDow + 1;
@@ -2344,7 +2349,7 @@ async function saveTimetableImage() {
   });
   ctx.fillStyle = muted; ctx.font = "11px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic";
   ctx.fillText("Kredit+", W - pad, H - pad + 4);
-  await saveCanvasPng(cv, "orarend-" + mon.getFullYear() + "-" + (mon.getMonth() + 1) + "-" + mon.getDate() + ".png");
+  return cv;
 }
 // Közös mentés: PNG a Letöltések közé (natív), vagy <a> letöltés a böngészős előnézetben.
 async function saveCanvasPng(cv, name) {
@@ -2377,60 +2382,151 @@ async function saveCsv(name, csv) {
   }
 }
 function slugName(s) { return searchNorm(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "export"; }
-// Bizonyítvány-kép egy félév jegyeiről: fejléc (félév + azonosító), tárgytáblázat, átlagok lábléc.
+// Kanvasz témaszínek az app CSS-változóiból (a kép a választott témát követi).
+function exPalette() {
+  const cs = getComputedStyle(document.documentElement); const col = (n, d) => { const v = (cs.getPropertyValue(n) || "").trim(); return v || d; };
+  return { bg: col("--bg", "#0e1116"), card: col("--card", "#161a21"), fg: col("--fg", "#e8eaed"), muted: col("--muted", "#9aa0a6"), line: col("--line", "#2a2f37"), accent: (typeof widgetAccentHex === "function" ? widgetAccentHex() : "") || "#f5b221" };
+}
+function exWho() { return [state.neptunCode || state.username || "", state.university || ""].filter(Boolean).join(" · "); }
+// Bizonyítvány-kép egy félév jegyeiről: fejléc + tárgytáblázat (Kód · Tárgy · Kr · Jegy) + átlag lábléc.
 function exportCertificate(term) {
   const subs = (term.subjects || []).filter((s) => s.subject || s.code);
   const perTerm = ((state.grades && state.grades.averages && state.grades.averages.perTerm) || []).find((p) => p.termName === term.termName);
-  const scale = 2, W = 820, pad = 28, rowH = 30, headerH = 116, footH = perTerm ? 54 : 12;
+  const scale = 2, W = 820, pad = 30, rowH = 34, headerH = 118, footH = perTerm ? 62 : 16;
   const H = pad * 2 + headerH + (subs.length + 1) * rowH + footH;
   const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
   const ctx = cv.getContext("2d"); ctx.scale(scale, scale);
-  const cs = getComputedStyle(document.documentElement); const col = (n, d) => { const v = (cs.getPropertyValue(n) || "").trim(); return v || d; };
-  const bg = col("--bg", "#0e1116"), fg = col("--fg", "#e8eaed"), muted = col("--muted", "#9aa0a6"), line = col("--line", "#2a2f37");
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  const P = exPalette();
+  ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-  ctx.fillStyle = fg; ctx.font = "700 22px sans-serif"; ctx.fillText("Jegyek · " + term.termName, pad, pad + 24);
-  ctx.fillStyle = muted; ctx.font = "13px sans-serif"; ctx.fillText([state.neptunCode || state.username || "", state.university || ""].filter(Boolean).join(" · "), pad, pad + 46);
-  const xCode = pad, xName = pad + 100, xCr = W - pad - 200, xType = W - pad - 150, xGrade = W - pad - 6;
+  ctx.fillStyle = P.accent; ctx.font = "700 13px sans-serif"; ctx.fillText("KREDIT+", pad, pad + 12);
+  ctx.fillStyle = P.fg; ctx.font = "700 24px sans-serif"; ctx.fillText("Jegyek · " + term.termName, pad, pad + 42);
+  ctx.fillStyle = P.muted; ctx.font = "13px sans-serif"; ctx.fillText(exWho(), pad, pad + 64);
+  const xCode = pad, xName = pad + 128, xKr = W - pad - 116, xGrade = W - pad - 4;
   let y = pad + headerH;
-  ctx.font = "600 12px sans-serif"; ctx.fillStyle = muted;
-  ctx.fillText("Kód", xCode, y - 8); ctx.fillText("Tárgy", xName, y - 8); ctx.fillText("Kr", xCr, y - 8); ctx.fillText("Számonkérés", xType, y - 8);
-  ctx.textAlign = "right"; ctx.fillText("Jegy", xGrade, y - 8); ctx.textAlign = "left";
-  ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(pad, y + 0.5); ctx.lineTo(W - pad, y + 0.5); ctx.stroke();
+  ctx.font = "600 11px sans-serif"; ctx.fillStyle = P.muted;
+  ctx.fillText("KÓD", xCode, y - 9); ctx.fillText("TÁRGY", xName, y - 9); ctx.fillText("KR", xKr, y - 9);
+  ctx.textAlign = "right"; ctx.fillText("JEGY", xGrade, y - 9); ctx.textAlign = "left";
+  ctx.strokeStyle = P.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, y + 0.5); ctx.lineTo(W - pad, y + 0.5); ctx.stroke();
   subs.forEach((s, i) => {
     const ry = y + i * rowH;
-    ctx.fillStyle = fg; ctx.font = "12px sans-serif";
-    ctx.fillText(cvClip(ctx, s.code || "", 92), xCode, ry + 20);
-    ctx.fillText(cvClip(ctx, s.subject || "", xCr - xName - 12), xName, ry + 20);
-    ctx.fillText(String(s.credits || ""), xCr, ry + 20);
-    ctx.fillText(cvClip(ctx, s.type || "", 140), xType, ry + 20);
-    ctx.textAlign = "right"; ctx.font = "700 13px sans-serif"; ctx.fillText(s.result || (s.value ? String(s.value) : "–"), xGrade, ry + 20); ctx.textAlign = "left";
-    ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(pad, ry + rowH + 0.5); ctx.lineTo(W - pad, ry + rowH + 0.5); ctx.stroke();
+    ctx.fillStyle = P.muted; ctx.font = "12px sans-serif"; ctx.fillText(cvClip(ctx, s.code || "", 118), xCode, ry + 22);
+    ctx.fillStyle = P.fg; ctx.font = "13px sans-serif"; ctx.fillText(cvClip(ctx, s.subject || "", xKr - xName - 14), xName, ry + 22);
+    ctx.fillStyle = P.muted; ctx.font = "12px sans-serif"; ctx.fillText(s.credits ? String(s.credits) : "–", xKr, ry + 22);
+    ctx.fillStyle = P.fg; ctx.textAlign = "right"; ctx.font = "700 14px sans-serif"; ctx.fillText(s.result || (s.value ? String(s.value) : "–"), xGrade, ry + 22); ctx.textAlign = "left";
+    ctx.strokeStyle = P.line; ctx.beginPath(); ctx.moveTo(pad, ry + rowH + 0.5); ctx.lineTo(W - pad, ry + rowH + 0.5); ctx.stroke();
   });
   if (perTerm) {
-    const fy = y + subs.length * rowH + 32; ctx.fillStyle = fg; ctx.font = "600 13px sans-serif";
-    const parts = [perTerm.average != null ? "Átlag: " + perTerm.average : "", perTerm.sumAverage != null ? "Súlyozott: " + perTerm.sumAverage : "", perTerm.creditIndex != null ? "Kreditindex: " + perTerm.creditIndex : ""].filter(Boolean);
-    ctx.fillText(parts.join("     "), pad, fy);
+    const fy = y + subs.length * rowH + 38; ctx.fillStyle = P.fg; ctx.font = "600 14px sans-serif";
+    const parts = [perTerm.average != null ? "Átlag " + perTerm.average : "", perTerm.sumAverage != null ? "Súlyozott " + perTerm.sumAverage : "", perTerm.creditIndex != null ? "Kreditindex " + perTerm.creditIndex : ""].filter(Boolean);
+    ctx.fillText(parts.join("      "), pad, fy);
   }
-  ctx.fillStyle = muted; ctx.font = "11px sans-serif"; ctx.textAlign = "right"; ctx.fillText("Kredit+", W - pad, H - pad + 2); ctx.textAlign = "left";
   return cv;
+}
+// Kreatív "flex" kártya: nagy szám középen accent háttérrel. value + label + kis felirat.
+function statCardCanvas(value, label, footLeft) {
+  const scale = 2, W = 720, H = 720, pad = 48;
+  const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
+  const ctx = cv.getContext("2d"); ctx.scale(scale, scale);
+  const P = exPalette();
+  ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
+  // finom accent keret + sarok blokk
+  ctx.fillStyle = P.accent; ctx.fillRect(0, 0, W, 8);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = P.accent; ctx.font = "700 18px sans-serif"; ctx.fillText("KREDIT+", pad, pad + 20);
+  ctx.fillStyle = P.muted; ctx.font = "16px sans-serif"; ctx.textAlign = "right"; ctx.fillText(exWho(), W - pad, pad + 20); ctx.textAlign = "left";
+  // nagy szám középen
+  ctx.textAlign = "center";
+  ctx.fillStyle = P.fg; ctx.font = "800 168px sans-serif";
+  ctx.fillText(String(value), W / 2, H / 2 + 40);
+  ctx.fillStyle = P.accent; ctx.font = "600 22px sans-serif"; ctx.fillText(String(label).toUpperCase(), W / 2, H / 2 + 82);
+  if (footLeft) { ctx.fillStyle = P.muted; ctx.font = "16px sans-serif"; ctx.fillText(footLeft, W / 2, H - pad); }
+  ctx.textAlign = "left";
+  return cv;
+}
+function indexCardCanvas() {
+  const i = state.grades && state.grades.averages && state.grades.averages.indices;
+  if (!i || (i.korrigalt == null && i.kreditIndex == null)) return null;
+  const v = i.korrigalt != null ? i.korrigalt : i.kreditIndex;
+  return statCardCanvas(v, i.korrigalt != null ? "Korrigált kreditindex" : "Kreditindex", i.termName || "");
+}
+function diplomaCardCanvas() {
+  const p = state.progress; if (!p || !p.total) return null;
+  const pct = Math.round(p.done / p.total * 100);
+  const cv = statCardCanvas(pct + "%", "Diploma-haladás", p.done + " / " + p.total + " kredit");
+  // haladás-sáv a kártya aljára
+  const ctx = cv.getContext("2d"); const P = exPalette(); const W = 720, pad = 48, barY = 560, barH = 14, barW = W - pad * 2;
+  ctx.fillStyle = P.line; cvRoundRect(ctx, pad, barY, barW, barH, 7); ctx.fill();
+  ctx.fillStyle = P.accent; cvRoundRect(ctx, pad, barY, Math.max(barH, barW * pct / 100), barH, 7); ctx.fill();
+  return cv;
+}
+// ---- Export / Kép-készítő: összeállító + élő előnézet ----
+let exportCfg = { what: "orarend", term: "" };
+function exportTerms() { return (state.grades && state.grades.terms) || []; }
+function buildExportCanvas() {
+  const cfg = exportCfg;
+  if (cfg.what === "orarend") return timetableCanvas();
+  if (cfg.what === "jegyek") { const t = exportTerms().find((x) => x.termName === cfg.term) || exportTerms()[0]; return t ? exportCertificate(t) : null; }
+  if (cfg.what === "kreditindex") return indexCardCanvas();
+  if (cfg.what === "diploma") return diplomaCardCanvas();
+  return null;
+}
+function exportItems() {
+  return [
+    { id: "orarend", label: "Órarend (hét)", ok: () => !!(visibleClassEvents() || []).length },
+    { id: "jegyek", label: "Jegyek (bizonyítvány)", ok: () => exportTerms().length > 0 },
+    { id: "kreditindex", label: "Kreditindex kártya", ok: () => !!(state.grades && state.grades.averages && state.grades.averages.indices && (state.grades.averages.indices.korrigalt != null || state.grades.averages.indices.kreditIndex != null)) },
+    { id: "diploma", label: "Diploma kártya", ok: () => !!(state.progress && state.progress.total) },
+  ];
 }
 function renderExport() {
   const host = $("export-scroll"); if (!host) return;
-  const terms = (state.grades && state.grades.terms) || [];
-  let h = `<p class="hub-ed-intro">Mentsd le és oszd meg az adataidat képként vagy CSV-ben. A fájlok a Letöltések közé kerülnek.</p>`;
-  h += `<div class="dash-label">Órarend</div><div class="card"><button class="row" data-exp="tt" type="button"><span class="row-ic">${icon("calendar")}</span><span class="row-main"><span class="row-title">Aktuális hét</span><span class="row-sub">Heti órarend képként (PNG)</span></span><span class="row-chev">${icon("download")}</span></button></div>`;
-  if (terms.length) {
-    h += `<div class="dash-label">Jegyek félévenként</div><div class="card">`;
-    terms.forEach((t, i) => { h += `<div class="row" style="gap:10px"><span class="row-main"><span class="row-title">${esc(t.termName)}</span><span class="row-sub">${(t.subjects || []).length} tárgy</span></span><span style="display:flex;gap:6px;flex:0 0 auto"><button class="chip" data-exp="cert" data-i="${i}" type="button">Kép</button><button class="chip" data-exp="csv" data-i="${i}" type="button">CSV</button></span></div>`; });
-    h += `</div>`;
-  } else {
-    h += `<div class="dash-empty" style="padding:20px 6px">A jegyek exportjához előbb olvasd be a jegyeket.</div>`;
+  const items = exportItems();
+  if (!items.some((it) => it.id === exportCfg.what && it.ok())) { const first = items.find((it) => it.ok()); exportCfg.what = first ? first.id : "orarend"; }
+  if (exportCfg.what === "jegyek" && !exportTerms().some((t) => t.termName === exportCfg.term)) exportCfg.term = (exportTerms()[0] || {}).termName || "";
+  const chip = (active, label, attrs) => `<button class="chip${active ? " sel" : ""}" ${attrs} type="button" style="${active ? "border-color:var(--brand-plus);color:var(--fg)" : ""}">${esc(label)}</button>`;
+  let h = `<div id="export-preview" style="min-height:120px;display:flex;justify-content:center;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:14px;overflow:hidden"></div>`;
+  h += `<div class="dash-label">Mit</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">`
+    + items.map((it) => it.ok() ? chip(exportCfg.what === it.id, it.label, `data-what="${it.id}"`) : "").join("") + `</div>`;
+  if (exportCfg.what === "jegyek") {
+    h += `<div class="dash-label">Melyik félév</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">`
+      + exportTerms().map((t) => chip(exportCfg.term === t.termName, t.termName, `data-term="${esc(t.termName)}"`)).join("") + `</div>`;
   }
+  const csvOk = exportCfg.what === "jegyek";
+  h += `<div style="display:flex;gap:10px;margin-top:16px">`
+    + `<button class="btn primary" id="exp-save" style="flex:1">${icon("download")} Mentés (PNG)</button>`
+    + (csvOk ? `<button class="btn tonal" id="exp-csv" style="flex:0 0 auto">CSV</button>` : "") + `</div>`;
   host.innerHTML = h;
-  { const b = host.querySelector('[data-exp="tt"]'); if (b) b.onclick = saveTimetableImage; }
-  host.querySelectorAll('[data-exp="cert"]').forEach((b) => b.onclick = () => { const t = terms[+b.dataset.i]; saveCanvasPng(exportCertificate(t), "jegyek-" + slugName(t.termName) + ".png"); });
-  host.querySelectorAll('[data-exp="csv"]').forEach((b) => b.onclick = () => { const t = terms[+b.dataset.i]; const rows = [["Tárgykód", "Tárgynév", "Kredit", "Számonkérés", "Eredmény", "Jegy"]]; (t.subjects || []).forEach((s) => rows.push([s.code, s.subject, s.credits, s.type, s.result, s.value])); saveCsv("jegyek-" + slugName(t.termName) + ".csv", buildCsv(rows)); });
+  host.querySelectorAll("[data-what]").forEach((b) => b.onclick = () => { exportCfg.what = b.dataset.what; renderExport(); });
+  host.querySelectorAll("[data-term]").forEach((b) => b.onclick = () => { exportCfg.term = b.dataset.term; renderExport(); });
+  { const b = $("exp-save"); if (b) b.onclick = exportSave; }
+  { const b = $("exp-csv"); if (b) b.onclick = exportCsv; }
+  renderExportPreview();
+}
+function renderExportPreview() {
+  const box = $("export-preview"); if (!box) return;
+  let cv = null; try { cv = buildExportCanvas(); } catch (e) {}
+  box.innerHTML = "";
+  if (!cv) { box.innerHTML = `<div class="dash-empty" style="padding:16px">Ehhez még nincs elég adat. Olvasd be a Neptunból.</div>`; return; }
+  cv.style.cssText = "max-width:100%;height:auto;border-radius:8px;display:block";
+  box.appendChild(cv);
+}
+function exportName(ext) {
+  const c = exportCfg;
+  if (c.what === "orarend") return "orarend." + ext;
+  if (c.what === "jegyek") return "jegyek-" + slugName(c.term) + "." + ext;
+  return c.what + "." + ext;
+}
+async function exportSave() {
+  let cv = null; try { cv = buildExportCanvas(); } catch (e) {}
+  if (!cv) { toast("Ehhez még nincs elég adat."); return; }
+  await saveCanvasPng(cv, exportName("png"));
+}
+function exportCsv() {
+  const t = exportTerms().find((x) => x.termName === exportCfg.term) || exportTerms()[0]; if (!t) return;
+  const rows = [["Tárgykód", "Tárgynév", "Kredit", "Eredmény", "Jegy"]];
+  (t.subjects || []).forEach((s) => rows.push([s.code, s.subject, s.credits, s.result, s.value]));
+  saveCsv("jegyek-" + slugName(t.termName) + ".csv", buildCsv(rows));
 }
 $("ex-refresh").onclick = fetchTimetable;
 function updateIcsStatus() { const s = $("ics-status"); if (s) s.textContent = state.icsUrl ? "Beállítva" : "Nincs beállítva"; }
