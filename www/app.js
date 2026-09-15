@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.259";
+const APP_VERSION = "v0.260";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -61,7 +61,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -105,6 +105,7 @@ function defaultState() {
     },
     seen: null, // { gradeKeys, offered, msgs, toPay, classes:[{k,t}], at } — a legutóbb "látott" állapot a változás-értesítőkhöz
     notifLog: [], // [{ id, at, read, kind, title, body, detail, target }] — in-app értesítési központ (30 nap)
+    refCode: "", // ajánlói kód (egyelőre helyi mintakód; a végleges a backendtől jön)
     calcGoals: {}, // { "<félév>": { type:"ki"|"suly", val:Number } } — mentett cél a kalkulátorhoz
     calcPreds: {}, // { "<félév>": { "<tárgykulcs>": jegy } } — a kalkulátorban beállított becsült jegyek
   };
@@ -567,6 +568,7 @@ function renderForTab(id) {
   else if (id === "tab-event") renderDetail();
   else if (id === "tab-profile") renderProfilePage();
   else if (id === "tab-set-theme") renderThemePage();
+  else if (id === "tab-set-referral") renderReferral();
   else if (id === "tab-set-messages") { syncSettings(); msgReceiveRefresh(); } // fetch the live setting when this page opens
   else if (id === "tab-settings" || id.indexOf("tab-set-") === 0) syncSettings();
 }
@@ -691,6 +693,33 @@ function renderHubSearch() {
   const groups = searchGroups(q);
   box.innerHTML = groups.length ? searchGroupsHtml(groups) : `<div class="dash-empty" style="padding:20px 6px">Nincs találat erre: „${esc(inp.value)}".</div>`;
   box.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => { inp.value = ""; renderHubSearch(); searchGo(b.dataset.go); });
+}
+// ---- Ajánlói kód (egyelőre helyi mintakód; a végleges a backendtől jön az induláskor) ----
+function referralCode() {
+  if (state.refCode) return state.refCode;
+  const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // félreérthető jelek nélkül (0/O, 1/I kihagyva)
+  let c = ""; for (let i = 0; i < 6; i++) c += A[Math.floor(Math.random() * A.length)];
+  state.refCode = c; saveState(); return c;
+}
+function referralShareText() {
+  return "Csatlakozz a Kredit+ hoz az ajánlói kódommal: " + referralCode() + ". 31 nap ingyenes próba a 14 helyett. https://kreditplus.hu";
+}
+function renderReferral() {
+  const host = $("referral-scroll"); if (!host) return;
+  const code = referralCode();
+  host.innerHTML = `<p class="hub-ed-intro">Oszd meg a kódod. Aki ezzel regisztrál, 31 nap ingyenes próbát kap a 14 helyett. Te pedig kapsz egy ingyen hónapot, amikor előfizet.</p>`
+    + `<div class="dash-label">A te kódod</div>`
+    + `<button class="card" id="ref-code" type="button" style="width:100%;text-align:center;padding:26px 16px;cursor:pointer">`
+    + `<div style="font-family:var(--font-mono,monospace);font-size:38px;font-weight:700;letter-spacing:.18em;color:var(--fg)">${esc(code)}</div>`
+    + `<div class="hint" style="margin-top:8px">Koppints a másoláshoz</div></button>`
+    + `<div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">`
+    + `<button class="btn primary lg" id="ref-share">${icon("send")} Megosztás</button>`
+    + `<button class="btn tonal" id="ref-copy">${icon("copy")} Kód másolása</button></div>`
+    + `<div class="hint center" style="margin-top:18px">Ez egyelőre mintakód. A végleges, működő ajánlói kódod a fizetős verzió indulásakor lesz aktív.</div>`;
+  const copy = async () => { try { await navigator.clipboard.writeText(code); toast("Kód másolva: " + code); } catch (e) { toast("Kód: " + code); } };
+  { const b = $("ref-code"); if (b) b.onclick = copy; }
+  { const b = $("ref-copy"); if (b) b.onclick = copy; }
+  { const b = $("ref-share"); if (b) b.onclick = async () => { try { if (navigator.share) { await navigator.share({ text: referralShareText() }); return; } } catch (e) { if (e && e.name === "AbortError") return; } copy(); }; }
 }
 applyTheme(currentTheme()); // keep DOM in sync on load (the <head> inline script prevents the first-paint flash)
 // Heavy tabs rebuild a big list; show a skeleton instantly and defer the real render until AFTER
@@ -5251,6 +5280,7 @@ function syncSettings() {
   const mir = (from, to) => { const a = $(from), b = $(to); if (a && b) b.textContent = a.textContent; };
   mir("cur-uni", "hub-uni-sub"); mir("update-status", "hub-update-sub");
   { const th = THEMES.find((t) => t.id === currentTheme()), el = $("hub-theme-sub"); if (el && th) el.textContent = th.name; }
+  { const el = $("hub-ref-sub"); if (el) el.textContent = "A kódod: " + referralCode(); }
 }
 function syncSemStatus() {
   const el = $("sems-status"); if (!el) return;
