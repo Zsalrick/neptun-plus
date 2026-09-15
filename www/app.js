@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.251";
+const APP_VERSION = "v0.252";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2277,12 +2277,11 @@ $("btn-ics").onclick = openIcs;
 $("tt-refresh").onclick = fetchTimetable;
 { const ti = $("tt-image"); if (ti) ti.onclick = saveTimetableImage; }
 // ---- Órarend képként (a heti nézet PNG-be, megosztható) ----
-function currentWeekClasses() {
-  const now = new Date(), dow = (now.getDay() + 6) % 7; // 0 = hétfő
-  const mon = new Date(now); mon.setHours(0, 0, 0, 0); mon.setDate(now.getDate() - dow);
+function weekClassesFrom(mon) { // mondayOf() lentebb van definiálva (függvénydeklaráció → hoistolódik)
   const end = new Date(mon); end.setDate(mon.getDate() + 7);
   return { mon, list: (visibleClassEvents() || []).filter((e) => e.S >= mon && e.S < end).sort((a, b) => a.S - b.S) };
 }
+function currentWeekClasses() { return weekClassesFrom(mondayOf(new Date())); }
 function cvRoundRect(ctx, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 function cvClip(ctx, text, maxW) { text = String(text || ""); if (ctx.measureText(text).width <= maxW) return text; while (text.length > 1 && ctx.measureText(text + "…").width > maxW) text = text.slice(0, -1); return text + "…"; }
 function cvWrap(ctx, text, x, y, maxW, lineH, maxLines) {
@@ -2300,8 +2299,8 @@ async function saveTimetableImage() {
   const { mon } = currentWeekClasses();
   await saveCanvasPng(cv, "orarend-" + mon.getFullYear() + "-" + (mon.getMonth() + 1) + "-" + mon.getDate() + ".png");
 }
-function timetableCanvas() {
-  const { mon, list } = currentWeekClasses();
+function timetableCanvas(monArg) {
+  const { mon, list } = weekClassesFrom(monArg ? mondayOf(monArg) : mondayOf(new Date()));
   if (!list.length) return null;
   let maxDow = 4; // legalább hétfő-péntek
   list.forEach((e) => { const d = (e.S.getDay() + 6) % 7; if (d > maxDow) maxDow = d; });
@@ -2390,116 +2389,255 @@ function exPalette() {
 // Megosztható képre SOHA nem tesszük rá a Neptun kódot/belépési nevet — csak az egyetemet.
 function exWho() { return state.university || ""; }
 // Bizonyítvány-kép egy félév jegyeiről: fejléc + tárgytáblázat (Kód · Tárgy · Kr · Jegy) + átlag lábléc.
-function exportCertificate(term) {
-  const subs = (term.subjects || []).filter((s) => s.subject || s.code);
-  const perTerm = ((state.grades && state.grades.averages && state.grades.averages.perTerm) || []).find((p) => p.termName === term.termName);
-  const scale = 2, W = 820, pad = 30, rowH = 34, headerH = 118, footH = perTerm ? 62 : 16;
-  const H = pad * 2 + headerH + (subs.length + 1) * rowH + footH;
+// ---- Generikus dokumentum-kép: fejléc + táblázat. Minden lista-export ezt használja. ----
+function exFmtDate(d) { if (!d) return ""; const x = new Date(d); return isNaN(x) ? "" : x.getFullYear() + ". " + TT_MON[x.getMonth()] + " " + x.getDate() + "."; }
+function exDoc(spec) {
+  const cols = spec.columns || [], rows = spec.rows || [];
+  const scale = 2, W = 880, pad = 30, rowH = 32, headTop = 118, footH = spec.footer ? 56 : 18;
+  const H = pad * 2 + headTop + (Math.max(rows.length, 1) + 1) * rowH + footH;
   const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
   const ctx = cv.getContext("2d"); ctx.scale(scale, scale);
   const P = exPalette();
   ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
   ctx.fillStyle = P.accent; ctx.font = "700 13px sans-serif"; ctx.fillText("KREDIT+", pad, pad + 12);
-  ctx.fillStyle = P.fg; ctx.font = "700 24px sans-serif"; ctx.fillText("Jegyek · " + term.termName, pad, pad + 42);
-  ctx.fillStyle = P.muted; ctx.font = "13px sans-serif"; ctx.fillText(exWho(), pad, pad + 64);
-  const xCode = pad, xName = pad + 128, xKr = W - pad - 116, xGrade = W - pad - 4;
-  let y = pad + headerH;
+  ctx.fillStyle = P.fg; ctx.font = "700 24px sans-serif"; ctx.fillText(cvClip(ctx, spec.title || "", W - pad * 2), pad, pad + 42);
+  ctx.fillStyle = P.muted; ctx.font = "13px sans-serif";
+  ctx.fillText(cvClip(ctx, [spec.subtitle, exWho()].filter(Boolean).join(" · "), W - pad * 2), pad, pad + 64);
+  // oszlopszélességek: a fix w-k után a maradékon a rugalmas oszlopok osztoznak
+  const avail = W - pad * 2, fixed = cols.reduce((s, c) => s + (c.w || 0), 0), flex = cols.filter((c) => !c.w).length;
+  const flexW = flex ? Math.max(80, (avail - fixed - 12 * (cols.length - 1)) / flex) : 0;
+  let x = pad; const xs = cols.map((c) => { const w = c.w || flexW; const at = x; x += w + 12; return { at, w }; });
+  const y = pad + headTop;
   ctx.font = "600 11px sans-serif"; ctx.fillStyle = P.muted;
-  ctx.fillText("KÓD", xCode, y - 9); ctx.fillText("TÁRGY", xName, y - 9); ctx.fillText("KR", xKr, y - 9);
-  ctx.textAlign = "right"; ctx.fillText("JEGY", xGrade, y - 9); ctx.textAlign = "left";
+  cols.forEach((c, i) => { const g = xs[i]; ctx.textAlign = c.align === "right" ? "right" : "left"; ctx.fillText(String(c.label || "").toUpperCase(), c.align === "right" ? g.at + g.w : g.at, y - 9); });
+  ctx.textAlign = "left";
   ctx.strokeStyle = P.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, y + 0.5); ctx.lineTo(W - pad, y + 0.5); ctx.stroke();
-  subs.forEach((s, i) => {
+  if (!rows.length) { ctx.fillStyle = P.muted; ctx.font = "13px sans-serif"; ctx.fillText("Nincs megjeleníthető adat.", pad, y + 22); }
+  rows.forEach((r, i) => {
     const ry = y + i * rowH;
-    ctx.fillStyle = P.muted; ctx.font = "12px sans-serif"; ctx.fillText(cvClip(ctx, s.code || "", 118), xCode, ry + 22);
-    ctx.fillStyle = P.fg; ctx.font = "13px sans-serif"; ctx.fillText(cvClip(ctx, s.subject || "", xKr - xName - 14), xName, ry + 22);
-    ctx.fillStyle = P.muted; ctx.font = "12px sans-serif"; ctx.fillText(s.credits ? String(s.credits) : "–", xKr, ry + 22);
-    ctx.fillStyle = P.fg; ctx.textAlign = "right"; ctx.font = "700 14px sans-serif"; ctx.fillText(s.result || (s.value ? String(s.value) : "–"), xGrade, ry + 22); ctx.textAlign = "left";
+    cols.forEach((c, ci) => {
+      const g = xs[ci];
+      ctx.fillStyle = c.dim ? P.muted : P.fg;
+      ctx.font = (c.strong ? "700 13px" : "13px") + " sans-serif";
+      ctx.textAlign = c.align === "right" ? "right" : "left";
+      const val = (r[ci] == null || r[ci] === "") ? "–" : String(r[ci]);
+      ctx.fillText(cvClip(ctx, val, g.w), c.align === "right" ? g.at + g.w : g.at, ry + 21);
+    });
+    ctx.textAlign = "left";
     ctx.strokeStyle = P.line; ctx.beginPath(); ctx.moveTo(pad, ry + rowH + 0.5); ctx.lineTo(W - pad, ry + rowH + 0.5); ctx.stroke();
   });
-  if (perTerm) {
-    const fy = y + subs.length * rowH + 38; ctx.fillStyle = P.fg; ctx.font = "600 14px sans-serif";
-    const parts = [perTerm.average != null ? "Átlag " + perTerm.average : "", perTerm.sumAverage != null ? "Súlyozott " + perTerm.sumAverage : "", perTerm.creditIndex != null ? "Kreditindex " + perTerm.creditIndex : ""].filter(Boolean);
-    ctx.fillText(parts.join("      "), pad, fy);
+  if (spec.footer) {
+    ctx.fillStyle = P.fg; ctx.font = "600 14px sans-serif";
+    ctx.fillText(cvClip(ctx, spec.footer, W - pad * 2), pad, y + Math.max(rows.length, 1) * rowH + 36);
   }
   return cv;
 }
-// Kreatív "flex" kártya: nagy szám középen accent háttérrel. value + label + kis felirat.
-function statCardCanvas(value, label, footLeft) {
-  const scale = 2, W = 720, H = 720, pad = 48;
-  const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
-  const ctx = cv.getContext("2d"); ctx.scale(scale, scale);
-  const P = exPalette();
-  ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
-  // finom accent keret + sarok blokk
-  ctx.fillStyle = P.accent; ctx.fillRect(0, 0, W, 8);
-  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = P.accent; ctx.font = "700 18px sans-serif"; ctx.fillText("KREDIT+", pad, pad + 20);
-  ctx.fillStyle = P.muted; ctx.font = "16px sans-serif"; ctx.textAlign = "right"; ctx.fillText(exWho(), W - pad, pad + 20); ctx.textAlign = "left";
-  // nagy szám középen
-  ctx.textAlign = "center";
-  ctx.fillStyle = P.fg; ctx.font = "800 168px sans-serif";
-  ctx.fillText(String(value), W / 2, H / 2 + 40);
-  ctx.fillStyle = P.accent; ctx.font = "600 22px sans-serif"; ctx.fillText(String(label).toUpperCase(), W / 2, H / 2 + 82);
-  if (footLeft) { ctx.fillStyle = P.muted; ctx.font = "16px sans-serif"; ctx.fillText(footLeft, W / 2, H - pad); }
-  ctx.textAlign = "left";
-  return cv;
+// ---- Export típusok ----
+function exGradeTerms() { return (state.grades && state.grades.terms) || []; }
+function exCourseSems() { const c = state.courses || {}; const s = (c.semesters && c.semesters.length) ? c.semesters : [...new Set((c.list || []).map((x) => x.semester))]; return s.filter(Boolean); }
+function exWeeks() { const seen = {}; (visibleClassEvents() || []).forEach((e) => { seen[mondayOf(e.S).getTime()] = 1; }); return Object.keys(seen).map(Number).sort((a, b) => a - b); }
+function exWeekLabel(ts, i) { const m = new Date(ts); return (i + 1) + ". hét · " + TT_MON[m.getMonth()] + " " + m.getDate() + "."; }
+function exDays() { const seen = {}; (visibleClassEvents() || []).forEach((e) => { const d = new Date(e.S); d.setHours(0, 0, 0, 0); seen[d.getTime()] = 1; }); return Object.keys(seen).map(Number).sort((a, b) => a - b); }
+function exGradeOf(code) { let hit = null; if (!code) return null; exGradeTerms().forEach((t) => (t.subjects || []).forEach((s) => { if (s.code === code) hit = s; })); return hit; }
+const EXPORTS = [
+  { id: "orarend-het", label: "Órarend · heti", group: "Órarend",
+    filters: [{ id: "week", label: "Hét", options: () => exWeeks().map((ts, i) => ({ v: String(ts), label: exWeekLabel(ts, i) })) }],
+    ok: () => exWeeks().length > 0,
+    canvas: (f) => timetableCanvas(new Date(+f.week)),
+    name: (f) => "orarend-" + exFmtDate(new Date(+f.week)) },
+  { id: "orarend-nap", label: "Órarend · napi", group: "Órarend",
+    filters: [{ id: "day", label: "Nap", options: () => exDays().map((ts) => ({ v: String(ts), label: exFmtDate(ts) })) }],
+    ok: () => exDays().length > 0,
+    doc: (f) => {
+      const d0 = new Date(+f.day), d1 = new Date(d0); d1.setDate(d0.getDate() + 1);
+      const list = (visibleClassEvents() || []).filter((e) => e.S >= d0 && e.S < d1).sort((a, b) => a.S - b.S);
+      return { title: "Órarend · " + exFmtDate(d0), subtitle: list.length + " óra",
+        columns: [{ label: "Idő", w: 110, strong: true }, { label: "Tárgy" }, { label: "Terem", w: 150 }, { label: "Oktató", w: 190, dim: true }],
+        rows: list.map((e) => { const p = parseClassSummary(e.summary); return [hm(e.S) + " " + hm(e.E), (p && p.name) || e.summary, e.location, (p && p.teacher) || ""]; }) };
+    },
+    name: (f) => "orarend-" + exFmtDate(new Date(+f.day)) },
+  { id: "vizsgak", label: "Vizsgák, számonkérések", group: "Órarend",
+    filters: [{ id: "scope", label: "Mit", options: () => [{ v: "next", label: "Csak a közelgők" }, { v: "all", label: "Összes" }] }],
+    ok: () => (examEvents() || []).length > 0,
+    doc: (f) => {
+      const now = Date.now();
+      let list = (examEvents() || []).slice().sort((a, b) => a.S - b.S);
+      if (f.scope !== "all") list = list.filter((e) => e.E.getTime() >= now);
+      return { title: "Vizsgák, számonkérések", subtitle: f.scope === "all" ? "Összes" : "Közelgő",
+        columns: [{ label: "Dátum", w: 150, strong: true }, { label: "Idő", w: 100 }, { label: "Esemény" }, { label: "Hely", w: 160, dim: true }],
+        rows: list.map((e) => { const p = e.manual ? null : parseClassSummary(e.summary); return [exFmtDate(e.S), hm(e.S), (p && p.name) || e.summary, e.location]; }) };
+    },
+    name: () => "vizsgak" },
+  { id: "jegyek-felev", label: "Jegyek · félév", group: "Tanulmányok",
+    filters: [{ id: "term", label: "Félév", options: () => exGradeTerms().map((t) => ({ v: t.termName, label: t.termName })) }],
+    ok: () => exGradeTerms().length > 0,
+    doc: (f) => {
+      const t = exGradeTerms().find((x) => x.termName === f.term) || exGradeTerms()[0];
+      const per = (((state.grades || {}).averages || {}).perTerm || []).find((p) => p.termName === t.termName);
+      const foot = per ? [per.average != null ? "Átlag " + per.average : "", per.sumAverage != null ? "Súlyozott " + per.sumAverage : "", per.creditIndex != null ? "Kreditindex " + per.creditIndex : ""].filter(Boolean).join("      ") : "";
+      return { title: "Jegyek · " + t.termName, subtitle: (t.subjects || []).length + " tárgy",
+        columns: [{ label: "Kód", w: 130, dim: true }, { label: "Tárgy" }, { label: "Kr", w: 50, align: "right", dim: true }, { label: "Jegy", w: 120, align: "right", strong: true }],
+        rows: (t.subjects || []).map((s) => [s.code, s.subject, s.credits || "", s.result || s.value || ""]), footer: foot };
+    },
+    name: (f) => "jegyek-" + (f.term || "") },
+  { id: "jegyek-mind", label: "Tanulmányi kivonat", group: "Tanulmányok",
+    filters: [], ok: () => exGradeTerms().length > 0,
+    doc: () => {
+      const rows = [];
+      exGradeTerms().forEach((t) => (t.subjects || []).forEach((s) => rows.push([t.termName, s.code, s.subject, s.credits || "", s.result || s.value || ""])));
+      const cr = exGradeTerms().reduce((a, t) => a + (t.subjects || []).reduce((b, s) => b + (+s.credits || 0), 0), 0);
+      return { title: "Tanulmányi kivonat", subtitle: rows.length + " tárgy · " + exGradeTerms().length + " félév",
+        columns: [{ label: "Félév", w: 110, dim: true }, { label: "Kód", w: 130, dim: true }, { label: "Tárgy" }, { label: "Kr", w: 50, align: "right", dim: true }, { label: "Jegy", w: 110, align: "right", strong: true }],
+        rows, footer: "Összes felvett kredit " + cr };
+    },
+    name: () => "tanulmanyi-kivonat" },
+  { id: "atlagok", label: "Átlagok félévenként", group: "Tanulmányok",
+    filters: [], ok: () => ((((state.grades || {}).averages || {}).perTerm) || []).length > 0,
+    doc: () => {
+      const per = (((state.grades || {}).averages || {}).perTerm) || [];
+      return { title: "Átlagok félévenként", subtitle: per.length + " félév",
+        columns: [{ label: "Félév", strong: true }, { label: "Átlag", w: 130, align: "right" }, { label: "Súlyozott", w: 140, align: "right" }, { label: "Kreditindex", w: 150, align: "right" }],
+        rows: per.map((p) => [p.termName, p.average, p.sumAverage, p.creditIndex]) };
+    },
+    name: () => "atlagok" },
+  { id: "felvett", label: "Felvett tárgyak", group: "Tanulmányok",
+    filters: [{ id: "sem", label: "Félév", options: () => exCourseSems().map((s) => ({ v: s, label: s })) }],
+    ok: () => exCourseSems().length > 0,
+    doc: (f) => {
+      const list = (((state.courses || {}).list) || []).filter((c) => c.semester === f.sem);
+      const cr = list.reduce((a, c) => a + (+c.credits || 0), 0);
+      return { title: "Felvett tárgyak · " + (f.sem || ""), subtitle: list.length + " tárgy",
+        columns: [{ label: "Kód", w: 140, dim: true }, { label: "Tárgy" }, { label: "Kr", w: 50, align: "right", dim: true }, { label: "Típus", w: 170, dim: true }],
+        rows: list.map((c) => [c.code, c.name, c.credits || "", c.type || ""]), footer: "Összesen " + cr + " kredit" };
+    },
+    name: (f) => "felvett-targyak-" + (f.sem || "") },
+  { id: "targy", label: "Tárgy adatlap", group: "Tanulmányok",
+    filters: [
+      { id: "sem", label: "Félév", options: () => exCourseSems().map((s) => ({ v: s, label: s })) },
+      { id: "code", label: "Tárgy", options: (f) => (((state.courses || {}).list) || []).filter((c) => c.semester === f.sem).map((c) => ({ v: c.code || c.name, label: c.name || c.code })) },
+    ],
+    ok: () => exCourseSems().length > 0,
+    doc: (f) => {
+      const c = (((state.courses || {}).list) || []).find((x) => x.semester === f.sem && (x.code || x.name) === f.code);
+      if (!c) return { title: "Tárgy adatlap", subtitle: "", columns: [{ label: "Mező", w: 220, dim: true }, { label: "Érték", strong: true }], rows: [] };
+      const g = exGradeOf(c.code);
+      const occ = (visibleClassEvents() || []).filter((e) => (c.code && (e.summary || "").indexOf(c.code) >= 0) || (c.name && (e.summary || "").indexOf(c.name) >= 0));
+      const slots = [...new Set(occ.map((e) => TT_DAYS[e.S.getDay()] + " " + hm(e.S) + " " + hm(e.E) + (e.location ? " · " + e.location : "")))].slice(0, 6);
+      const rows = [["Tárgynév", c.name], ["Tárgykód", c.code], ["Kredit", c.credits || ""], ["Típus", c.type || ""], ["Félév", c.semester || ""]];
+      if (c.teacher) rows.push(["Oktató", c.teacher]);
+      if (g) rows.push(["Eredmény", g.result || g.value || ""]);
+      slots.forEach((s, i) => rows.push([i === 0 ? "Órarend" : "", s]));
+      return { title: c.name || c.code || "Tárgy", subtitle: "Tárgy adatlap · " + (c.semester || ""),
+        columns: [{ label: "Mező", w: 220, dim: true }, { label: "Érték", strong: true }], rows };
+    },
+    name: (f) => "targy-" + (f.code || "") },
+  { id: "mintatanterv", label: "Mintatanterv", group: "Tanulmányok",
+    filters: [{ id: "st", label: "Állapot", options: () => [{ v: "all", label: "Mind" }, { v: "done", label: "Teljesített" }, { v: "todo", label: "Hiányzó" }] }],
+    ok: () => !!(state.curriculum && (((state.curriculum.required || []).length) || ((state.curriculum.free || []).length))),
+    doc: (f) => {
+      let list = [...(((state.curriculum || {}).required) || []), ...(((state.curriculum || {}).free) || [])];
+      if (f.st === "done") list = list.filter((c) => c.completed);
+      if (f.st === "todo") list = list.filter((c) => !c.completed);
+      const cr = list.reduce((a, c) => a + (+c.credits || 0), 0);
+      return { title: "Mintatanterv", subtitle: (f.st === "done" ? "Teljesített" : f.st === "todo" ? "Hiányzó" : "Összes") + " · " + list.length + " tárgy",
+        columns: [{ label: "Kód", w: 140, dim: true }, { label: "Tárgy" }, { label: "Kr", w: 50, align: "right", dim: true }, { label: "Ajánlott", w: 100, align: "right", dim: true }, { label: "Állapot", w: 130, align: "right", strong: true }],
+        rows: list.map((c) => [c.code, c.name, c.credits || "", c.term || "", c.completed ? "Teljesítve" : "Hiányzik"]), footer: "Összesen " + cr + " kredit" };
+    },
+    name: (f) => "mintatanterv-" + (f.st || "all") },
+  { id: "penzugy", label: "Pénzügyi kivonat", group: "Pénzügy",
+    filters: [{ id: "kind", label: "Mit", options: () => [{ v: "topay", label: "Befizetendő" }, { v: "imp", label: "Kiírt tételek" }, { v: "tx", label: "Tranzakciók" }, { v: "inv", label: "Számlák" }] }],
+    ok: () => !!(state.finance && state.finance.fetchedAt),
+    doc: (f) => {
+      const fi = state.finance || {};
+      if (f.kind === "tx") return { title: "Tranzakciók", subtitle: (fi.transactions || []).length + " tétel",
+        columns: [{ label: "Dátum", w: 150, dim: true }, { label: "Megnevezés" }, { label: "Állapot", w: 150, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
+        rows: (fi.transactions || []).map((t) => [exFmtDate(t.date), t.note || t.type || "", t.status || "", (t.sign || "") + ftFt(t.value, t.currency)]) };
+      if (f.kind === "inv") return { title: "Számlák", subtitle: (fi.invoices || []).length + " db",
+        columns: [{ label: "Dátum", w: 150, dim: true }, { label: "Megnevezés" }, { label: "Sorszám", w: 190, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
+        rows: (fi.invoices || []).map((v) => [exFmtDate(v.date), v.name || "", v.number || "", ftFt(v.value, v.currency)]) };
+      if (f.kind === "imp") return { title: "Kiírt tételek", subtitle: (fi.impositions || []).length + " tétel",
+        columns: [{ label: "Megnevezés" }, { label: "Félév", w: 110, dim: true }, { label: "Határidő", w: 140, dim: true }, { label: "Állapot", w: 110, dim: true }, { label: "Összeg", w: 130, align: "right", strong: true }],
+        rows: (fi.impositions || []).map((i) => [i.name, i.term || "", exFmtDate(i.dueDate), i.paidAt ? "Rendezve" : "Nyitott", ftFt(i.value, i.currency)]) };
+      const tp = fi.toPay || [];
+      return { title: "Befizetendő", subtitle: tp.length + " tétel",
+        columns: [{ label: "Megnevezés" }, { label: "Tárgy", w: 200, dim: true }, { label: "Határidő", w: 150, dim: true }, { label: "Összeg", w: 130, align: "right", strong: true }],
+        rows: tp.map((i) => [i.name, i.subjectName || "", exFmtDate(i.dueDate), ftFt(i.value, i.currency)]),
+        footer: "Összesen " + ftFt(tp.reduce((a, i) => a + (+i.value || 0), 0), "HUF") };
+    },
+    name: (f) => "penzugy-" + (f.kind || "topay") },
+  { id: "osztondij", label: "Ösztöndíjak, kifizetések", group: "Pénzügy",
+    filters: [], ok: () => !!(state.finance && (state.finance.scholarships || []).length),
+    doc: () => {
+      const s = ((state.finance || {}).scholarships) || [];
+      return { title: "Ösztöndíjak, kifizetések", subtitle: s.length + " tétel",
+        columns: [{ label: "Megnevezés" }, { label: "Félév", w: 120, dim: true }, { label: "Dátum", w: 150, dim: true }, { label: "Összeg", w: 140, align: "right", strong: true }],
+        rows: s.map((x) => [x.name, x.term || "", exFmtDate(x.date), ftFt(x.amount, x.currency)]),
+        footer: "Összesen " + ftFt(s.reduce((a, x) => a + (+x.amount || 0), 0), "HUF") };
+    },
+    name: () => "osztondijak" },
+  { id: "idoszakok", label: "Időszakok, határidők", group: "Egyéb",
+    filters: [{ id: "scope", label: "Mit", options: () => [{ v: "open", label: "Aktív és közelgő" }, { v: "all", label: "Összes" }] }],
+    ok: () => !!(state.periods && (state.periods.items || []).length),
+    doc: (f) => {
+      const now = Date.now();
+      let list = (((state.periods || {}).items) || []).slice().sort((a, b) => new Date(a.from) - new Date(b.from));
+      if (f.scope !== "all") list = list.filter((p) => !p.to || new Date(p.to).getTime() >= now);
+      return { title: "Időszakok, határidők", subtitle: f.scope === "all" ? "Összes" : "Aktív és közelgő",
+        columns: [{ label: "Időszak", strong: true }, { label: "Típus", w: 230, dim: true }, { label: "Kezdet", w: 150 }, { label: "Vége", w: 150 }],
+        rows: list.map((p) => [p.name || p.type, p.type || "", exFmtDate(p.from), exFmtDate(p.to)]) };
+    },
+    name: (f) => "idoszakok-" + (f.scope || "open") },
+];
+// ---- Export képernyő: összeállító + élő előnézet ----
+let exportCfg = { what: "orarend-het", f: {} };
+function exportDef() { return EXPORTS.find((e) => e.id === exportCfg.what) || EXPORTS[0]; }
+function exportEnsureFilters() {
+  const def = exportDef(), f = exportCfg.f || (exportCfg.f = {});
+  (def.filters || []).forEach((fl) => {
+    const opts = fl.options(f) || [];
+    if (!opts.some((o) => o.v === f[fl.id])) f[fl.id] = opts.length ? opts[0].v : "";
+  });
 }
-function indexCardCanvas() {
-  const i = state.grades && state.grades.averages && state.grades.averages.indices;
-  if (!i || (i.korrigalt == null && i.kreditIndex == null)) return null;
-  const v = i.korrigalt != null ? i.korrigalt : i.kreditIndex;
-  return statCardCanvas(v, i.korrigalt != null ? "Korrigált kreditindex" : "Kreditindex", i.termName || "");
+// Ésszerű kezdőérték: az aktuális (vagy az első olyan) hét/nap, ahol már van óra.
+function exportDefaults(def) {
+  const f = {};
+  (def.filters || []).forEach((fl) => { const opts = fl.options(f) || []; f[fl.id] = opts.length ? opts[0].v : ""; });
+  if (def.id === "orarend-het") { const ws = exWeeks(), now = mondayOf(new Date()).getTime(); const hit = ws.find((t) => t >= now); f.week = String(hit != null ? hit : (ws[0] || now)); }
+  if (def.id === "orarend-nap") { const ds = exDays(), t0 = new Date(); t0.setHours(0, 0, 0, 0); const hit = ds.find((t) => t >= t0.getTime()); f.day = String(hit != null ? hit : (ds[0] || t0.getTime())); }
+  return f;
 }
-function diplomaCardCanvas() {
-  const p = state.progress; if (!p || !p.total) return null;
-  const pct = Math.round(p.done / p.total * 100);
-  const cv = statCardCanvas(pct + "%", "Diploma-haladás", p.done + " / " + p.total + " kredit");
-  // haladás-sáv a kártya aljára
-  const ctx = cv.getContext("2d"); const P = exPalette(); const W = 720, pad = 48, barY = 560, barH = 14, barW = W - pad * 2;
-  ctx.fillStyle = P.line; cvRoundRect(ctx, pad, barY, barW, barH, 7); ctx.fill();
-  ctx.fillStyle = P.accent; cvRoundRect(ctx, pad, barY, Math.max(barH, barW * pct / 100), barH, 7); ctx.fill();
-  return cv;
-}
-// ---- Export / Kép-készítő: összeállító + élő előnézet ----
-let exportCfg = { what: "orarend", term: "" };
-function exportTerms() { return (state.grades && state.grades.terms) || []; }
 function buildExportCanvas() {
-  const cfg = exportCfg;
-  if (cfg.what === "orarend") return timetableCanvas();
-  if (cfg.what === "jegyek") { const t = exportTerms().find((x) => x.termName === cfg.term) || exportTerms()[0]; return t ? exportCertificate(t) : null; }
-  if (cfg.what === "kreditindex") return indexCardCanvas();
-  if (cfg.what === "diploma") return diplomaCardCanvas();
+  const def = exportDef(); exportEnsureFilters();
+  if (def.canvas) return def.canvas(exportCfg.f);
+  if (def.doc) return exDoc(def.doc(exportCfg.f));
   return null;
-}
-function exportItems() {
-  return [
-    { id: "orarend", label: "Órarend (hét)", ok: () => !!(visibleClassEvents() || []).length },
-    { id: "jegyek", label: "Jegyek (bizonyítvány)", ok: () => exportTerms().length > 0 },
-    { id: "kreditindex", label: "Kreditindex kártya", ok: () => !!(state.grades && state.grades.averages && state.grades.averages.indices && (state.grades.averages.indices.korrigalt != null || state.grades.averages.indices.kreditIndex != null)) },
-    { id: "diploma", label: "Diploma kártya", ok: () => !!(state.progress && state.progress.total) },
-  ];
 }
 function renderExport() {
   const host = $("export-scroll"); if (!host) return;
-  const items = exportItems();
-  if (!items.some((it) => it.id === exportCfg.what && it.ok())) { const first = items.find((it) => it.ok()); exportCfg.what = first ? first.id : "orarend"; }
-  if (exportCfg.what === "jegyek" && !exportTerms().some((t) => t.termName === exportCfg.term)) exportCfg.term = (exportTerms()[0] || {}).termName || "";
-  const chip = (active, label, attrs) => `<button class="chip${active ? " sel" : ""}" ${attrs} type="button" style="${active ? "border-color:var(--brand-plus);color:var(--fg)" : ""}">${esc(label)}</button>`;
-  let h = `<div id="export-preview" style="min-height:120px;display:flex;justify-content:center;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:14px;overflow:hidden"></div>`;
-  h += `<div class="dash-label">Mit</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">`
-    + items.map((it) => it.ok() ? chip(exportCfg.what === it.id, it.label, `data-what="${it.id}"`) : "").join("") + `</div>`;
-  if (exportCfg.what === "jegyek") {
-    h += `<div class="dash-label">Melyik félév</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">`
-      + exportTerms().map((t) => chip(exportCfg.term === t.termName, t.termName, `data-term="${esc(t.termName)}"`)).join("") + `</div>`;
-  }
-  const csvOk = exportCfg.what === "jegyek";
+  const avail = EXPORTS.filter((e) => { try { return e.ok(); } catch (err) { return false; } });
+  if (!avail.length) { host.innerHTML = `<div class="dash-empty" style="padding:24px 12px">Előbb olvass be adatokat a Neptunból, utána tudsz exportálni.</div>`; return; }
+  if (!avail.some((e) => e.id === exportCfg.what)) { exportCfg.what = avail[0].id; exportCfg.f = exportDefaults(exportDef()); }
+  exportEnsureFilters();
+  const def = exportDef();
+  const chip = (active, label, attrs) => `<button class="chip" ${attrs} type="button" style="${active ? "border-color:var(--brand-plus);color:var(--fg)" : "opacity:.7"}">${esc(label)}</button>`;
+  let h = `<div id="export-preview" style="min-height:120px;display:flex;justify-content:center;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:14px;overflow:auto"></div>`;
+  [...new Set(avail.map((e) => e.group))].forEach((g) => {
+    h += `<div class="dash-label">${esc(g)}</div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">`
+      + avail.filter((e) => e.group === g).map((e) => chip(exportCfg.what === e.id, e.label, `data-what="${esc(e.id)}"`)).join("") + `</div>`;
+  });
+  (def.filters || []).forEach((fl) => {
+    const opts = fl.options(exportCfg.f) || [];
+    if (!opts.length) return;
+    h += `<div class="dash-label">${esc(fl.label)}</div><div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:4px">`
+      + opts.map((o) => chip(exportCfg.f[fl.id] === o.v, o.label, `data-f="${esc(fl.id)}" data-v="${esc(o.v)}"`)).join("") + `</div>`;
+  });
   h += `<div style="display:flex;gap:10px;margin-top:16px">`
     + `<button class="btn primary" id="exp-save" style="flex:1">${icon("download")} Mentés (PNG)</button>`
-    + (csvOk ? `<button class="btn tonal" id="exp-csv" style="flex:0 0 auto">CSV</button>` : "") + `</div>`;
+    + `<button class="btn tonal" id="exp-csv" style="flex:0 0 auto">CSV</button></div>`;
   host.innerHTML = h;
-  host.querySelectorAll("[data-what]").forEach((b) => b.onclick = () => { exportCfg.what = b.dataset.what; renderExport(); });
-  host.querySelectorAll("[data-term]").forEach((b) => b.onclick = () => { exportCfg.term = b.dataset.term; renderExport(); });
+  host.querySelectorAll("[data-what]").forEach((b) => b.onclick = () => { exportCfg.what = b.dataset.what; exportCfg.f = exportDefaults(exportDef()); renderExport(); });
+  host.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { exportCfg.f[b.dataset.f] = b.dataset.v; exportEnsureFilters(); renderExport(); });
   { const b = $("exp-save"); if (b) b.onclick = exportSave; }
   { const b = $("exp-csv"); if (b) b.onclick = exportCsv; }
   renderExportPreview();
@@ -2508,26 +2646,23 @@ function renderExportPreview() {
   const box = $("export-preview"); if (!box) return;
   let cv = null; try { cv = buildExportCanvas(); } catch (e) {}
   box.innerHTML = "";
-  if (!cv) { box.innerHTML = `<div class="dash-empty" style="padding:16px">Ehhez még nincs elég adat. Olvasd be a Neptunból.</div>`; return; }
+  if (!cv) { box.innerHTML = `<div class="dash-empty" style="padding:16px">Ehhez nincs elég adat. Olvasd be a Neptunból.</div>`; return; }
   cv.style.cssText = "max-width:100%;height:auto;border-radius:8px;display:block";
   box.appendChild(cv);
 }
-function exportName(ext) {
-  const c = exportCfg;
-  if (c.what === "orarend") return "orarend." + ext;
-  if (c.what === "jegyek") return "jegyek-" + slugName(c.term) + "." + ext;
-  return c.what + "." + ext;
-}
+function exportFileName(ext) { const def = exportDef(); let n = def.id; try { if (def.name) n = def.name(exportCfg.f) || def.id; } catch (e) {} return slugName(n) + "." + ext; }
 async function exportSave() {
   let cv = null; try { cv = buildExportCanvas(); } catch (e) {}
-  if (!cv) { toast("Ehhez még nincs elég adat."); return; }
-  await saveCanvasPng(cv, exportName("png"));
+  if (!cv) { toast("Ehhez nincs elég adat."); return; }
+  await saveCanvasPng(cv, exportFileName("png"));
 }
 function exportCsv() {
-  const t = exportTerms().find((x) => x.termName === exportCfg.term) || exportTerms()[0]; if (!t) return;
-  const rows = [["Tárgykód", "Tárgynév", "Kredit", "Eredmény", "Jegy"]];
-  (t.subjects || []).forEach((s) => rows.push([s.code, s.subject, s.credits, s.result, s.value]));
-  saveCsv("jegyek-" + slugName(t.termName) + ".csv", buildCsv(rows));
+  const def = exportDef();
+  if (!def.doc) { toast("Ez a típus csak képként menthető."); return; }
+  let spec = null; try { spec = def.doc(exportCfg.f); } catch (e) {}
+  if (!spec || !(spec.rows || []).length) { toast("Nincs exportálható sor."); return; }
+  const rows = [spec.columns.map((c) => c.label)].concat(spec.rows.map((r) => r.map((v) => (v == null ? "" : v))));
+  saveCsv(exportFileName("csv"), buildCsv(rows));
 }
 $("ex-refresh").onclick = fetchTimetable;
 function updateIcsStatus() { const s = $("ics-status"); if (s) s.textContent = state.icsUrl ? "Beállítva" : "Nincs beállítva"; }
