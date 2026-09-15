@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.248";
+const APP_VERSION = "v0.249";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -548,6 +548,7 @@ function renderForTab(id) {
   else if (id === "tab-grades") renderGrades();
   else if (id === "tab-periods") renderPeriods();
   else if (id === "tab-search") renderSearch();
+  else if (id === "tab-export") renderExport();
   else if (id === "tab-calc") renderCalc();
   else if (id === "tab-calc-goal") renderCalcGoal();
   else if (id === "tab-credit") renderCreditPage();
@@ -1131,6 +1132,7 @@ const MORE_SERVICES = [
   { id: "grades", group: "Tanulmányok", label: "Jegyek", sub: () => { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; return i && i.korrigalt != null ? "Kreditindex " + i.korrigalt : "Jegyek és átlagok"; }, icon: "note", go: () => pushScreen("tab-grades") },
   { id: "finance", group: "Szolgáltatások", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
+  { id: "export", group: "Szolgáltatások", label: "Export", sub: "Órarend, jegyek mentése (kép, CSV)", icon: "download", go: () => pushScreen("tab-export") },
   { id: "periods", group: "Tanulmányok", label: "Időszakok", sub: () => { const p = state.periods; const a = p && activePeriods(p.items).length; return a ? a + " aktív időszak" : "Mikor mettől meddig"; }, icon: "clock", go: () => pushScreen("tab-periods") },
   { id: "calc", group: "Tanulmányok", label: "Kalkulátor", sub: "Átlag, kreditindex, célszámítás", icon: "chart", go: () => pushScreen("tab-calc") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
@@ -1631,15 +1633,6 @@ function renderGrades() {
   }
   const idx = gr.averages && gr.averages.indices, perTerm = (gr.averages && gr.averages.perTerm) || [];
   let html = "";
-  // Headline: the corrected credit index is the number students care about most — render it monumentally.
-  if (idx && (idx.korrigalt != null || idx.kreditIndex != null)) {
-    const heroV = idx.korrigalt != null ? idx.korrigalt : idx.kreditIndex;
-    const heroL = (idx.korrigalt != null ? "Korrigált kreditindex" : "Kreditindex") + (idx.termName ? " · " + idx.termName : "");
-    const showSub = idx.korrigalt != null && idx.kreditIndex != null;
-    html += `<div class="stat-hero"><div class="stat-hero-v">${esc(String(heroV))}</div><div class="stat-hero-l">${esc(heroL)}</div>`
-      + (showSub ? `<div class="stat-hero-sub"><div class="chs"><span class="chs-v">${esc(String(idx.kreditIndex))}</span><span class="chs-l">Kreditindex (korrekció nélkül)</span></div></div>` : "")
-      + `</div>`;
-  }
   // Megajánlott jegyek — accept/reject right here.
   const offered = gr.offered || [];
   if (offered.length) {
@@ -2351,18 +2344,93 @@ async function saveTimetableImage() {
   });
   ctx.fillStyle = muted; ctx.font = "11px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic";
   ctx.fillText("Kredit+", W - pad, H - pad + 4);
+  await saveCanvasPng(cv, "orarend-" + mon.getFullYear() + "-" + (mon.getMonth() + 1) + "-" + mon.getDate() + ".png");
+}
+// Közös mentés: PNG a Letöltések közé (natív), vagy <a> letöltés a böngészős előnézetben.
+async function saveCanvasPng(cv, name) {
   const dataUrl = cv.toDataURL("image/png");
-  const name = "orarend-" + mon.getFullYear() + "-" + (mon.getMonth() + 1) + "-" + mon.getDate() + ".png";
   const dl = DLP();
   if (isNative && dl && dl.saveToDownloads) {
     try {
       const r = await dl.saveToDownloads({ base64: dataUrl.split(",")[1], fileName: name, mime: "image/png" });
-      const open = await ask({ title: "Órarend kép", okText: "Megnyitás", cancelText: "Kész", body: "Elmentve a Letöltések közé: <b>" + esc(name) + "</b>. Onnan meg tudod osztani." });
+      const open = await ask({ title: "Kép mentve", okText: "Megnyitás", cancelText: "Kész", body: "Elmentve a Letöltések közé: <b>" + esc(name) + "</b>. Onnan meg tudod osztani." });
       if (open && r && r.uri) { try { await dl.open({ uri: r.uri, mime: "image/png" }); } catch (e) { toast("Nem sikerült megnyitni."); } }
     } catch (e) { toast("Nem sikerült menteni: " + (e && e.message ? e.message : e)); }
   } else {
     try { const a = document.createElement("a"); a.href = dataUrl; a.download = name; a.click(); toast("Kép letöltve."); } catch (e) { toast("A kép mentése a telefonos alkalmazásban működik."); }
   }
+}
+// CSV (pontosvesszős, HU Excel-barát, UTF-8 BOM-mal).
+function csvCell(s) { s = String(s == null ? "" : s); return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function buildCsv(rows) { return rows.map((r) => r.map(csvCell).join(";")).join("\r\n"); }
+async function saveCsv(name, csv) {
+  const data = "﻿" + csv, b64 = btoa(unescape(encodeURIComponent(data)));
+  const dl = DLP();
+  if (isNative && dl && dl.saveToDownloads) {
+    try {
+      const r = await dl.saveToDownloads({ base64: b64, fileName: name, mime: "text/csv" });
+      const open = await ask({ title: "CSV mentve", okText: "Megnyitás", cancelText: "Kész", body: "Elmentve a Letöltések közé: <b>" + esc(name) + "</b>." });
+      if (open && r && r.uri) { try { await dl.open({ uri: r.uri, mime: "text/csv" }); } catch (e) { toast("Nem sikerült megnyitni."); } }
+    } catch (e) { toast("Nem sikerült menteni: " + (e && e.message ? e.message : e)); }
+  } else {
+    try { const a = document.createElement("a"); a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(data); a.download = name; a.click(); toast("CSV letöltve."); } catch (e) { toast("A mentés a telefonos alkalmazásban működik."); }
+  }
+}
+function slugName(s) { return searchNorm(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "export"; }
+// Bizonyítvány-kép egy félév jegyeiről: fejléc (félév + azonosító), tárgytáblázat, átlagok lábléc.
+function exportCertificate(term) {
+  const subs = (term.subjects || []).filter((s) => s.subject || s.code);
+  const perTerm = ((state.grades && state.grades.averages && state.grades.averages.perTerm) || []).find((p) => p.termName === term.termName);
+  const scale = 2, W = 820, pad = 28, rowH = 30, headerH = 116, footH = perTerm ? 54 : 12;
+  const H = pad * 2 + headerH + (subs.length + 1) * rowH + footH;
+  const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
+  const ctx = cv.getContext("2d"); ctx.scale(scale, scale);
+  const cs = getComputedStyle(document.documentElement); const col = (n, d) => { const v = (cs.getPropertyValue(n) || "").trim(); return v || d; };
+  const bg = col("--bg", "#0e1116"), fg = col("--fg", "#e8eaed"), muted = col("--muted", "#9aa0a6"), line = col("--line", "#2a2f37");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  ctx.fillStyle = fg; ctx.font = "700 22px sans-serif"; ctx.fillText("Jegyek · " + term.termName, pad, pad + 24);
+  ctx.fillStyle = muted; ctx.font = "13px sans-serif"; ctx.fillText([state.neptunCode || state.username || "", state.university || ""].filter(Boolean).join(" · "), pad, pad + 46);
+  const xCode = pad, xName = pad + 100, xCr = W - pad - 200, xType = W - pad - 150, xGrade = W - pad - 6;
+  let y = pad + headerH;
+  ctx.font = "600 12px sans-serif"; ctx.fillStyle = muted;
+  ctx.fillText("Kód", xCode, y - 8); ctx.fillText("Tárgy", xName, y - 8); ctx.fillText("Kr", xCr, y - 8); ctx.fillText("Számonkérés", xType, y - 8);
+  ctx.textAlign = "right"; ctx.fillText("Jegy", xGrade, y - 8); ctx.textAlign = "left";
+  ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(pad, y + 0.5); ctx.lineTo(W - pad, y + 0.5); ctx.stroke();
+  subs.forEach((s, i) => {
+    const ry = y + i * rowH;
+    ctx.fillStyle = fg; ctx.font = "12px sans-serif";
+    ctx.fillText(cvClip(ctx, s.code || "", 92), xCode, ry + 20);
+    ctx.fillText(cvClip(ctx, s.subject || "", xCr - xName - 12), xName, ry + 20);
+    ctx.fillText(String(s.credits || ""), xCr, ry + 20);
+    ctx.fillText(cvClip(ctx, s.type || "", 140), xType, ry + 20);
+    ctx.textAlign = "right"; ctx.font = "700 13px sans-serif"; ctx.fillText(s.result || (s.value ? String(s.value) : "–"), xGrade, ry + 20); ctx.textAlign = "left";
+    ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(pad, ry + rowH + 0.5); ctx.lineTo(W - pad, ry + rowH + 0.5); ctx.stroke();
+  });
+  if (perTerm) {
+    const fy = y + subs.length * rowH + 32; ctx.fillStyle = fg; ctx.font = "600 13px sans-serif";
+    const parts = [perTerm.average != null ? "Átlag: " + perTerm.average : "", perTerm.sumAverage != null ? "Súlyozott: " + perTerm.sumAverage : "", perTerm.creditIndex != null ? "Kreditindex: " + perTerm.creditIndex : ""].filter(Boolean);
+    ctx.fillText(parts.join("     "), pad, fy);
+  }
+  ctx.fillStyle = muted; ctx.font = "11px sans-serif"; ctx.textAlign = "right"; ctx.fillText("Kredit+", W - pad, H - pad + 2); ctx.textAlign = "left";
+  return cv;
+}
+function renderExport() {
+  const host = $("export-scroll"); if (!host) return;
+  const terms = (state.grades && state.grades.terms) || [];
+  let h = `<p class="hub-ed-intro">Mentsd le és oszd meg az adataidat képként vagy CSV-ben. A fájlok a Letöltések közé kerülnek.</p>`;
+  h += `<div class="dash-label">Órarend</div><div class="card"><button class="row" data-exp="tt" type="button"><span class="row-ic">${icon("calendar")}</span><span class="row-main"><span class="row-title">Aktuális hét</span><span class="row-sub">Heti órarend képként (PNG)</span></span><span class="row-chev">${icon("download")}</span></button></div>`;
+  if (terms.length) {
+    h += `<div class="dash-label">Jegyek félévenként</div><div class="card">`;
+    terms.forEach((t, i) => { h += `<div class="row" style="gap:10px"><span class="row-main"><span class="row-title">${esc(t.termName)}</span><span class="row-sub">${(t.subjects || []).length} tárgy</span></span><span style="display:flex;gap:6px;flex:0 0 auto"><button class="chip" data-exp="cert" data-i="${i}" type="button">Kép</button><button class="chip" data-exp="csv" data-i="${i}" type="button">CSV</button></span></div>`; });
+    h += `</div>`;
+  } else {
+    h += `<div class="dash-empty" style="padding:20px 6px">A jegyek exportjához előbb olvasd be a jegyeket.</div>`;
+  }
+  host.innerHTML = h;
+  { const b = host.querySelector('[data-exp="tt"]'); if (b) b.onclick = saveTimetableImage; }
+  host.querySelectorAll('[data-exp="cert"]').forEach((b) => b.onclick = () => { const t = terms[+b.dataset.i]; saveCanvasPng(exportCertificate(t), "jegyek-" + slugName(t.termName) + ".png"); });
+  host.querySelectorAll('[data-exp="csv"]').forEach((b) => b.onclick = () => { const t = terms[+b.dataset.i]; const rows = [["Tárgykód", "Tárgynév", "Kredit", "Számonkérés", "Eredmény", "Jegy"]]; (t.subjects || []).forEach((s) => rows.push([s.code, s.subject, s.credits, s.type, s.result, s.value])); saveCsv("jegyek-" + slugName(t.termName) + ".csv", buildCsv(rows)); });
 }
 $("ex-refresh").onclick = fetchTimetable;
 function updateIcsStatus() { const s = $("ics-status"); if (s) s.textContent = state.icsUrl ? "Beállítva" : "Nincs beállítva"; }
