@@ -1,96 +1,206 @@
-# Adatkezelési tájékoztató — Kredit+ (alkalmazás)
+# Adatkezelési tájékoztató — Kredit+
 
-> Kanonikus forrás. Ez a szöveg jelenik meg az appban (`#privacy-sheet`).
-> A weboldal adatkezeléséről külön tájékoztató szól: `web-impresszum-adatkezeles.md`.
+> Kanonikus forrás. Ez a szöveg jelenik meg a weboldalon (`/adatkezeles/`) és az
+> appban (`#privacy-sheet`). Ez az a URL, ami a Google Play Console adatvédelmi
+> mezőjébe kerül.
+> Publikált változat: https://kreditplus.hu/adatkezeles/
 
-**Szolgáltató és adatkezelő:** Kiss Ádám egyéni vállalkozó
-Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844
-Email: info@kissadamev.hu
-Hatályos: 2026. szeptember 11.
+Hatályos: 2026. szeptember 15.
 
 ---
 
-## 1. A tájékoztató tárgya
+Ez a tájékoztató két külön dolgot ír le: mi történik az adatokkal a **Kredit+
+alkalmazásban**, és mi történik azzal a néhány adattal, amit a **kreditplus.hu
+weboldalon** adsz meg. A kettő élesen elválik egymástól, ezért érdemes külön
+olvasni.
 
-Ez a tájékoztató a Kredit+ alkalmazás adatkezelését ismerteti, a GDPR
-(2016/679 EU rendelet) szabályaival összhangban.
+A lényeg egy mondatban: a Neptun belépési adataid és a tanulmányi adataid **soha
+nem hagyják el a telefonodat**. Szerveren csak az van, amit a weboldalon te magad
+írsz be egy űrlapba, vagyis a hírlevél e-mail-címe, illetve a tesztelői
+jelentkezés adatai.
 
-## 2. Milyen adatokat kezel az alkalmazás
+## 1. Ki kezeli az adataidat
 
-Az alkalmazás a működéshez a következőket tárolja **az eszközödön**:
+**Kiss Ádám egyéni vállalkozó**
+Adószám: 90429633-1-39
+Nyilvántartási szám: 59620844
+E-mail: info@kreditplus.hu
 
-- Neptun azonosító és jelszó
-- Kétlépcsős azonosítás (2FA) kulcsa, ha megadod
-- A kiválasztott egyetem és Neptun szerver
-- Alkalmazászár: PIN kódod titkosított lenyomata és a biometria kapcsolója
-- Órarend: a feliratkozási link és a letöltött órarend, vizsgák, saját ZH-k, jegyzetek, elrejtett órák
-- Tanulmányi adatok: beolvasott félévek és kredit-előrehaladás, tantárgyak
-- Beállítások: értesítések, biztonsági kapcsolók, letöltött kiegészítők (pl. számlatükör)
+A Kredit+ egyéni vállalkozásban készül. Nincs külön adatvédelmi tisztviselő, az
+adatokkal kapcsolatos bármilyen ügyben közvetlenül a fenti címen lehet hozzám
+fordulni.
 
-## 3. Hol tárolódnak
+## 2. Az alkalmazás: minden a telefonodon marad
 
-Ezek az adatok **kizárólag a te eszközödön** tárolódnak, az alkalmazás helyi
-tárolójában. A szolgáltató ezekhez nem fér hozzá, és nem is látja őket.
+A Kredit+ úgy készült, hogy a szolgáltatónak **ne legyen szerver oldali
+másolata** a tanulmányi adataidról. Nincs felhasználói fiók, nincs regisztráció,
+és nincs olyan adatbázis, ahova az app feltöltené, amit a Neptunból kiolvas.
 
-## 4. Hálózati kapcsolatok
+A telefonod helyi tárolójában, csak nálad, a következők vannak:
 
-Az alkalmazás a személyes adataidat nem küldi el a szolgáltatónak. A következő
-külső kapcsolatok jöhetnek létre:
+- a Neptun azonosítód és jelszavad,
+- a kétlépcsős azonosítás kulcsa, ha megadtad,
+- a kiválasztott egyetem és Neptun szerver,
+- az alkalmazászár PIN kódjának titkosított lenyomata,
+- a letöltött órarend, jegyek, vizsgák, kreditek, tantárgyak, pénzügyek,
+- a saját jegyzeteid, emlékeztetőid és beállításaid.
 
-- **Egyetemi Neptun szerver:** a te eszközöd és az általad választott egyetem
-  Neptun szervere között, a bejelentkezéshez és az órarend-link, félévek, kredit
-  lekéréséhez. Ezt a szervert az adott egyetem üzemelteti.
-- **GitHub (frissítés és kiegészítők):** az alkalmazás frissítéseit és a
-  letölthető kiegészítőket a GitHubról tölti le (github.com,
-  raw.githubusercontent.com). A GitHub, mint külső szolgáltató, a szokásos módon
-  láthatja az eszköz IP-címét, de személyes adatot (azonosító, jelszó) nem küldünk.
-- **Google Play (előfizetés):** a fizetős előfizetés vásárlását és kezelését a
-  Google Play végzi. A fizetési adatokat (bankkártya stb.) a **Google** kezeli;
-  a szolgáltató ezekhez nem fér hozzá. Az alkalmazás csak azt ellenőrzi az
-  eszközön, hogy van-e érvényes előfizetésed. A Google adatkezelésére a Google
-  saját szabályzata vonatkozik.
+Ezeket **nem látom és nem tudom lekérdezni**. Ha törlöd az appot, vagy a
+beállításokban a Minden adat törlése pontot választod, ezek az adatok
+megszűnnek, és sehol máshol nem maradnak meg.
 
-## 5. Fizetés és előfizetés
+### Milyen hálózati kapcsolat jön létre az appból
 
-A fizetős előfizetés a Google Play áruházon keresztül történik. A **Google a
-fizetési szolgáltató**; a bankkártya- és számlázási adatokat a Google kezeli,
-a szolgáltató ezeket nem látja és nem tárolja. Az alkalmazás az előfizetés
-érvényességét az eszközön, a Google Play szolgáltatáson keresztül ellenőrzi.
+- **Az egyetemed Neptun szervere.** A belépés és az adatlekérés közvetlenül a
+  telefonod és az egyetem szervere között zajlik, ugyanúgy, mintha böngészőből
+  lépnél be. Ezt a szervert az egyetemed üzemelteti, nem mi. A belépéshez a te
+  saját adataidat használja az app, a hivatalos belépési felületen.
+- **GitHub.** Innen tölti le az app a frissítéseket és a letölthető
+  kiegészítőket. Ilyenkor a GitHub, mint külső szolgáltató, a szokásos módon
+  látja az eszközöd IP-címét. Személyes adatot, azonosítót vagy jelszót nem
+  küldünk neki.
+- **Google Play.** Az előfizetés érvényességének ellenőrzéséhez az app a Google
+  Play szolgáltatásával beszélget a telefonon. Erről a 3. pont szól.
 
-## 6. Értesítések
+Az óra, ZH és vizsga emlékeztetők **helyi értesítések**: a telefonod hozza létre
+és jeleníti meg őket. Ehhez semmilyen adat nem megy ki az eszközről, és nincs
+szükség szerverre.
 
-Az óra/ZH/vizsga emlékeztetők **helyi értesítések**: az eszközöd hozza létre és
-jeleníti meg őket. Ehhez nem hagy el adat az eszközt.
+### Ha biztonsági mentést készítesz
 
-## 7. Biztonsági mentés
+A mentés az eszközöd Dokumentumok mappájába kerül, és a Neptun jelszavaddal
+titkosítjuk. A fájl érzékeny adatokat tartalmaz, köztük a jelszavadat és a
+kétlépcsős kulcsot. A mentésfájl tárolása, megosztása és a jelszó megőrzése a te
+felelősséged. Ha elveszted a jelszót, a mentés nem állítható vissza, mert nálunk
+nincs róla másolat.
 
-Ha mentést készítesz, az az eszköz Dokumentumok/neptunplus mappájába kerül, és a
-Neptun jelszavaddal titkosítjuk (AES-GCM). A mentés érzékeny adatokat tartalmaz
-(jelszó, 2FA kulcs). A kiexportált mentésfájl kezeléséért, megosztásáért és a
-jelszó megőrzéséért a felhasználó felel.
+## 3. Előfizetés és fizetés
 
-## 8. Nyomon követés
+A Kredit+ fizetős előfizetéssel használható, ami ingyenes próbaidőszakkal indul.
+A vásárlás és a számlázás **teljes egészében a Google Play áruházon keresztül**
+történik.
 
-Az alkalmazás **nem használ analitikát, reklámot, sütit vagy egyéb nyomkövetést**
-a szolgáltató részéről.
+Ez azt jelenti, hogy a **Google** a fizetési szolgáltató: ő kezeli a bankkártya
+adatait, ő vonja le a díjat, és ő állítja ki a nyugtát. A szolgáltató **nem lát
+és nem tárol bankkártya számot, banki adatot vagy számlázási címet**. Az app
+annyit tud meg a Google Play szolgáltatásától a telefonodon, hogy van-e érvényes
+előfizetésed. A Google saját adatkezelésére a Google adatvédelmi szabályzata
+vonatkozik.
 
-## 9. Az adatok törlése
+## 4. A weboldal: sütik és látogatás
 
-Az adatok bármikor törölhetők a Beállítások menü Minden adat törlése pontjával,
-vagy az alkalmazás eltávolításával. A Dokumentumok/neptunplus mappában lévő
-mentésfájlokat külön törölheted.
+A kreditplus.hu egy bemutatóoldal. Használatához nem kell regisztrálni, és a
+böngészéshez nem kérünk semmilyen adatot.
 
-## 10. Jogaid és kapcsolat
+**Nem használunk analitikát, látogatottság mérőt, hirdetési vagy profilalkotó
+sütit**, és nem követünk oldalak között. Ezért nincs az oldalon süti elfogadó sáv
+sem, mert nincs mit elfogadni.
 
-Mivel a szolgáltató nem fér hozzá az adataidhoz és nem tárolja azokat, a
-személyes adataidon érdemi adatkezelést nem végez. Megilletnek a GDPR szerinti
-jogok (tájékoztatás, hozzáférés, helyesbítés, törlés, korlátozás, tiltakozás);
-mivel azonban a szolgáltató nem rendelkezik az adataiddal, ezeket az eszközödön
-tudod gyakorolni. Kérdés esetén az info@kissadamev.hu címen fordulhatsz hozzá.
-Felügyeleti hatóság: Nemzeti Adatvédelmi és Információszabadság Hatóság (NAIH).
+Két dolog azonban technikailag óhatatlanul történik, és ezt tisztességes
+elmondani:
 
-## 11. Külső rendszerek
+- **Kiszolgálói naplók.** A weboldalt a Cloudflare szolgáltatásán üzemeltetjük.
+  Ahogy minden weboldalnál, a kiszolgáló a működéshez és a támadások kiszűréséhez
+  rövid ideig naplózza a kérésekhez tartozó technikai adatokat, köztük az
+  IP-címet. Ezeket a naplókat nem mi elemezzük, és nem kötjük őket senkihez.
+- **Betűtípusok.** Az oldal betűtípusait jelenleg a Google Fonts szolgáltatásáról
+  tölti be a böngésződ. Emiatt az oldal megnyitásakor a böngésződ kapcsolatba lép
+  a Google szervereivel, és a Google ilyenkor látja az eszközöd IP-címét. Nevet
+  vagy más adatot nem küldünk vele.
 
-A Neptun rendszert és az egyetemek szervereit, a GitHubot, valamint a Google
-Play szolgáltatást önálló szervezetek üzemeltetik. Az azokon végzett
-adatkezelésre ez a tájékoztató nem terjed ki.
+## 5. Hírlevél
+
+A főoldalon feliratkozhatsz, hogy szóljunk, amikor a Kredit+ megjelenik.
+
+- **Mit tárolunk:** az e-mail-címedet, és azt, hogy mikor iratkoztál fel. Mást
+  nem. A nevedet a hírlevélhez nem kérjük.
+- **Miért:** hogy értesítést és hírlevelet küldjünk a megjelenésről és a
+  fontosabb újdonságokról. Másra nem használjuk.
+- **Milyen alapon:** azért, mert te kérted. Akkor adtad meg az engedélyt, amikor
+  beírtad a címed és elküldted az űrlapot. Ez önkéntes, és bármikor
+  visszavonhatod.
+- **Hol tárolódik:** a weboldalt kiszolgáló Cloudflare rendszerének
+  adatbázisában. A Cloudflare a mi megbízásunkból tárolja, saját célra nem
+  használhatja.
+- **Ki látja:** egyetlen ember, a szolgáltató. Az e-mail-címedet **nem adjuk el,
+  nem adjuk bérbe és nem adjuk át** hirdetőknek vagy bárki másnak.
+- **Meddig:** amíg le nem iratkozol. A leiratkozás után töröljük a címedet.
+- **Hogyan iratkozhatsz le:** minden levél alján egy kattintással, vagy írj az
+  info@kreditplus.hu címre.
+
+## 6. Tesztelői jelentkezés
+
+Ha jelentkezel a zárt Android tesztbe, ott a nevedet, az e-mail-címedet és az
+egyetemedet kérjük. Mivel ez több adat és külön célra megy, erről önálló,
+részletes tájékoztatót írtunk: https://kreditplus.hu/teszteles/adatkezeles/
+
+## 7. Ha e-mailben írsz nekünk
+
+Ha kérdéssel, hibajelentéssel vagy panasszal írsz, a leveledet és a benne
+megadott adatokat addig őrizzük meg, amíg az ügyet lezárjuk, és utána még annyi
+ideig, ameddig egy esetleges későbbi kérdés tisztázásához szükséges. Ez
+legfeljebb egy év, utána a levelezést töröljük. Ha panaszról van szó, a panaszt
+és a rá adott választ a fogyasztóvédelmi szabályok szerint őrizzük meg.
+
+## 8. Nincs profilalkotás és nincs automatikus döntés
+
+Nem készítünk rólad profilt, nem elemezzük a szokásaidat, és nincs olyan gép vagy
+algoritmus, ami rólad automatikusan döntene. Az appban minden kiszámolt adat,
+például a kreditátlagod, a saját telefonodon keletkezik és ott is marad.
+
+## 9. Adatok az országhatáron túl
+
+A weboldalt és az űrlapok adatbázisát a Cloudflare, az előfizetést a Google
+szolgáltatja. Ezek nemzetközi szolgáltatók, ezért előfordulhat, hogy az adat az
+Európai Unión kívüli kiszolgálót is érint. Mindkét cég olyan szerződéses
+garanciákat alkalmaz, amelyeket az európai adatvédelmi szabályok az ilyen
+továbbításhoz megkövetelnek.
+
+## 10. Mit kérhetsz tőlünk
+
+Az alábbiak bármikor, ingyenesen kérhetők:
+
+- **Tájékoztatás és másolat** arról, hogy milyen adatot tartunk rólad nyilván.
+- **Javítás**, ha valamelyik adat hibás vagy elavult.
+- **Törlés.** A hírlevél címét és a tesztelői jelentkezést bármikor töröljük, ha
+  kéred.
+- **Korlátozás**, vagyis hogy egy időre függesszük fel az adat használatát, amíg
+  egy vitát tisztázunk.
+- **Tiltakozás** az adat kezelése ellen.
+- **Adathordozhatóság**, vagyis hogy a megadott adatokat géppel olvasható
+  formában is megkapd.
+- **A hozzájárulás visszavonása**, indokolás nélkül.
+
+Az **appban tárolt adataidhoz nem férünk hozzá**, ezért azokat nem tudjuk
+helyetted kiadni vagy törölni. Azok a telefonodon vannak, és a Beállítások menü
+Minden adat törlése pontjával, vagy az app eltávolításával tudod őket
+megszüntetni. A mentésfájlokat külön kell törölnöd a Dokumentumok mappából.
+
+Bármelyik kérésedet írd meg az info@kreditplus.hu címre. Legkésőbb egy hónapon
+belül érdemben válaszolunk.
+
+## 11. Adatbiztonság
+
+A weboldal és az űrlapok titkosított kapcsolaton működnek. Az adatbázishoz csak a
+szolgáltató fér hozzá, jelszóval és kétlépcsős azonosítással védett fiókon
+keresztül. Az appban a PIN kódot nem tároljuk visszafejthető formában, a
+biztonsági mentés pedig titkosítva készül.
+
+## 12. Ha nem vagy elégedett
+
+Először írj nekünk, a legtöbb kérdés egy levéllel rendezhető. Ha ezután sem vagy
+elégedett, panasszal fordulhatsz a Nemzeti Adatvédelmi és Információszabadság
+Hatósághoz (1055 Budapest, Falk Miksa utca 9-11., naih.hu), vagy bírósághoz
+fordulhatsz.
+
+## 13. Külső rendszerek, amikre ez a tájékoztató nem terjed ki
+
+A Neptun rendszert és az egyetemek szervereit, a GitHubot, a Google Play áruházat
+és a Cloudflare szolgáltatásait önálló szervezetek üzemeltetik. Az ő saját
+adatkezelésükre a saját szabályzataik vonatkoznak, arra nekünk nincs ráhatásunk.
+
+## 14. Ha változik ez a tájékoztató
+
+Ha az app vagy a weboldal működése változik, ezt a szöveget frissítjük, és a lap
+tetején lévő dátumot átírjuk. Ha a változás érdemben érinti a felhasználókat, az
+appban vagy a hírlevélben külön is jelezzük.

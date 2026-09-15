@@ -197,6 +197,7 @@
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Kredit<span class="plus">+</span></div><div class="topbar-sub" id="home-sub">Készen áll a belépésre</div></div>
                 <button class="iconbtn plain" id="hub-edit" title="Kezdőlap testreszabása"><span data-icon="pencil"></span></button>
+                <button class="iconbtn plain" id="notif-bell" title="Értesítések" style="position:relative"><span data-icon="bell"></span><span id="notif-bell-badge" hidden style="position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--brand-plus,#f5b221);color:#0e1116;font-size:10px;font-weight:700;line-height:16px;text-align:center"></span></button>
                 <button class="iconbtn plain" id="home-profile" title="Profil"><span data-icon="user"></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
@@ -635,6 +636,22 @@
               </header>
               <div class="ptr" id="periods-ptr" data-icon="refresh"></div>
               <div class="scroll" id="periods-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-notifs">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Értesítések</div><div class="topbar-sub">Az elmúlt 30 nap</div></div>
+              </header>
+              <div class="scroll" id="notifs-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-notif">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark" id="notif-title">Értesítés</div><div class="topbar-sub">Részletek</div></div>
+              </header>
+              <div class="scroll" id="notif-scroll"></div>
             </section>
 
             <section class="tabscreen" id="tab-export">

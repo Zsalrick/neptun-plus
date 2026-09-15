@@ -1,111 +1,197 @@
 # Általános Szerződési Feltételek (ÁSZF) — Kredit+
 
-> Kanonikus forrás. Ez a szöveg jelenik meg az appban (`#terms-sheet`) és a
-> weboldalon. Fizetős, előfizetéses modell, Google Play számlázással.
+> Kanonikus forrás. Ez a szöveg jelenik meg a weboldalon (`/aszf/`) és az appban
+> (`#terms-sheet`). A kettőnek meg kell egyeznie.
+> Publikált változat: https://kreditplus.hu/aszf/
 
-**Szolgáltató:** Kiss Ádám egyéni vállalkozó
-Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844
-Email: info@kissadamev.hu
-Hatályos: 2026. szeptember 11.
+Hatályos: 2026. szeptember 15.
 
 ---
 
-## 1. Az alkalmazás
+Ez a dokumentum azt írja le, milyen feltételekkel használhatod a Kredit+
+alkalmazást, mennyibe kerül, hogyan mondhatod le, és ki miért felel. Igyekeztünk
+érthetően fogalmazni, jogi szakzsargon nélkül.
 
-A Kredit+ egy segédalkalmazás, amely a felhasználó eszközén tárolt adatokkal
-megkönnyíti a tanulmányi rendszer (Neptun) használatát: belépés, órarend,
-vizsgák és ZH-k, emlékeztetők, félév- és kredit-áttekintés, tantárgyak,
-valamint letölthető kiegészítők (pl. számlatükör). Az alkalmazás önálló, nem
-hivatalos termék; a függetlenségről a Függetlenségi és jogi nyilatkozat szól.
+## 1. Ki a szolgáltató
 
-## 2. Előfizetés és díj
+**Kiss Ádám egyéni vállalkozó**
+Adószám: 90429633-1-39
+Nyilvántartási szám: 59620844
+E-mail: info@kreditplus.hu
 
-Az alkalmazás egyes funkciói **fizetős előfizetéshez** kötöttek. Az előfizetés
-a Google Play áruházon keresztül vásárolható meg és aktiválódik.
+## 2. Mit csinál az alkalmazás
 
-- Az aktuális árat és az előfizetési időszakot (pl. havi vagy éves) a vásárlás
-  előtt a Google Play, illetve az alkalmazás vásárlási felülete mutatja meg.
-  A vásárlás megerősítésével a felhasználó elfogadja ezeket a feltételeket.
-- **14 napos ingyenes próbaidőszak:** az előfizetés 14 napos díjmentes
-  próbaidőszakkal indul. A próbaidőszak alatt a felhasználó bármikor,
-  következmény nélkül lemondhat; ekkor nem történik terhelés. Ha a próbaidőszak
-  végéig nem mond le, az előfizetés automatikusan fizetőssé válik, és a Google
-  Play a megjelenített díjat felszámítja. A próbaidőszak fiókonként/eszközönként
-  egyszer vehető igénybe, a Google Play feltételei szerint.
-- Az előfizetés az időszak végén **automatikusan megújul** ugyanarra az időszakra
-  és a mindenkori díjon, kivéve, ha a felhasználó a megújulás előtt lemondja.
-- A díjat és a fizetést a **Google** kezeli (a Google a fizetési szolgáltató és
-  a nyugta kiállítója). A szolgáltató nem lát és nem tárol bankkártya- vagy
-  fizetési adatot.
+A Kredit+ egy segédalkalmazás, ami a saját tanulmányi fiókodhoz ad kényelmesebb
+hozzáférést: belép helyetted, és egy helyre hozza az órarendedet, a jegyeidet, a
+kreditjeidet, a vizsgáidat, a tantárgyaidat és a pénzügyeidet. Emlékeztetőket és
+változás értesítőket küld, és kiegészítőket is le lehet tölteni hozzá.
 
-## 3. Lemondás
+Az app **önálló, nem hivatalos termék**. Nem áll kapcsolatban a Neptun rendszer
+fejlesztőjével vagy jogosultjával, és egyetlen egyetemmel sem. Az adataid a
+telefonodon maradnak, erről az adatkezelési tájékoztató szól részletesen.
 
-Az előfizetés bármikor lemondható a Google Play előfizetés-kezelő felületén
-(Google Play > Fizetések és előfizetések > Előfizetések). A lemondás a folyó,
-már kifizetett időszak végéig nem szünteti meg a hozzáférést; a következő
-időszakra nem történik újabb terhelés.
+## 3. Mennyibe kerül
 
-## 4. Elállási jog (digitális tartalom)
+Az app egyes funkciói előfizetéshez kötöttek. Három időszak közül lehet
+választani. A jelen feltételek közzétételekor érvényes árak:
 
-Az előfizetés digitális tartalom és digitális szolgáltatás, amelynek teljesítése
-a felhasználó kifejezett kérésére a 14 napos elállási határidő letelte előtt
-megkezdődik. A vásárlás megerősítésével a felhasználó **kifejezetten hozzájárul**
-a szolgáltatás azonnali megkezdéséhez, és **tudomásul veszi, hogy ezzel elveszíti**
-a 45/2014. (II. 26.) Korm. rendelet szerinti 14 napos elállási jogát a már
-teljesített részre. A visszatérítésekre egyebekben a Google Play visszatérítési
-szabályzata irányadó, a felhasználó a Google felé érvényesítheti azokat.
+- **Havi:** 299 Ft, minden hónapban.
+- **Féléves:** 1 615 Ft, félévente. Ez körülbelül 269 Ft havonta.
+- **Éves:** 2 691 Ft, évente. Ez körülbelül 224 Ft havonta.
 
-## 5. Használat
+Az árak a végső, fogyasztói árak. **A mindenkor érvényes, rád vonatkozó árat
+mindig a Google Play mutatja meg a vásárlás megerősítése előtt**, és eltérés
+esetén az ott kijelzett ár az irányadó. Az árat később módosíthatjuk, de a
+változás a már futó, kifizetett időszakodat nem érinti, és a Google Play a
+megújulás előtt külön értesít róla.
 
-Az alkalmazást a felhasználó kizárólag a **saját** tanulmányi fiókjához,
-jogszerűen használhatja, betartva az adott tanulmányi rendszer és intézmény
-szabályzatait. A belépési adatok védelme a felhasználó felelőssége.
+## 4. Az ingyenes próbaidőszak
 
-## 6. Frissítések és kiegészítők
+Mindhárom időszak **14 napos ingyenes próbával indul**. Ha ajánlói kóddal
+regisztrálsz, 14 nap helyett **31 nap** a próba.
 
-Az alkalmazás frissítéseit és a kiegészítőket a GitHubról tölti le. A kiegészítők
-tartalma (pl. a számlatükör) tájékoztató jellegű, nem hivatalos, és elavulhat.
+- A próbaidőszak alatt **nem történik terhelés**, és bármikor, következmény
+  nélkül lemondhatsz.
+- Ha a próbaidőszak utolsó napjáig nem mondod le, az előfizetés automatikusan
+  fizetőssé válik, és a Google Play levonja a választott időszak díját.
+- A próbaidőszak a Google Play feltételei szerint **egyszer vehető igénybe**. Ha
+  korábban már próbáltad, egy újabb előfizetés rögtön fizetőssé válik.
 
-## 7. Az adatok pontossága
+## 5. Hogyan fizetsz, és hogyan mondhatod le
 
-A tanulmányi rendszerből beolvasott adatok (órarend, félévek, kreditek) legjobb
-szándék szerint készülnek, de a rendszer változásai miatt hibásak vagy hiányosak
-lehetnek. A hivatalos, mérvadó adatot mindig a tanulmányi rendszerben ellenőrizd.
+A vásárlás és a számlázás a **Google Play áruházon** keresztül történik. A Google
+a fizetési szolgáltató: ő vonja le a díjat és ő állítja ki a nyugtát. A
+szolgáltató bankkártya adatot nem lát és nem tárol.
 
-## 8. Biztonsági mentés
+Az előfizetés az időszak végén **automatikusan megújul** ugyanarra az időszakra,
+hogy ne szakadjon meg a hozzáférésed. Ezt bármikor kikapcsolhatod:
 
-A mentés a felhasználó jelszavával titkosított (AES-GCM), és az eszközön
-tárolódik. A mentésfájl és a jelszó megőrzése a felhasználó felelőssége; ezek
-nélkül a mentés nem állítható vissza.
+**Google Play alkalmazás > a profilképed > Fizetések és előfizetések >
+Előfizetések > Kredit+ > Előfizetés lemondása.**
 
-## 9. Felelősség korlátozása
+A lemondás nem vonja meg azonnal a hozzáférést: a már kifizetett időszak végéig
+használhatod tovább az appot, csak új terhelés nem lesz. Az előfizetés a Google
+fiókodhoz kötődik, nem az eszközödhöz.
+
+## 6. Elállási jog
+
+Az előfizetés digitális szolgáltatás, amelynek teljesítése a vásárlás
+pillanatában, a te kérésedre azonnal elkezdődik, hiszen rögtön használni akarod
+az appot.
+
+Ezért a vásárlás megerősítésével kifejezetten kéred a szolgáltatás azonnali
+megkezdését, és **tudomásul veszed, hogy ezzel elveszíted a 14 napos elállási
+jogodat** a már teljesített részre. Ez a fogyasztói szerződésekre vonatkozó
+magyar rendelet szerint történik így, és minden hasonló digitális előfizetésnél
+ugyanez a helyzet.
+
+Ez a gyakorlatban nem jelent hátrányt, mert a **14, illetve 31 napos ingyenes
+próbaidőszak alatt mindent kipróbálhatsz fizetés nélkül**, és addig bármikor
+kiszállhatsz. A visszatérítésekre a Google Play saját visszatérítési szabályzata
+vonatkozik, ezért visszatérítési kérelemmel közvetlenül a Google felé érdemes
+fordulni.
+
+## 7. Ajánlói program
+
+Minden felhasználó kap egy saját ajánlói kódot, amit az appban talál meg és
+megoszthat. Ha valaki a te kódoddal regisztrál:
+
+- **ő** 14 nap helyett 31 nap ingyenes próbát kap,
+- **te** minden sikeres meghívásért 31 nap ajándék hozzáférést írunk jóvá.
+
+Sikeresnek az a meghívás számít, amikor a meghívott új felhasználóként, valós
+saját fiókkal aktiválja az appot a kódoddal. A jóváírás a meglévő
+előfizetésedhez adódik hozzá.
+
+Az ajándék napok **nem válthatók pénzre**, és nem ruházhatók át másra.
+Visszaélés esetén, például ha valaki saját magát hívja meg több fiókkal, hamis
+fiókokat hoz létre vagy automatizáltan generál jelentkezéseket, a jóváírást
+visszavonhatjuk, és a kódot letilthatjuk. Az ajánlói programot bármikor
+módosíthatjuk vagy lezárhatjuk, de a már jóváírt napokat ez nem érinti.
+
+## 8. A tesztelők prémium hozzáférése
+
+Aki hivatalos tesztelőként végigvitte a zárt Android tesztet, díjmentes prémium
+hozzáférést kap. Ennek pontos feltételeit a Tesztelői Feltételek tartalmazzák
+(https://kreditplus.hu/teszteles/feltetelek/).
+
+## 9. Hogyan használhatod az appot
+
+- Kizárólag a **saját** tanulmányi fiókodhoz, jogszerűen, az egyetemed és a
+  tanulmányi rendszer szabályzatait betartva.
+- A belépési adataid védelme a te felelősséged.
+- Az előfizetésed személyes. Ne oszd meg másokkal, és ne add tovább.
+- Ne próbáld visszafejteni, módosítani vagy megkerülni az app előfizetés
+  ellenőrzését.
+
+Ha ezeket megszeged, a hozzáférésedet felfüggeszthetjük vagy megszüntethetjük.
+
+## 10. Az adatok pontossága
+
+Az app a tanulmányi rendszerből olvassa ki az adatokat, és legjobb tudásunk
+szerint jeleníti meg őket. A rendszer időnként változik, ezért előfordulhat, hogy
+egy adat késve frissül, hiányos vagy hibás.
+
+**A hivatalos, mérvadó adat mindig maga a tanulmányi rendszer.** A fontos
+határidőknél, például vizsgajelentkezésnél, tárgyfelvételnél vagy befizetésnél,
+mindig ellenőrizd ott is, amit az app mutat, és ne csak az app értesítéseire
+támaszkodj.
+
+## 11. Elérhetőség és változások
+
+Az app folyamatosan fejlődik, az új funkciók a frissítésekkel érkeznek.
+Előfordulhat, hogy egy funkció megváltozik vagy megszűnik, például ha a
+tanulmányi rendszer oldalán változik valami, ami miatt már nem működtethető. Nem
+vállalunk garanciát arra, hogy a szolgáltatás megszakítás nélkül, hiba nélkül
+működik.
+
+Ha a szolgáltatást véglegesen megszüntetnénk, arról ésszerű időben előre
+értesítünk, és a már kifizetett, még fel nem használt időszakra arányos
+visszatérítést biztosítunk.
+
+## 12. Felelősség
 
 Az alkalmazás abban az állapotában érhető el, ahogy van. A szolgáltató a
-jogszabály engedte legnagyobb mértékben kizárja a felelősségét a tanulmányi
-rendszer változásaiból, az elmaradt vagy hibás belépésből, hibás értesítésből,
-adatvesztésből vagy a kiegészítők tartalmából eredő károkért. A használat a
-felhasználó saját felelősségére történik. E pont nem korlátozza a felelősséget
-olyan esetben, amelyben az jogszabály szerint nem zárható ki (pl. szándékos
-károkozás, életet, testi épséget, egészséget megkárosító szerződésszegés).
+jogszabály engedte legnagyobb mértékben kizárja a felelősségét azokért a
+károkért, amelyek a tanulmányi rendszer változásaiból, egy elmaradt vagy
+sikertelen belépésből, hibás vagy késve érkező értesítésből, a helyi adatok
+elvesztéséből vagy a letölthető kiegészítők tartalmából erednek.
 
-## 10. Fogyasztói jogérvényesítés
+Ez a korlátozás **nem érinti** azt a felelősséget, amelyet jogszabály szerint nem
+lehet kizárni, például a szándékos károkozásért, illetve az emberi életet, testi
+épséget vagy egészséget megkárosító szerződésszegésért való felelősséget. A
+fogyasztókat megillető kötelező jogokat ez a pont nem korlátozza.
 
-A felhasználót fogyasztóként megilletik a jogszabály szerinti jogok. Panasszal
-az info@kissadamev.hu címen élhet. A fizetéssel és visszatérítéssel kapcsolatos
-igényeit a Google Play felé érvényesítheti. Fogyasztói jogvita esetén a
-felhasználó a lakóhelye szerinti illetékes békéltető testülethez fordulhat.
+## 13. Panasz és jogérvényesítés
 
-## 11. Módosítás
+Panasszal, kérdéssel írj az info@kreditplus.hu címre. A panaszt megvizsgáljuk, és
+legkésőbb 30 napon belül írásban válaszolunk.
 
-A szolgáltató a feltételeket módosíthatja. A módosítás az alkalmazás
-frissítésével, illetve a weboldalon való közzététellel lép hatályba. Az árváltozás
-a folyó előfizetési időszakot nem érinti.
+Fizetéssel, terheléssel és visszatérítéssel kapcsolatos igényedet a **Google
+Play** felé tudod érvényesíteni, mert a vásárlás ott történik.
 
-## 12. Irányadó jog
+Ha fogyasztóként nem értünk egyet, díjmentesen fordulhatsz a lakóhelyed szerint
+illetékes **békéltető testülethez**, amelyek a megyei kereskedelmi és
+iparkamarák mellett működnek. Fogyasztóvédelmi panasszal a területileg illetékes
+kormányhivatalhoz is fordulhatsz. Természetesen a bírósági út is nyitva áll.
 
-A feltételekre a magyar jog az irányadó.
+## 14. A feltételek módosítása
 
-## 13. Elfogadás
+Ezeket a feltételeket módosíthatjuk, ha a szolgáltatás vagy a jogszabályi
+környezet változik. A módosítás a weboldalon való közzététellel lép hatályba, és
+a lap tetején lévő dátumot is frissítjük.
 
-Az alkalmazás használatával, illetve az előfizetés megvásárlásával a felhasználó
-elfogadja ezeket a feltételeket.
+Ha a változás érdemben érinti az előfizetésedet, például az árat vagy a
+szolgáltatás tartalmát, arról a megújulás előtt külön értesítünk, és lehetőséged
+lesz lemondani, mielőtt a változás rád vonatkozna.
+
+## 15. Irányadó jog
+
+A feltételekre a **magyar jog** az irányadó. Ha fogyasztóként más európai uniós
+országban laksz, az ottani fogyasztóvédelmi szabályok kötelező védelmét ez a
+kikötés nem vonja el tőled.
+
+## 16. Elfogadás
+
+Az alkalmazás használatával, illetve az előfizetés megvásárlásával elfogadod
+ezeket a feltételeket.

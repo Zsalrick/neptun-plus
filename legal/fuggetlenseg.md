@@ -7,8 +7,8 @@
 
 **Szolgáltató:** Kiss Ádám egyéni vállalkozó
 Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844
-Email: info@kissadamev.hu
-Hatályos: 2026. szeptember 11.
+Email: info@kreditplus.hu
+Hatályos: 2026. szeptember 15.
 
 ---
 
@@ -65,5 +65,5 @@ maga a tanulmányi rendszer; eltérés esetén az abban szereplő adat az irány
 ## 6. Kifogás esetén
 
 Ha bármely jogosult úgy ítéli meg, hogy az alkalmazás sérti a jogait, kérjük,
-jelezze az info@kissadamev.hu címen. A szolgáltató jóhiszeműen, indokolatlan
+jelezze az info@kreditplus.hu címen. A szolgáltató jóhiszeműen, indokolatlan
 késedelem nélkül együttműködik a jogszerű állapot helyreállításában.
