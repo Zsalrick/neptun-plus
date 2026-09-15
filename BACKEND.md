@@ -19,18 +19,17 @@ tartalmazza:
 | Csomag | Számlázási időszak | Play base plan | Ár |
 |---|---|---|---|
 | Havi | 1 hónap (P1M) | `monthly` | **299 Ft / hó** |
-| Féléves | 6 hónap (P6M) | `semester` | **KITÖLTENDŐ** (a user adja meg) |
-| Éves | 12 hónap (P1Y) | `yearly` | **KITÖLTENDŐ** (a user adja meg) |
+| Féléves | 6 hónap (P6M) | `semester` | **1 615 Ft / félév** (−10%, kb. 269 Ft/hó) |
+| Éves | 12 hónap (P1Y) | `yearly` | **2 691 Ft / év** (−25%, kb. 224 Ft/hó) |
 
+- Ezek a **pontos árak, amiket az app onboarding csomagválasztója már mutat** (index.html `#ob-plans`):
+  havi 299 Ft, féléves 1 615 Ft (−10%), éves 2 691 Ft (−25%). A weboldal ezekkel egyezzen.
 - **Google Play felépítés:** EGY előfizetési termék (`kreditplus`), alatta **három base plan**
   (monthly / semester / yearly). A 6 hónap (P6M) és az 1 év (P1Y) is támogatott Play billing-időszak.
-- A féléves és éves csomagnál érdemes látható **megtakarítást** mutatni a havihoz képest (pl. „2 hónap
-  ajándék" jellegű üzenet) — a konkrét árakat a user adja meg, addig ne találj ki számot.
+- A féléves/éves csomagnál mutasd a **megtakarítást** (−10% / −25%, illetve a havi egyenérték
+  269 / 224 Ft/hó).
 - Az app és a backend a base plan / product azonosítóból tudja, melyik csomag aktív; az entitlement
   szempontjából mindegy, a lejárati dátum (`play_until`) számít.
-
-> A féléves és éves ÁR még hiányzik. Amíg a user meg nem adja, a weboldalon a havi (299 Ft) menjen ki,
-> a másik kettő helyére „hamarosan" vagy üres ár, de a CSOMAG maga jelenjen meg.
 
 ---
 
@@ -262,8 +261,8 @@ visszatérítéskor a bónusz visszavonása. Nem kötelező az MVP-hez, de a hel
    Integrity-vel.*
 2. **Van felső korlát** az ajánlásból szerezhető napokra? (pl. max 12 hónap). *Ajánlásom: igen, pl. 365 nap.*
 3. **Trial hossz** kód nélkül: 14 nap, kóddal 31 nap — fix? *Igen, hacsak nem akarsz kampányt.*
-4. **Előfizetés termék(ek):** rögzítve a §0-ban — EGY `kreditplus` termék, három base plan (monthly
-   299 Ft / semester / yearly). A féléves és éves ÁR a usertől még hiányzik → pótolni a §0 táblában.
+4. **Előfizetés termék(ek):** rögzítve a §0-ban — EGY `kreditplus` termék, három base plan: monthly
+   299 Ft, semester 1 615 Ft (−10%), yearly 2 691 Ft (−25%). Árak véglegesek (az app ezeket mutatja).
 5. **API domain:** `api.<domain>` szub-domain vagy `/api/*` a Pages-en? *Ajánlásom: külön `api.` szub.*
 
 ---

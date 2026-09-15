@@ -110,14 +110,15 @@ Ha több Neptun-fiókod van, mindet kezelheted, és gyorsan váltasz köztük.
 
 A weboldal **mindhárom** csomagot mutassa, ne csak a havit:
 
-| Csomag | Ár |
-|---|---|
-| Havi | 299 Ft / hó |
-| Féléves | KITÖLTENDŐ (a user adja meg) |
-| Éves | KITÖLTENDŐ (a user adja meg) |
+| Csomag | Ár | Havi egyenérték |
+|---|---|---|
+| Havi | 299 Ft / hó | 299 Ft/hó |
+| Féléves | 1 615 Ft / félév (−10%) | 269 Ft/hó |
+| Éves | 2 691 Ft / év (−25%) | 224 Ft/hó |
 
-- A féléves és éves csomagnál mutass megtakarítást a havihoz képest (a konkrét összeget a user adja meg,
-  addig ne találj ki árat, a helyén „hamarosan" vagy üres).
+- Ezek az árak véglegesek, az app onboarding csomagválasztója pontosan ezeket mutatja. A weboldal
+  egyezzen velük.
+- A féléves/éves csomagnál emeld ki a megtakarítást (−10% / −25%), és mutasd a havi egyenértéket is.
 - Ingyenes próbaidőszakkal indul (14 nap, ajánlói kóddal 31 nap, lásd BACKEND.md).
 - Folyamatosan fejlődik, az új funkciók automatikusan érkeznek.
 - Egy kávénál is olcsóbb havonta, cserébe minden félévben időt és idegességet spórolsz.
