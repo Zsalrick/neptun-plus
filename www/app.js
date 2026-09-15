@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.256";
+const APP_VERSION = "v0.257";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2658,7 +2658,8 @@ function renderExport() {
   });
   // Save actions — stacked full width (PNG on top, CSV under it).
   h += `<div class="export-actions">`
-    + `<button class="btn primary lg" id="exp-save">${icon("download")} Mentés képként (PNG)</button>`
+    + `<button class="btn primary lg" id="exp-share">${icon("send")} Megosztás képként</button>`
+    + `<button class="btn tonal" id="exp-save">${icon("download")} Mentés a Letöltésekbe (PNG)</button>`
     + `<button class="btn tonal" id="exp-csv"${canCsv ? "" : " disabled"}>${icon("doc")} Mentés táblázatként (CSV)</button></div>`;
   host.innerHTML = h;
   $("exp-what").onclick = () => openList({
@@ -2675,6 +2676,7 @@ function renderExport() {
         onPick: (v) => { exportCfg.f[fid] = v; exportEnsureFilters(); renderExport(); } });
     };
   });
+  { const b = $("exp-share"); if (b) b.onclick = exportShare; }
   { const b = $("exp-save"); if (b) b.onclick = exportSave; }
   { const b = $("exp-csv"); if (b && canCsv) b.onclick = exportCsv; }
   { const p = $("export-preview"); if (p) p.onclick = () => { let cv = null; try { cv = buildExportCanvas(); } catch (e) {} if (cv) openExportZoom(cv); }; }
@@ -2726,6 +2728,23 @@ async function exportSave() {
   let cv = null; try { cv = buildExportCanvas(); } catch (e) {}
   if (!cv) { toast("Ehhez nincs elég adat."); return; }
   await saveCanvasPng(cv, exportFileName("png"));
+}
+// Megosztás a natív megosztó-lappal (Web Share API fájllal). Ha nem elérhető, mentésre esik vissza.
+async function exportShare() {
+  let cv = null; try { cv = buildExportCanvas(); } catch (e) {}
+  if (!cv) { toast("Ehhez nincs elég adat."); return; }
+  const name = exportFileName("png");
+  try {
+    const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
+    if (!blob) throw new Error("noblob");
+    const file = new File([blob], name, { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Kredit+" }); return; }
+    throw new Error("unsupported");
+  } catch (e) {
+    if (e && e.name === "AbortError") return; // a felhasználó megszakította
+    await saveCanvasPng(cv, name);
+    toast("A közvetlen megosztás nem elérhető. A képet elmentettem a Letöltésekbe, onnan tudod megosztani.");
+  }
 }
 function exportCsv() {
   const def = exportDef();
