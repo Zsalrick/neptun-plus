@@ -113,6 +113,7 @@ CREATE TABLE users (
   code          TEXT UNIQUE,           -- ennek a usernek a SAJÁT ajánlói kódja
   referred_by   TEXT,                  -- milyen kódot használt (nullable)
   referral_done INTEGER DEFAULT 0,     -- a referral jóváírás megtörtént-e (0/1)
+  lifetime      INTEGER DEFAULT 0,     -- 1 = ÖRÖKÖS prémium (tesztelők) — sose jár le
   trial_until   TEXT,                  -- ISO — a próbaidő vége
   bonus_until   TEXT,                  -- ISO — ajándék/ajánlói napok vége
   play_token    TEXT,                  -- utolsó ellenőrzött purchase token
@@ -136,8 +137,10 @@ CREATE INDEX idx_ref_referrer ON referrals(referrer_id);
 
 **Jogosultság kiszámítása (szerver):**
 ```
-premiumUntil = max(trial_until, bonus_until, play_until)   // amelyik van
-premium      = premiumUntil > now  (VAGY play_state ∈ {active,in_grace})
+premium = (lifetime === 1)                                 // tesztelők: örökös, sose jár le
+          OR play_state ∈ {active,in_grace}
+          OR max(trial_until, bonus_until, play_until) > now
+premiumUntil = (lifetime === 1) ? "lifetime" : max(trial_until, bonus_until, play_until)
 ```
 
 ---
@@ -228,6 +231,20 @@ visszatérítéskor a bónusz visszavonása. Nem kötelező az MVP-hez, de a hel
 - **2. fázis:** **Google Play Integrity API** az app-hívások hitelesítésére (hogy tényleg a valódi app
   hívja, ne egy szkript). Ez zárja le a farmolást igazán.
 
+### Tesztelők → ÖRÖKÖS (lifetime) fiók
+A tesztelők (a Play production előtti kb. 20 tesztelő, akik a website `tester-signup`-on / a Play
+license-tesztelő listán vannak) **élethosszig tartó prémium fiókot** kapnak: `lifetime = 1`, sose jár
+le, és nem kell fizetniük.
+- **Mechanizmus (ajánlott, mert nincs saját login):** minden tesztelő kap egy **egyszer beváltható
+  tesztelői kódot**, amit az appban beír (ugyanaz a `/v1/redeem` folyamat, csak a kód típusa „tester").
+  Beváltáskor a szerver `lifetime = 1`-et állít az adott `neptun_hash`-re. A kódok listáját te tartod
+  (kézzel kiadva a ~20 tesztelőnek), egyszer használhatók, `neptun_hash`-hez kötve.
+- **Alternatíva:** ha a tesztelő Neptun-kódját előre ismered, közvetlenül is beállíthatod
+  `lifetime = 1`-re a D1-ben. Play license-tesztelőként a tesztidőszakban amúgy sem fizet, de a
+  `lifetime` biztosítja, hogy **élesben, örökre** is prémium maradjon.
+- Fontos: a lifetime a Play-előfizetéstől független (a `premium` képlet első ága), így a tesztelőnek
+  soha nem kell előfizetnie.
+
 ---
 
 ## 7. Google Play purchase-ellenőrzés (a Worker csinálja)
@@ -264,6 +281,8 @@ visszatérítéskor a bónusz visszavonása. Nem kötelező az MVP-hez, de a hel
 4. **Előfizetés termék(ek):** rögzítve a §0-ban — EGY `kreditplus` termék, három base plan: monthly
    299 Ft, semester 1 615 Ft (−10%), yearly 2 691 Ft (−25%). Árak véglegesek (az app ezeket mutatja).
 5. **API domain:** `api.<domain>` szub-domain vagy `/api/*` a Pages-en? *Ajánlásom: külön `api.` szub.*
+6. **Tesztelői lifetime kód vs. előre beállított Neptun-kód?** *Ajánlásom: egyszer beváltható tesztelői
+   kód (`/v1/redeem`, „tester" típus) → `lifetime=1`. Egyszerű, login nélkül működik.*
 
 ---
 
