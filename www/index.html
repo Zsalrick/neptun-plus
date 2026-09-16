@@ -196,16 +196,17 @@
             <section class="tabscreen active" id="tab-home">
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Kredit<span class="plus">+</span></div><div class="topbar-sub" id="home-sub">Készen áll a belépésre</div></div>
-                <button class="iconbtn plain" id="hub-edit" title="Kezdőlap testreszabása"><span data-icon="pencil"></span></button>
                 <button class="iconbtn plain notif-bell" title="Értesítések"><span data-icon="bell"></span><span class="notif-bell-badge" hidden></span></button>
-                <button class="iconbtn plain" id="home-profile" title="Profil"><span data-icon="user"></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
                 <div class="home-search" style="margin-bottom:12px">
-                  <div style="position:relative">
-                    <span data-icon="search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted,#9aa0a6);pointer-events:none"></span>
-                    <input id="hub-search-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés: tárgy, jegy, üzenet, oldal…" style="width:100%;box-sizing:border-box;font-size:15px;padding:11px 14px 11px 40px;border-radius:12px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)">
+                  <div style="display:flex;gap:10px;align-items:stretch">
+                    <div style="position:relative;flex:1;min-width:0">
+                      <span data-icon="search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted,#9aa0a6);pointer-events:none"></span>
+                      <input id="hub-search-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés: tárgy, jegy, üzenet, oldal…" style="width:100%;box-sizing:border-box;font-size:15px;padding:11px 14px 11px 40px;border-radius:12px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)">
+                    </div>
+                    <button class="iconbtn" id="hub-edit" title="Kezdőlap testreszabása" style="flex:none;width:46px;height:auto;align-self:stretch;border-radius:12px;background:var(--card,#161a21);border:1px solid var(--line,#2a2f37)"><span data-icon="pencil"></span></button>
                   </div>
                   <div id="hub-search-results" hidden></div>
                 </div>
@@ -312,6 +313,7 @@
               <div class="scroll">
                 <div class="section-label">Fiók</div>
                 <div class="card">
+                  <button class="row" data-setpage="tab-profile"><span class="row-ic"><span data-icon="swap"></span></span><span class="row-main"><span class="row-title">Profilok</span><span class="row-sub">Váltás, hozzáadás, törlés</span></span><span class="row-chev" data-icon="chev"></span></button>
                   <button class="row" data-setpage="tab-set-account"><span class="row-ic"><span data-icon="user"></span></span><span class="row-main"><span class="row-title">Fiók</span><span class="row-sub">Azonosító és jelszó</span></span><span class="row-chev" data-icon="chev"></span></button>
                   <button class="row" data-setpage="tab-set-university"><span class="row-ic"><span data-icon="building"></span></span><span class="row-main"><span class="row-title">Egyetem és szerver</span><span class="row-sub" id="hub-uni-sub">Nincs kiválasztva</span></span><span class="row-chev" data-icon="chev"></span></button>
                   <button class="row" data-setpage="tab-set-2fa"><span class="row-ic"><span data-icon="key"></span></span><span class="row-main"><span class="row-title">Kétlépcsős hitelesítés</span><span class="row-sub">2FA kód beállítása</span></span><span class="row-chev" data-icon="chev"></span></button>
@@ -660,6 +662,15 @@
                 <div style="flex:1"><div class="wordmark">Értesítések</div><div class="topbar-sub">Az elmúlt 30 nap</div></div>
               </header>
               <div class="scroll" id="notifs-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-friends">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Barátok</div><div class="topbar-sub">Az óráid diákjai</div></div>
+              </header>
+              <div class="field" style="padding:0 16px 8px"><input class="input" id="friends-q" placeholder="Keresés név szerint" autocomplete="off" /></div>
+              <div class="scroll" id="friends-scroll"></div>
             </section>
 
             <section class="tabscreen" id="tab-notif">

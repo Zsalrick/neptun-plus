@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.268";
+const APP_VERSION = "v0.269";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -61,7 +61,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -552,6 +552,7 @@ function renderForTab(id) {
   else if (id === "tab-grades") renderGrades();
   else if (id === "tab-periods") renderPeriods();
   else if (id === "tab-search") renderSearch();
+  else if (id === "tab-friends") renderFriends();
   else if (id === "tab-notifs") renderNotifs();
   else if (id === "tab-notif") renderNotifDetail();
   else if (id === "tab-export") renderExport();
@@ -1170,6 +1171,7 @@ const MORE_SERVICES = [
   { id: "grades", group: "Tanulmányok", label: "Jegyek", sub: () => { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; return i && i.korrigalt != null ? "Kreditindex " + i.korrigalt : "Jegyek és átlagok"; }, icon: "note", go: () => pushScreen("tab-grades") },
   { id: "finance", group: "Szolgáltatások", label: "Pénzügyek", sub: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? a.balance.toLocaleString("hu") + " Ft" : "Egyenleg és tételek"; }, icon: "wallet", go: () => pushScreen("tab-finance") },
   { id: "messages", group: "Szolgáltatások", label: "Üzenetek", sub: () => { const m = state.messages; return m && m.unread ? m.unread + " olvasatlan" : (m && m.fetchedAt ? "Beérkezett és elküldött" : "Neptun üzenetek"); }, icon: "mail", go: () => pushScreen("tab-messages") },
+  { id: "friends", group: "Szolgáltatások", label: "Barátok", sub: () => { const n = Object.keys(state.friends || {}).length; return n ? n + " barát" : "Csoporttársak az óráidról"; }, icon: "user", go: () => pushScreen("tab-friends") },
   { id: "export", group: "Szolgáltatások", label: "Export", sub: "Órarend, jegyek mentése (kép, CSV)", icon: "download", go: () => pushScreen("tab-export") },
   { id: "periods", group: "Tanulmányok", label: "Időszakok", sub: () => { const p = state.periods; const a = p && activePeriods(p.items).length; return a ? a + " aktív időszak" : "Mikor mettől meddig"; }, icon: "clock", go: () => pushScreen("tab-periods") },
   { id: "calc", group: "Tanulmányok", label: "Kalkulátor", sub: "Átlag, kreditindex, célszámítás", icon: "chart", go: () => pushScreen("tab-calc") },
@@ -3427,6 +3429,19 @@ function tokenNeptunCode(tok) {
     return k ? String(p[k]).toUpperCase() : "";
   } catch (e) { return ""; }
 }
+// A saját nevünk a tokenből: a JWT claimek közt keressük a névnek látszó értéket (a 6 jegyű kód nem az).
+// Magyar teljes névben van szóköz, ez jól elválasztja a felhasználónévtől és az azonosítóktól.
+function tokenUserName(tok) {
+  try {
+    const p = JSON.parse(atob(String(tok).split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const ok = (v) => typeof v === "string" && v.trim().length >= 4 && v.length <= 80
+      && /\s/.test(v.trim()) && /[A-Za-zÁÉÍÓÖŐÚÜŰáéíóöőúüű]/.test(v) && !/[@\/\\{}<>]/.test(v);
+    const prefer = ["printName", "PrintName", "printname", "fullName", "FullName", "displayName", "name", "unique_name"];
+    for (const k of prefer) if (ok(p[k])) return p[k].trim();
+    for (const k of Object.keys(p)) if (/name|nev/i.test(k) && ok(p[k])) return p[k].trim();
+    return "";
+  } catch (e) { return ""; }
+}
 // The Neptun API base for a server: `<origin>/hallgato/api/`. Prefer a base already captured from a
 // real browser session (stable across token refreshes); else derive it from the server login URL.
 function apiBaseFor(srv) {
@@ -3502,6 +3517,8 @@ async function getApiSession(force) {
       apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
       const nc = (res.code && /^[A-Za-z0-9]{6}$/.test(res.code)) ? res.code.toUpperCase() : tokenNeptunCode(res.token);
       if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
+      const mn = tokenUserName(res.token); // a saját nevünk, hogy felismerjük magunkat a névsorokban
+      if (mn && mn !== state.myName) { state.myName = mn; saveState(); }
       onSessionChanged(); return apiSession;
     }
     return null;
@@ -4894,6 +4911,85 @@ function toggleFriend(s) {
   saveState();
 }
 function friendsInRoster(list) { let n = 0; for (const s of (list || [])) if (isFriend(s)) n++; return n; }
+// Magunk felismerése a névsorban: elsőként Neptun-kód egyezés, különben a tokenből mentett név.
+function isMe(s) {
+  const code = String(state.neptunCode || "").toUpperCase();
+  if (code) { const raw = s.studentNeptunCode || s.neptunCode; if (raw && String(raw).trim().toUpperCase() === code) return true; }
+  const mn = searchNorm(state.myName || "");
+  return !!mn && searchNorm(studentName(s)) === mn;
+}
+// Az összes kurzusom névsorának összegyűjtése egy kereshető listába (state.people).
+// Kurzusonként egy hívás, ezért folyamatjelzővel megy és csak kérésre indul.
+let friendsBusy = null;
+async function collectPeople() {
+  if (friendsBusy) return;
+  const sess = await getApiSession();
+  if (!sess || !sess.token) { toast("Nincs kapcsolat a Neptunnal."); return; }
+  const evs = await apiCalendarEvents();
+  const termId = await getActualTermId(sess);
+  const seen = new Set(), courses = [];
+  for (const ev of evs || []) {
+    if (!ev.courseId || !ev.subjectId) continue;
+    const k = ev.courseId + "|" + ev.subjectId;
+    if (seen.has(k)) continue;
+    seen.add(k); courses.push(ev);
+  }
+  if (!courses.length) { toast("Nem találtam kurzust az órarendedben."); return; }
+  friendsBusy = { done: 0, total: courses.length }; renderFriends();
+  const people = Object.assign({}, state.people || {});
+  for (const ev of courses) {
+    const cn = ev.title || ev.subject || ev.subjectName || ev.courseCode || "";
+    try {
+      const r = await apiGet(sess, "SubjectCourse/GetSubjectCourseStudents", { courseId: ev.courseId, subjectId: ev.subjectId, selectedTermId: termId, firstRow: 0, lastRow: 500 });
+      for (const s of ((r && r.data && r.data.data) || [])) {
+        if (isMe(s)) continue;
+        const k = friendId(s);
+        const p = people[k] || (people[k] = { n: studentName(s), c: [] });
+        if (cn && p.c.indexOf(cn) < 0) p.c.push(cn);
+      }
+    } catch (e) {}
+    friendsBusy.done++; renderFriends();
+  }
+  friendsBusy = null;
+  state.people = people; saveState(); renderFriends();
+  toast(Object.keys(people).length + " diák a listádban.");
+}
+let friendsQuery = "";
+function renderFriends() {
+  const host = $("friends-scroll"); if (!host) return;
+  const q = $("friends-q");
+  if (q && !q.dataset.wired) { q.dataset.wired = "1"; q.oninput = () => { friendsQuery = q.value; renderFriends(); }; }
+  const people = state.people || {}, fr = state.friends || {};
+  const norm = searchNorm(friendsQuery);
+  const entries = Object.keys(people).map((k) => ({ k, n: people[k].n || "", c: people[k].c || [] }));
+  // A barátok azok is, akiket még nem gyűjtöttünk be (pl. egy óra névsorából jelölted).
+  Object.keys(fr).forEach((k) => { if (!people[k]) entries.push({ k, n: fr[k] || "", c: [] }); });
+  const hit = (e) => !norm || searchNorm(e.n).includes(norm);
+  const friends = entries.filter((e) => fr[e.k]).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
+  const others = entries.filter((e) => !fr[e.k]).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
+  const row = (e, isF) => `<div class="row"><span class="row-ic">${icon("user")}</span>`
+    + `<span class="row-main"><span class="row-title">${isF ? `<span style="color:#5fa878">● </span>` : ""}${esc(e.n)}</span>`
+    + (e.c.length ? `<span class="row-sub">${esc(e.c.slice(0, 2).join(" · "))}${e.c.length > 2 ? " · +" + (e.c.length - 2) : ""}</span>` : "")
+    + `</span><button class="fr-btn" data-fk="${esc(e.k)}" data-fn="${esc(e.n)}" type="button" title="${isF ? "Barát eltávolítása" : "Hozzáadás barátként"}" style="background:none;border:0;padding:6px;cursor:pointer;color:${isF ? "#5fa878" : "var(--muted)"}">${icon(isF ? "check" : "plus")}</button></div>`;
+  let h = `<div class="dash-label">Én</div><div class="card"><div class="row"><span class="row-ic">${icon("user")}</span>`
+    + `<span class="row-main"><span class="row-title">${esc(state.myName || "Ismeretlen név")}</span>`
+    + `<span class="row-sub">${esc(state.neptunCode || "Nincs Neptun-kód")}</span></span></div></div>`;
+  if (friendsBusy) h += `<div class="hint" style="margin:12px 2px">Összegyűjtés… ${friendsBusy.done} / ${friendsBusy.total} kurzus</div>`;
+  else h += `<div class="detail-add" style="margin-top:12px"><button class="btn tonal" id="fr-collect">${entries.length ? "Frissítés az óráimból" : "Diákok összegyűjtése az óráimból"}</button></div>`;
+  h += `<div class="dash-label">Barátok${friends.length ? " · " + friends.length : ""}</div>`;
+  h += friends.length ? `<div class="card">` + friends.map((e) => row(e, true)).join("") + `</div>`
+    : `<div class="dash-empty" style="padding:18px 2px">Még nincs barátod. Gyűjtsd össze a diákokat, vagy jelöld őket egy óra névsorából.</div>`;
+  if (others.length) h += `<div class="dash-label">Hallgatók · ${others.length}</div><div class="card">` + others.map((e) => row(e, false)).join("") + `</div>`;
+  else if (entries.length && norm) h += `<div class="dash-empty" style="padding:18px 2px">Nincs találat.</div>`;
+  host.innerHTML = h;
+  const cb = $("fr-collect"); if (cb) cb.onclick = collectPeople;
+  host.querySelectorAll(".fr-btn").forEach((b) => b.onclick = () => {
+    state.friends = state.friends || {};
+    const k = b.dataset.fk;
+    if (state.friends[k]) delete state.friends[k]; else state.friends[k] = b.dataset.fn || "";
+    saveState(); renderFriends();
+  });
+}
 function renderCourseSeg(e) {
   const host = $("course-sec"); if (!host) return;
   const loading = !detailCourse && !detailCourseErr && !e.manual && !detailExamMode && isNative;
@@ -4930,17 +5026,23 @@ function renderCourseSeg(e) {
   if (detailSeg === "students") {
     const list = c.students || [];
     if (!list.length) { host.innerHTML = `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni." : "Nincs elérhető hallgatói névsor."}</div>`; return; }
-    const fr = list.filter(isFriend), other = list.filter((s) => !isFriend(s));
-    const row = (s) => {
+    const me = list.filter(isMe);
+    const fr = list.filter((s) => !isMe(s) && isFriend(s));
+    const other = list.filter((s) => !isMe(s) && !isFriend(s));
+    const row = (s, opts) => {
       const f = isFriend(s), k = friendId(s);
       return `<div class="row"><span class="row-ic">${icon("user")}</span>`
         + `<span class="row-main"><span class="row-title">${f ? `<span style="color:#5fa878">● </span>` : ""}${esc(studentName(s))}</span></span>`
-        + `<button class="fr-btn" data-fk="${esc(k)}" type="button" title="${f ? "Barát eltávolítása" : "Hozzáadás barátként"}" style="background:none;border:0;padding:6px;cursor:pointer;color:${f ? "#5fa878" : "var(--muted)"}">${icon(f ? "check" : "plus")}</button></div>`;
+        + (opts && opts.self ? "" : `<button class="fr-btn" data-fk="${esc(k)}" type="button" title="${f ? "Barát eltávolítása" : "Hozzáadás barátként"}" style="background:none;border:0;padding:6px;cursor:pointer;color:${f ? "#5fa878" : "var(--muted)"}">${icon(f ? "check" : "plus")}</button>`)
+        + `</div>`;
     };
-    const head = fr.length
+    let h = fr.length
       ? `<div class="hint" style="margin:0 2px 8px">${list.length} hallgató · ${fr.length} barátod jár ide</div>`
       : `<div class="hint" style="margin:0 2px 8px">${list.length} hallgató</div>`;
-    host.innerHTML = head + `<div class="card">` + fr.concat(other).map(row).join("") + `</div>`;
+    if (me.length) h += `<div class="dash-label">Én</div><div class="card">` + me.map((s) => row(s, { self: true })).join("") + `</div>`;
+    if (fr.length) h += `<div class="dash-label">Barátok · ${fr.length}</div><div class="card">` + fr.map((s) => row(s)).join("") + `</div>`;
+    if (other.length) h += `<div class="dash-label">Hallgatók · ${other.length}</div><div class="card">` + other.map((s) => row(s)).join("") + `</div>`;
+    host.innerHTML = h;
     host.querySelectorAll(".fr-btn").forEach((b) => b.onclick = () => {
       const s = list.find((x) => friendId(x) === b.dataset.fk);
       if (s) { toggleFriend(s); renderDetail(); }
