@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.260";
+const APP_VERSION = "v0.261";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -1048,6 +1048,7 @@ function renderHome() {
   if (hp) { hp.onclick = openProfilePicker; hp.classList.toggle("has-multi", (state.profiles || []).length > 1); }
   wireHubSearch();
   { const nb = $("notif-bell"); if (nb && !nb.__wired) { nb.__wired = true; nb.onclick = () => pushScreen("tab-notifs"); } }
+  try { if (isNative) catchUpBrief(); } catch (e) {} // a mai reggeli összefoglaló bekerül az Értesítésekbe
   updateNotifBell();
   renderHub();
   renderHubSearch(); // a kereső nézet szinkronban a mező tartalmával (üres → főmenü)
@@ -3534,6 +3535,7 @@ async function autoRefreshAll(reason) {
     }
     try { refreshAgendas(); } catch (e) {}
     try { await notifyChanges(); } catch (e) {} // változás-értesítők (új jegy/üzenet/befizetendő/órarend)
+    try { catchUpBrief(); } catch (e) {} // a reggeli összefoglaló bekerül az Értesítésekbe (frissen)
   } catch (e) { dbg("autoRefreshAll: " + (e && e.message ? e.message : e)); } // never reject → boot can't hang on us
   finally { autoRefreshing = false; try { renderHome(); } catch (e) {} }
 }
@@ -5069,12 +5071,17 @@ async function rescheduleNotifications() {
       const at = e.S.getTime() - lead * 60000;
       const p = (kind === "class") ? parseClassSummary(e.summary) : null;
       const short = p ? (p.name + (p.type ? " · " + p.type : "")) : (e.summary || "");
+      const body = fmtLead(lead) + " múlva: " + short + (e.location ? " · " + e.location : "");
+      const nm = p ? p.name : (e.summary || "Esemény");
+      const detail = title + "\n" + nm + "\n" + dayHeading(e.S) + " · " + hm(e.S) + (e.E ? "–" + hm(e.E) : "") + (e.location ? "\n" + e.location : "") + (p && p.teacher ? "\n" + p.teacher : "");
+      // Tappolásra az Értesítésekben nyílik meg; a "Megnyitás" az adott órára/vizsgára visz.
+      const target = (kind === "class") ? { openClass: { sum: e.summary || "", s: e.S.getTime() } } : { tab: "tab-exams" };
       if (at > now + 15000 && e.S.getTime() < horizon) out.push({
         id: notifId(e, lead), title,
-        body: fmtLead(lead) + " múlva: " + short + (e.location ? " · " + e.location : ""),
+        body,
         schedule: { at: new Date(at), allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
-        // carried back on tap so the app can show a detailed alert
-        extra: { kind, head: title, lead, summary: e.summary || "", location: e.location || "", s: e.S.toISOString(), e: e.E ? e.E.toISOString() : "" },
+        extra: { kind, head: title, lead, summary: e.summary || "", location: e.location || "", s: e.S.toISOString(), e: e.E ? e.E.toISOString() : "",
+          logOnTap: { kind: (kind === "class" ? "timetable" : "vizsga"), title, body, detail, target }, key: "rem-" + kind + "-" + e.S.getTime() + "-" + lead },
       });
     }));
   };
@@ -5167,8 +5174,17 @@ async function notifyChanges() {
 }
 // ---- Értesítési központ (in-app napló) ----
 function pruneNotifLog() { const cut = Date.now() - 30 * 864e5; state.notifLog = (state.notifLog || []).filter((n) => n.at >= cut).slice(0, 200); }
-function logNotif(o) { if (!o) return null; const id = uid(); state.notifLog = state.notifLog || []; state.notifLog.unshift({ id, at: Date.now(), read: false, kind: o.kind || "", title: o.title || "", body: o.body || "", detail: o.detail || "", target: o.target || null }); pruneNotifLog(); saveState(); updateNotifBell(); return id; }
-function notifUnread() { return (state.notifLog || []).filter((n) => !n.read).length; }
+function logNotif(o) {
+  if (!o) return null;
+  state.notifLog = state.notifLog || [];
+  const at = o.at || Date.now();
+  if (o.key) { const ex = state.notifLog.find((n) => n.key === o.key); if (ex) { ex.at = at; ex.read = false; if (o.kind) ex.kind = o.kind; if (o.title) ex.title = o.title; if (o.body != null) ex.body = o.body; if (o.detail != null) ex.detail = o.detail; if (o.target) ex.target = o.target; pruneNotifLog(); saveState(); updateNotifBell(); return ex.id; } }
+  const id = uid();
+  state.notifLog.unshift({ id, key: o.key || null, at, read: false, kind: o.kind || "", title: o.title || "", body: o.body || "", detail: o.detail || "", target: o.target || null });
+  pruneNotifLog(); saveState(); updateNotifBell(); return id;
+}
+function logHas(id) { return (state.notifLog || []).some((n) => n.id === id); }
+function notifUnread() { const now = Date.now(); return (state.notifLog || []).filter((n) => !n.read && n.at <= now).length; }
 function updateNotifBell() { const b = $("notif-bell-badge"); if (!b) return; const n = notifUnread(); b.textContent = n > 99 ? "99+" : String(n); b.hidden = !n; }
 const NOTIF_ICON = { grades: "note", messages: "mail", finance: "wallet", timetable: "calendar", brief: "clock", periods: "clock" };
 function openNotifTarget(t) {
@@ -5182,7 +5198,8 @@ function openNotifTarget(t) {
 let detailNotifId = null;
 function renderNotifs() {
   const host = $("notifs-scroll"); if (!host) return;
-  const list = (state.notifLog || []);
+  const now = Date.now();
+  const list = (state.notifLog || []).filter((n) => n.at <= now).sort((a, b) => b.at - a.at); // csak a már kiküldöttek
   if (!list.length) { host.innerHTML = `<div class="dash-empty" style="padding:40px 24px">Még nincs értesítésed. Itt jelennek meg az új jegyek, üzenetek, befizetnivalók és órarend-változások, amikről szólunk.</div>`; }
   else {
     host.innerHTML = `<div class="hint" style="margin:2px 4px 10px">Az elmúlt 30 nap értesítései. Koppints a részletekért.</div><div class="card">`
@@ -5191,8 +5208,8 @@ function renderNotifs() {
     host.querySelectorAll("[data-nid]").forEach((b) => b.onclick = () => { detailNotifId = b.dataset.nid; pushScreen("tab-notif"); });
     { const c = $("notif-clear"); if (c) c.onclick = () => { state.notifLog = []; saveState(); updateNotifBell(); renderNotifs(); }; }
   }
-  // megnyitáskor minden olvasottá válik
-  let changed = false; (state.notifLog || []).forEach((n) => { if (!n.read) { n.read = true; changed = true; } });
+  // megnyitáskor a már kiküldöttek olvasottá válnak
+  let changed = false; (state.notifLog || []).forEach((n) => { if (!n.read && n.at <= now) { n.read = true; changed = true; } });
   if (changed) { saveState(); updateNotifBell(); }
 }
 function renderNotifDetail() {
@@ -5230,12 +5247,28 @@ function morningBriefBody(day) {
 }
 // Schedule the next morning brief as a one-shot for the next occurrence of the chosen time.
 // Re-runs on every open/resume (rescheduleNotifications), so its body reflects the freshest data.
+function briefKey(d) { return "brief-" + d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
 function scheduleMorningBrief(out) {
   const b = state.notify && state.notify.brief; if (!b || !b.enabled) return;
   const m = /^(\d{1,2}):(\d{2})$/.exec(b.time || "07:00"); if (!m) return;
   const at = new Date(); at.setHours(+m[1], +m[2], 0, 0);
   if (at.getTime() <= Date.now() + 30000) at.setDate(at.getDate() + 1);
-  out.push({ id: 1290000001, title: "Mai nap", body: morningBriefBody(at), schedule: { at, allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { kind: "brief" } });
+  const body = morningBriefBody(at);
+  out.push({ id: 1290000001, title: "Mai nap", body, schedule: { at, allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
+    extra: { kind: "brief", logOnTap: { kind: "brief", title: "Mai nap", body, detail: body, target: { tab: "tab-timetable" } }, key: briefKey(at) } });
+}
+// A reggeli összefoglaló bekerül az Értesítésekbe is: ha mára már lejárt a brief ideje és még nincs mai
+// bejegyzés, FRISSEN (a mostani adatból) kiszámoljuk és naplózzuk. Így a központban mindig helyes a nap.
+function catchUpBrief() {
+  const b = state.notify && state.notify.brief; if (!b || !b.enabled) return;
+  if (!(state.ics && state.ics.events && state.ics.events.length)) return; // csak ha van órarend-adat
+  const m = /^(\d{1,2}):(\d{2})$/.exec(b.time || "07:00"); if (!m) return;
+  const t = new Date(); t.setHours(+m[1], +m[2], 0, 0);
+  if (Date.now() < t.getTime()) return; // ma még nem járt le a brief ideje
+  const key = briefKey(t);
+  if ((state.notifLog || []).some((n) => n.key === key)) return; // a mai brief már megvan
+  const body = morningBriefBody(t);
+  logNotif({ kind: "brief", key, at: t.getTime(), title: "Mai nap", body, detail: body, target: { tab: "tab-timetable" } });
 }
 // Highlighted in-app alert shown when a reminder push is tapped.
 function showNotifAlert(x) {
@@ -5341,8 +5374,9 @@ async function testChangeNotif() {
   if (!(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell."); return; }
   const m = (state.messages && state.messages.received && state.messages.received[0]) || null;
   const body = (m ? [m.from, m.subject].filter(Boolean).join(" · ") : "") || "Teszt feladó · Teszt üzenet";
+  const id = logNotif({ kind: "messages", title: "Új üzenet", body, detail: "Teszt értesítés.\n" + body, target: { tab: "tab-messages" } });
   try {
-    await ln.schedule({ notifications: [{ id: 1305000000, title: "Új üzenet", body: body, schedule: { at: new Date(Date.now() + 4000), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { changeKind: "messages" } }] });
+    await ln.schedule({ notifications: [{ id: 1305000000, title: "Új üzenet", body: body, schedule: { at: new Date(Date.now() + 4000), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { notifId: id } }] });
     toast("Teszt push 4 másodperc múlva. Tedd háttérbe az appot, majd koppints rá!");
   } catch (e) { toast("Hiba: " + (e && e.message ? e.message : e)); }
 }
@@ -5357,12 +5391,12 @@ $("notify-test").onclick = async () => {
   const ln = LN();
   if (!isNative || !ln) { toast("A teszt értesítés a telefonos alkalmazásban működik."); return; }
   if (!(await ensureNotifPermission())) { toast("Az értesítésekhez engedély kell."); return; }
-  const start = new Date(Date.now() + 60 * 60000); // pretend a class starts in 1h
+  const id = logNotif({ kind: "brief", title: "Teszt értesítés", body: "Így néz ki egy emlékeztető. Koppints rá!", detail: "Ez egy teszt értesítés.\nÍgy jelennek meg és nyílnak meg az értesítések az appban.", target: null });
   try {
     await ln.schedule({ notifications: [{
       id: 424242, title: "Teszt értesítés", body: "Így néz ki egy emlékeztető. Koppints rá!",
       schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
-      extra: { kind: "class", head: "Teszt értesítés", lead: 60, summary: "Teszt óra – Példa tárgy", location: "A.fsz.A1", s: start.toISOString(), e: new Date(start.getTime() + 90 * 60000).toISOString() },
+      extra: { notifId: id },
     }] });
     toast("Teszt értesítés 5 másodperc múlva. Tedd háttérbe az appot!");
   } catch (e) { toast("Hiba: " + (e && e.message ? e.message : e)); }
@@ -6089,12 +6123,12 @@ function hideBoot() { const b = $("boot"); if (!b) return; b.classList.add("boot
       const ln = LN();
       if (ln && ln.addListener) { try { ln.addListener("localNotificationActionPerformed", (ev) => {
         const x = ev && ev.notification && ev.notification.extra; if (!x) return;
-        // Változás-értesítő push → a saját bejegyzését nyitja az Értesítésekben (részletes leírás + Megnyitás).
-        if (x.notifId && (state.notifLog || []).some((n) => n.id === x.notifId)) { try { detailNotifId = x.notifId; pushScreen("tab-notif"); } catch (e) {} return; }
-        // Régi/háttér változás-push (nincs bejegyzés) → az Értesítések lista.
-        if (x.changeKind) { try { pushScreen("tab-notifs"); } catch (e) {} return; }
-        if (x.kind === "brief") { try { openTab("tab-timetable"); } catch (e) {} return; } // reggeli összefoglaló → Órarend
-        showNotifAlert(x);
+        // MINDEN értesítés az Értesítések központban nyílik meg. Ha van már napló-bejegyzése → azt;
+        // ha csak "tappolásra naplózandó" (brief, emlékeztető) → most naplózzuk, majd megnyitjuk.
+        let id = (x.notifId && logHas(x.notifId)) ? x.notifId : null;
+        if (!id && x.logOnTap) { try { id = logNotif(Object.assign({ key: x.key }, x.logOnTap)); } catch (e) {} }
+        if (id) { try { detailNotifId = id; pushScreen("tab-notif"); } catch (e) {} return; }
+        try { pushScreen("tab-notifs"); } catch (e) {} // bármi más → az Értesítések lista
       }); } catch (e) {} }
       rescheduleNotifications(); // refresh reminders on every launch
       updateClassWidget(); // seed the home-screen widget from cached schedule (refreshed again after sync)
