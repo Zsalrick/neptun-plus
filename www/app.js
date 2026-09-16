@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.269";
+const APP_VERSION = "v0.270";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -213,6 +213,21 @@ function ask({ title, body, okText = "Igen", cancelText = "Mégse" }) {
     $("ask-dialog").classList.remove("hidden");
     const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").onclick = null; $("ask-cancel").onclick = null; res(v); };
     $("ask-ok").onclick = () => done(true); $("ask-cancel").onclick = () => done(false);
+  });
+}
+// Like ask(), but with a free-text field. Resolves to the typed string, or null on cancel.
+function askText({ title, body = "", value = "", placeholder = "", okText = "Mentés", cancelText = "Mégse" }) {
+  return new Promise((res) => {
+    $("ask-title").textContent = title;
+    $("ask-body").innerHTML = body + `<div class="field" style="margin-top:14px"><input class="input" id="ask-text" placeholder="${esc(placeholder)}" autocomplete="off" autocorrect="off" /></div>`;
+    $("ask-ok").textContent = okText; $("ask-cancel").textContent = cancelText;
+    const ok = $("ask-ok"), inp = $("ask-text");
+    inp.value = value || "";
+    ok.disabled = false;
+    $("ask-dialog").classList.remove("hidden");
+    setTimeout(() => { try { inp.focus(); } catch (e) {} }, 50);
+    const done = (v) => { $("ask-dialog").classList.add("hidden"); ok.onclick = null; $("ask-cancel").onclick = null; res(v); };
+    ok.onclick = () => done(inp.value); $("ask-cancel").onclick = () => done(null);
   });
 }
 // Like ask(), but the OK button unlocks only once the user types the confirmation word (e.g. IGEN).
@@ -4802,7 +4817,7 @@ async function apiCourseBundle(ev) {
 let actualTermId = "";
 async function getActualTermId(sess) {
   if (actualTermId) return actualTermId;
-  try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; actualTermId = (t && t.actualTermId) || ""; } catch (e) {}
+  try { const mt = await apiGet(sess, "MyTrainings"); const t = mt && mt.data && mt.data.data && mt.data.data[0]; actualTermId = (t && t.actualTermId) || ""; harvestMyName(t); } catch (e) {}
   return actualTermId;
 }
 async function apiSubjectDetail(subjectId, termId) {
@@ -4911,6 +4926,17 @@ function toggleFriend(s) {
   saveState();
 }
 function friendsInRoster(list) { let n = 0; for (const s of (list || [])) if (isFriend(s)) n++; return n; }
+// A saját nevünk kinyerése egy már lekért válaszból. Csak nevesített SZEMÉLYNÉV-mezők, semmi
+// heurisztika: a trainingName/programName is tartalmaz szóközt, azt nem szabad névnek nézni.
+function harvestMyName(o) {
+  if (!o || state.myName) return;
+  for (const k of ["studentName", "studentPrintName", "printName", "studentFullName", "fullName"]) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim().length >= 4 && v.length <= 80 && /\s/.test(v.trim()) && !/szak|képzés|training|program|tagozat/i.test(v)) {
+      state.myName = v.trim(); saveState(); return;
+    }
+  }
+}
 // Magunk felismerése a névsorban: elsőként Neptun-kód egyezés, különben a tokenből mentett név.
 function isMe(s) {
   const code = String(state.neptunCode || "").toUpperCase();
@@ -4971,9 +4997,9 @@ function renderFriends() {
     + `<span class="row-main"><span class="row-title">${isF ? `<span style="color:#5fa878">● </span>` : ""}${esc(e.n)}</span>`
     + (e.c.length ? `<span class="row-sub">${esc(e.c.slice(0, 2).join(" · "))}${e.c.length > 2 ? " · +" + (e.c.length - 2) : ""}</span>` : "")
     + `</span><button class="fr-btn" data-fk="${esc(e.k)}" data-fn="${esc(e.n)}" type="button" title="${isF ? "Barát eltávolítása" : "Hozzáadás barátként"}" style="background:none;border:0;padding:6px;cursor:pointer;color:${isF ? "#5fa878" : "var(--muted)"}">${icon(isF ? "check" : "plus")}</button></div>`;
-  let h = `<div class="dash-label">Én</div><div class="card"><div class="row"><span class="row-ic">${icon("user")}</span>`
+  let h = `<div class="dash-label">Én</div><div class="card"><div class="row" id="fr-me" style="cursor:pointer"><span class="row-ic">${icon("user")}</span>`
     + `<span class="row-main"><span class="row-title">${esc(state.myName || "Ismeretlen név")}</span>`
-    + `<span class="row-sub">${esc(state.neptunCode || "Nincs Neptun-kód")}</span></span></div></div>`;
+    + `<span class="row-sub">${state.myName ? esc(state.neptunCode || "") + (state.neptunCode ? " · " : "") + "koppints a módosításhoz" : "Koppints, és add meg a neved"}</span></span>${icon("chev")}</div></div>`;
   if (friendsBusy) h += `<div class="hint" style="margin:12px 2px">Összegyűjtés… ${friendsBusy.done} / ${friendsBusy.total} kurzus</div>`;
   else h += `<div class="detail-add" style="margin-top:12px"><button class="btn tonal" id="fr-collect">${entries.length ? "Frissítés az óráimból" : "Diákok összegyűjtése az óráimból"}</button></div>`;
   h += `<div class="dash-label">Barátok${friends.length ? " · " + friends.length : ""}</div>`;
@@ -4983,6 +5009,11 @@ function renderFriends() {
   else if (entries.length && norm) h += `<div class="dash-empty" style="padding:18px 2px">Nincs találat.</div>`;
   host.innerHTML = h;
   const cb = $("fr-collect"); if (cb) cb.onclick = collectPeople;
+  const mb = $("fr-me"); if (mb) mb.onclick = async () => {
+    const v = await askText({ title: "A te neved", value: state.myName || "", placeholder: "Például: Kovács Anna",
+      body: "Írd be a neved úgy, ahogy a Neptun névsoraiban szerepel. Ez alapján ismerlek fel a diáklistákban, és kerülsz az „Én” csoportba." });
+    if (v != null) { state.myName = v.trim(); saveState(); renderFriends(); }
+  };
   host.querySelectorAll(".fr-btn").forEach((b) => b.onclick = () => {
     state.friends = state.friends || {};
     const k = b.dataset.fk;
