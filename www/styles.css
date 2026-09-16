@@ -174,6 +174,9 @@ button.row:active { background: var(--surface-2); }
 .btn.outline { background: transparent; border-color: var(--line-2); color: var(--ink); }
 .btn.ghost { background: transparent; color: var(--ink-2); }
 .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+/* Friend add/remove: soft tonal surface, quiet red text for the destructive (remove) state. */
+.friend-btn svg.ic { width: 17px; height: 17px; opacity: .9; }
+.btn.tonal.friend-btn.rm { color: var(--danger); }
 .btn.narrow { width: auto; padding: 12px 14px; }
 .btn.lg { padding: 15px; font-size: 15.5px; }
 .iconbtn { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-2);
