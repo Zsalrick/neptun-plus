@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.261";
+const APP_VERSION = "v0.262";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -2054,6 +2054,7 @@ async function openCreditPopup() {
 }
 function daysUntil(d) { const a = new Date(); a.setHours(0, 0, 0, 0); const b = new Date(d); b.setHours(0, 0, 0, 0); return Math.round((b - a) / 864e5); }
 function countdownPhrase(d) { const n = daysUntil(d); return n <= 0 ? "ma" : n === 1 ? "holnap" : n + " nap múlva"; }
+function dueDaysSuffix(d) { const n = daysUntil(d); return n < 0 ? " · lejárt" : n === 0 ? " · ma esedékes" : n === 1 ? " · holnap esedékes" : " · " + n + " nap múlva esedékes"; }
 function nextIsland(el, e, headText, tab, now, countdown) {
   if (!el) return;
   el.classList.toggle("nc-now", !!now);
@@ -5110,6 +5111,7 @@ function changeSnapshot() {
     offered: (g.offered || []).map((o) => o.id).filter(Boolean),
     msgs: (m.received || []).map((x) => x.id).filter(Boolean),
     toPay: (f.toPay || []).map((x) => x.id).filter(Boolean),
+    schols: (f.scholarships || []).map((x) => x.id).filter(Boolean),
     classes, at: now,
   };
 }
@@ -5122,7 +5124,7 @@ async function notifyChanges() {
   const prev = state.seen;
   // Ha egy kategória adata most üres (nem töltött be / hibázott a sync), NE írjuk felül a korábbi baseline-t
   // — különben egy üres pillanatkép után minden réginek tűnő elem "újként" jönne vissza (a 201-es hamis riasztás).
-  if (prev) ["gradeKeys", "offered", "msgs", "toPay"].forEach((k) => { if ((!cur[k] || !cur[k].length) && prev[k] && prev[k].length) cur[k] = prev[k].slice(); });
+  if (prev) ["gradeKeys", "offered", "msgs", "toPay", "schols"].forEach((k) => { if ((!cur[k] || !cur[k].length) && prev[k] && prev[k].length) cur[k] = prev[k].slice(); });
   state.seen = cur; saveState();
   const cat = (state.notify && state.notify.changes) || {};
   if (!prev || !cat.enabled) return; // no baseline yet, or category off → just record
@@ -5135,7 +5137,10 @@ async function notifyChanges() {
   if (ng.length && had(prev.gradeKeys) && ng.length <= CAP) {
     const hits = []; ((state.grades && state.grades.terms) || []).forEach((t) => (t.subjects || []).forEach((s) => { if (ng.indexOf((s.code || s.subject || "?") + "|" + (s.value || s.result)) >= 0) hits.push(s); }));
     const body = (ng.length === 1 && hits[0]) ? (hits[0].subject || hits[0].code || "Tárgy") + " · " + (hits[0].result || hits[0].value) : ng.length + " új jegy";
-    const detail = hits.length ? "Új jegyed érkezett:\n" + hits.map((s) => "· " + (s.subject || s.code) + ": " + (s.result || s.value) + (s.credits ? " (" + s.credits + " kr)" : "")).join("\n") : "Új jegyed érkezett a Neptunban.";
+    let detail = hits.length ? "Új jegyed érkezett:\n" + hits.map((s) => "· " + (s.subject || s.code) + ": " + (s.result || s.value) + (s.credits ? " (" + s.credits + " kr)" : "")).join("\n") : "Új jegyed érkezett a Neptunban.";
+    const ix = (state.grades && state.grades.averages && state.grades.averages.indices) || {};
+    const idxV = ix.korrigalt != null ? ix.korrigalt : ix.kreditIndex;
+    if (idxV != null) detail += "\n\nKreditindexed most: " + idxV; // a jegy hatása az indexre
     news.push({ kind: "grades", title: "Új jegy", body, detail, target: { tab: "tab-grades" } });
   }
   // Megajánlott jegy
@@ -5146,19 +5151,39 @@ async function notifyChanges() {
   if (nm.length && had(prev.msgs) && nm.length <= CAP) news.push({ kind: "messages", title: "Új üzenet", body: nm.length === 1 ? [nm[0].from, nm[0].subject].filter(Boolean).join(" · ") : nm.length + " új üzenet", detail: nm.length === 1 ? ("Új üzeneted érkezett.\nFeladó: " + (nm[0].from || "?") + "\nTárgy: " + (nm[0].subject || "(nincs tárgy)")) : (nm.length + " új üzeneted érkezett a Neptunban."), target: { tab: "tab-messages" } });
   // Új befizetendő
   const pp = setOf(prev.toPay), np = ((state.finance && state.finance.toPay) || []).filter((x) => x.id && !pp.has(x.id));
-  if (np.length && np.length <= CAP) news.push({ kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel", detail: np.length === 1 ? ("Új befizetendő tétel:\n" + (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) + (np[0].dueDate ? "\nHatáridő: " + exFmtDate(np[0].dueDate) : "")) : (np.length + " új befizetendő tételed van."), target: { tab: "tab-fin-topay" } });
-  // Órarend változott (a következő 7 napon belül új vagy elmaradó óra)
+  if (np.length && np.length <= CAP) {
+    let fdetail;
+    if (np.length === 1) {
+      const it = np[0]; const dueLine = it.dueDate ? ("\nHatáridő: " + exFmtDate(it.dueDate) + dueDaysSuffix(it.dueDate)) : "";
+      fdetail = "Új befizetendő tétel:\n" + (it.name || "Tétel") + " · " + ftFt(it.value, it.currency) + dueLine;
+    } else fdetail = np.length + " új befizetendő tételed van.";
+    news.push({ kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel", detail: fdetail, target: { tab: "tab-fin-topay" } });
+  }
+  // Ösztöndíj jóváírva (pénz-pozitív)
+  const ps = setOf(prev.schols), nsc = ((state.finance && state.finance.scholarships) || []).filter((x) => x.id && !ps.has(x.id));
+  if (nsc.length && had(prev.schols) && nsc.length <= CAP) {
+    const sum = nsc.reduce((a, x) => a + (+x.amount || 0), 0);
+    const body = nsc.length === 1 ? (nsc[0].name || "Ösztöndíj") + " · " + ftFt(nsc[0].amount, nsc[0].currency) : nsc.length + " új kifizetés · " + ftFt(sum, "HUF");
+    const detail = "Jóváírás érkezett:\n" + nsc.map((x) => "· " + (x.name || "Ösztöndíj") + ": " + ftFt(x.amount, x.currency) + (x.date ? " (" + exFmtDate(x.date) + ")" : "")).join("\n");
+    news.push({ kind: "finance", title: "Ösztöndíj jóváírva", body, detail, target: { tab: "tab-fin-scholar" } });
+  }
+  // Órarend változott (a következő 7 napon belül: új / elmaradó óra + teremváltozás)
   if (had(prev.classes)) {
+    const prevBy = {}; (prev.classes || []).forEach((c) => { prevBy[c.k] = c; });
     const prevK = setOf((prev.classes || []).map((c) => c.k)), curK = setOf(cur.classes.map((c) => c.k));
     const addedL = cur.classes.filter((c) => !prevK.has(c.k));
     const removedL = (prev.classes || []).filter((c) => c.t > Date.now() && !curK.has(c.k));
-    const total = addedL.length + removedL.length;
+    // Ugyanaz az óra (azonos kulcs), de MÁS terem → teremváltozás.
+    const movedL = cur.classes.filter((c) => prevBy[c.k] && (prevBy[c.k].loc || "") !== (c.loc || "") && (prevBy[c.k].loc || c.loc)).map((c) => ({ c, from: prevBy[c.k].loc || "?" }));
+    const total = addedL.length + removedL.length + movedL.length;
     if (total && total <= CAP) {
-      const body = [addedL.length ? addedL.length + " új óra" : "", removedL.length ? removedL.length + " elmaradó óra" : ""].filter(Boolean).join(" · ");
+      const body = [addedL.length ? addedL.length + " új óra" : "", removedL.length ? removedL.length + " elmaradó óra" : "", movedL.length ? movedL.length + " teremváltozás" : ""].filter(Boolean).join(" · ");
       const line = (c, pfx) => { const p = parseClassSummary(c.sum || ""); const nm2 = (p && p.name) || c.sum || "Óra"; const d = new Date(c.t); return pfx + nm2 + " · " + dayHeading(d) + " " + hm(d) + (c.loc ? " · " + c.loc : ""); };
-      const detail = "Változott az órarended:\n" + [].concat(addedL.map((c) => line(c, "Új: ")), removedL.map((c) => line(c, "Elmarad: "))).join("\n");
+      const mline = (mv) => { const p = parseClassSummary(mv.c.sum || ""); const nm2 = (p && p.name) || mv.c.sum || "Óra"; const d = new Date(mv.c.t); return "Terem: " + nm2 + " · " + dayHeading(d) + " " + hm(d) + " · " + mv.from + " → " + (mv.c.loc || "?"); };
+      const detail = "Változott az órarended:\n" + [].concat(addedL.map((c) => line(c, "Új: ")), removedL.map((c) => line(c, "Elmarad: ")), movedL.map(mline)).join("\n");
       let target = { tab: "tab-timetable" };
-      if (addedL.length === 1 && removedL.length === 0) target = { openClass: { k: addedL[0].k, sum: addedL[0].sum, s: addedL[0].t } };
+      if (addedL.length === 1 && !removedL.length && !movedL.length) target = { openClass: { k: addedL[0].k, sum: addedL[0].sum, s: addedL[0].t } };
+      else if (movedL.length === 1 && !addedL.length && !removedL.length) target = { openClass: { k: movedL[0].c.k, sum: movedL[0].c.sum, s: movedL[0].c.t } };
       news.push({ kind: "timetable", title: "Órarend változott", body, detail, target });
     }
   }
