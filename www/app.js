@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.270";
+const APP_VERSION = "v0.271";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4019,12 +4019,25 @@ async function discoverFinanceEndpoints(base) {
   }
   return { found: Array.from(found), debug: { root, fileCount: files.size, fetched: dbg.slice(0, 60), sample: Array.from(all).slice(0, 80) } };
 }
+// A JWT claimjei olvasható formában (a hosszú értékeket, pl. aláírásokat, kihagyjuk).
+function jwtClaims(tok) {
+  try {
+    const p = JSON.parse(atob(String(tok).split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const out = {};
+    Object.keys(p).forEach((k) => { const v = p[k]; out[k] = (typeof v === "string" && v.length > 120) ? "[hosszú érték kihagyva]" : v; });
+    return out;
+  } catch (e) { return null; }
+}
+// A base64 profilképeket kidobjuk a diagból: valódi emberek arcképei, és a fájl javát ők teszik ki.
+function stripAvatars(o) {
+  return JSON.parse(JSON.stringify(o, (k, v) => ((k === "normalImage" || k === "thumbnailImage") && v) ? "[kép kihagyva]" : v));
+}
 async function runApiDiagnostics() {
   if (!isNative) { toast("Az API diagnosztika a telefonos alkalmazásban működik."); return; }
   if (!state.username || !state.password) { toast("Előbb add meg a belépési adatokat."); return; }
   if (flowActive) { toast("Már fut egy Neptun folyamat, várj."); return; }
   const ok = await ask({ title: "Oktató diagnosztika", okText: "Indítás", cancelText: "Mégse",
-    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld és nem módosít semmit) egy tárgyad oktatóinak adatait, a személykártyát és a fogadóóra végpontokat, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja. Küldd el nekem a fájlt." });
+    body: "Bejelentkezik, és <b>csak lekéri</b> (nem küld és nem módosít semmit) egy tárgyad oktatóinak adatait, a személykártyát, a fogadóórát, valamint a saját azonosítóidat és egy diák-névsor első pár sorát, majd a JSON választ fájlba menti (Dokumentumok/neptunplus) és a vágólapra másolja.<br><br>A fájl <b>valódi személyes adatokat</b> tartalmaz (a neved, a Neptun-kódod és néhány csoporttársad neve). A profilképeket kihagyom belőle. Csak akkor küldd tovább, ha ezzel rendben vagy." });
   if (!ok) return;
   await totpTick();
   showBusy("Bejelentkezés…", true);
@@ -4069,11 +4082,29 @@ async function runApiDiagnostics() {
     let consTerm = "";
     try { const r = await apiGet(sess, "Consultation/GetTerms"); const arr = (r.data && r.data.data) || []; consTerm = (arr[0] && (arr[0].value || arr[0].id)) || ""; results.push({ ep: "Consultation/GetTerms", status: r.status, data: r.data }); } catch (e) { results.push({ ep: "Consultation/GetTerms", error: String(e && e.message || e) }); }
     await probe("Consultation/GetConsultations", consTerm ? { termId: consTerm } : undefined);
+    // ---- 5) SAJÁT NÉV felderítés: mi azonosít minket, és milyen mezői vannak a diák-névsornak? ----
+    const self = {};
+    self.neptunCode = state.neptunCode || "";
+    self.jwtClaims = jwtClaims(sess.token);
+    try { const mt = await apiGet(sess, "MyTrainings"); self.myTrainings = (mt.data && mt.data.data) || null; } catch (e) { self.myTrainingsError = String(e && e.message || e); }
+    if (ev) {
+      $("busy-text").textContent = "Diák névsor…";
+      try {
+        const r = await apiGet(sess, "SubjectCourse/GetSubjectCourseStudents", { courseId: ev.courseId, subjectId: ev.subjectId, selectedTermId: cTermId, firstRow: 0, lastRow: 5 });
+        const list = (r.data && r.data.data) || [];
+        self.studentCount = list.length;
+        self.studentFields = list[0] ? Object.keys(list[0]) : null;
+        self.students = list.slice(0, 5);
+        const sid = list[0] && (list[0].userId || list[0].studentId || list[0].id);
+        if (sid) { try { const u = await apiGet(sess, "UserSearch/GetUserData", { userId: sid }); self.studentUserData = u.data && u.data.data; } catch (e) {} }
+      } catch (e) { self.studentsError = String(e && e.message || e); }
+    }
+    results.push({ self });
   } catch (e) { if (e && /Megszakítva/.test(e.message)) cancelled = true; else dbg("finance diag: " + (e && e.message ? e.message : e)); }
   hideBusy();
   if (cancelled && !results.length) { toast("Megszakítva"); return; }
   const fileName = BACKUP_DIR + "/apidiag-" + backupTs() + ".json";
-  const json = JSON.stringify({ base: apiSession && apiSession.base, grades: results }, null, 2);
+  const json = JSON.stringify(stripAvatars({ base: apiSession && apiSession.base, grades: results }), null, 2);
   let fileMsg = "";
   try { const fs = FSP(); if (fs) { await fs.writeFile({ path: fileName, data: json, directory: "DOCUMENTS", encoding: "utf8", recursive: true }); fileMsg = "Fájlba mentve: <b>Dokumentumok/" + esc(fileName) + "</b>"; } }
   catch (e) { fileMsg = "Fájlba írás nem sikerült: " + esc(e && e.message ? e.message : String(e)); }
