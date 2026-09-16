@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.272";
+const APP_VERSION = "v0.273";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5023,20 +5023,34 @@ async function collectPeople() {
   }
   if (!courses.length) { toast("Nem találtam kurzust az órarendedben."); return; }
   friendsBusy = { done: 0, total: courses.length }; renderFriends();
-  const people = Object.assign({}, state.people || {});
   const tally = {}; // k → hány névsorban szerepel EBBEN a futásban (a felismeréshez)
+  // Ugyanaz a név ne szerepeljen két kulcson (a névsorok nem mindig adják ugyanazt az azonosítót).
+  // Egyben összevonjuk a korábbi gyűjtésekből maradt azonos nevű duplikátumokat is.
+  const people = {}, byName = {};
+  for (const k of Object.keys(state.people || {})) {
+    const p = state.people[k], nk = searchNorm(p.n || "");
+    const ex = byName[nk];
+    if (ex) { const t = people[ex]; (p.c || []).forEach((x) => { if (t.c.indexOf(x) < 0) t.c.push(x); }); if (!t.id && p.id) t.id = p.id; continue; }
+    byName[nk] = k; people[k] = { n: p.n, c: (p.c || []).slice(), id: p.id || "" };
+  }
   let rosters = 0;
   for (const ev of courses) {
-    const cn = ev.title || ev.subject || ev.subjectName || ev.courseCode || "";
+    // A tárgy IGAZI neve a GetSubjectDetails-ből jön; az esemény title-je csak a kurzuskód (pl. ONVH_N1).
+    let cn = "";
+    try { const d = await apiGet(sess, "SubjectCourse/GetSubjectDetails", { courseId: ev.courseId, subjectId: ev.subjectId, termId }); cn = (d && d.data && d.data.data && d.data.data.subjectName) || ""; } catch (e) {}
+    if (!cn) cn = ev.subjectName || ev.title || ev.subject || "";
     try {
       const r = await apiGet(sess, "SubjectCourse/GetSubjectCourseStudents", { courseId: ev.courseId, subjectId: ev.subjectId, selectedTermId: termId, firstRow: 0, lastRow: 500 });
       const list = (r && r.data && r.data.data) || [];
       if (list.length) {
         rosters++;
         for (const s of list) {
-          const k = friendId(s);
+          const nm = studentName(s), nk = searchNorm(nm);
+          let k = friendId(s);
+          if (byName[nk] && byName[nk] !== k) k = byName[nk]; // azonos név → egy bejegyzés
+          byName[nk] = k;
           tally[k] = (tally[k] || 0) + 1;
-          const p = people[k] || (people[k] = { n: studentName(s), c: [], id: s.studentId || s.id || "" });
+          const p = people[k] || (people[k] = { n: nm, c: [], id: s.studentId || s.id || "" });
           if (!p.id && (s.studentId || s.id)) p.id = s.studentId || s.id;
           if (cn && p.c.indexOf(cn) < 0) p.c.push(cn);
         }
