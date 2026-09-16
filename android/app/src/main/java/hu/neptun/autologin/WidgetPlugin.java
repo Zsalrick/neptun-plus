@@ -26,4 +26,17 @@ public class WidgetPlugin extends Plugin {
         WidgetRender.pushAll(ctx);
         call.resolve();
     }
+
+    // Stat widgets (Kreditindex / Egyenleg / Mai órák / Következő számonkérés) data as a JSON object.
+    @PluginMethod
+    public void setStats(PluginCall call) {
+        Context ctx = getContext();
+        SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        SharedPreferences.Editor ed = sp.edit().putString("stats", call.getString("stats", "{}"));
+        String accent = call.getString("accent", null);
+        if (accent != null) ed.putString("accent", accent);
+        ed.apply();
+        WidgetRender.pushAll(ctx);
+        call.resolve();
+    }
 }
