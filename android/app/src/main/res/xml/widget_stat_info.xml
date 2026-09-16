@@ -8,4 +8,5 @@
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="1800000"
     android:description="@string/widget_stat_desc"
-    android:initialLayout="@layout/widget_stat" />
+    android:initialLayout="@layout/widget_stat"
+    android:previewLayout="@layout/widget_stat" />
