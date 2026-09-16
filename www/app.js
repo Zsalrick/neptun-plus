@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.274";
+const APP_VERSION = "v0.275";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -4950,12 +4950,41 @@ function friendId(s) {
   return "nm:" + searchNorm(studentName(s));
 }
 function studentName(s) { return s.printname || s.name || s.studentName || s.fullName || s.nickname || "Hallgató"; }
-function isFriend(s) { return !!(state.friends && state.friends[friendId(s)]); }
-function toggleFriend(s) {
+// A névsorok ugyanarra az emberre kurzusonként MÁS studentId-t adhatnak, ezért a kulcs mellett
+// névre is illesztünk, különben egy másik óra névsorában nem ismernénk fel a barátot.
+let friendNamesCache = null;
+function friendNames() {
+  if (friendNamesCache) return friendNamesCache;
+  const set = new Set(), f = state.friends || {};
+  for (const k in f) { const n = searchNorm(f[k] || ""); if (n) set.add(n); }
+  return (friendNamesCache = set);
+}
+function isFriend(s) {
+  if (state.friends && state.friends[friendId(s)]) return true;
+  const nk = searchNorm(studentName(s));
+  return !!nk && friendNames().has(nk);
+}
+function toggleFriendKey(k, name) {
   state.friends = state.friends || {};
-  const k = friendId(s);
-  if (state.friends[k]) delete state.friends[k]; else state.friends[k] = studentName(s);
+  if (state.friends[k]) delete state.friends[k];
+  else {
+    state.friends[k] = name || "";
+    // ugyanazon név más kulcsain lévő bejegyzéseket nem duplázzuk
+  }
+  friendNamesCache = null;
   saveState();
+}
+// Barát levétele mindenhonnan: a név alatt futó összes kulcsot törli, különben a név-illesztés
+// miatt barát maradna akkor is, ha az egyik kulcsát levettük.
+function removeFriendByName(name) {
+  const nk = searchNorm(name || ""), f = state.friends || {};
+  for (const k of Object.keys(f)) if (searchNorm(f[k] || "") === nk) delete f[k];
+  friendNamesCache = null;
+  saveState();
+}
+function toggleFriend(s) {
+  if (isFriend(s)) removeFriendByName(studentName(s));
+  else toggleFriendKey(friendId(s), studentName(s));
 }
 function friendsInRoster(list) { let n = 0; for (const s of (list || [])) if (isFriend(s)) n++; return n; }
 // A saját nevünk kinyerése egy már lekért válaszból. Csak nevesített SZEMÉLYNÉV-mezők, semmi
@@ -5093,7 +5122,7 @@ async function renderPerson() {
   const ttl = $("person-title");
   if (!p) { if (ttl) ttl.textContent = "Hallgató"; host.innerHTML = `<div class="dash-empty" style="padding:24px 2px">Nincs adat erről a hallgatóról.</div>`; return; }
   if (ttl) ttl.textContent = p.n || "Hallgató";
-  const isF = !!(state.friends && state.friends[personKey]);
+  const isF = !!(state.friends && state.friends[personKey]) || (!!searchNorm(p.n || "") && friendNames().has(searchNorm(p.n || "")));
   const courses = p.c || [];
   const rows = [["Név", p.n || "—"]];
   if (p.nk) rows.push(["Becenév", p.nk]);
@@ -5101,14 +5130,13 @@ async function renderPerson() {
   rows.push(["Közös órák", String(courses.length)]);
   rows.push(["Kapcsolat", isF ? "Barát" : "Nem barát"]);
   let h = `<div class="card kv">` + rows.map(([k, v]) => `<div class="kv-row"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(v)}</span></div>`).join("") + `</div>`;
-  h += `<div class="detail-add" style="margin-top:14px"><button class="btn ${isF ? "danger" : "tonal"}" id="person-fr">${isF ? "Barát törlése" : "Barát hozzáadása"}</button></div>`;
+  h += `<div class="detail-add" style="margin-top:14px"><button class="btn tonal friend-btn${isF ? " rm" : ""}" id="person-fr">${isF ? icon("x") + " Barát törlése" : icon("plus") + " Barát hozzáadása"}</button></div>`;
   if (courses.length) h += `<div class="dash-label">Közös órák</div><div class="card">` + courses.map((c) => `<div class="row"><span class="row-ic">${icon("book")}</span><span class="row-main"><span class="row-title">${esc(c)}</span></span></div>`).join("") + `</div>`;
   else h += `<div class="dash-empty" style="padding:18px 2px">Nincs ismert közös órád vele. Gyűjtsd össze a diákokat a Barátok oldalon.</div>`;
   host.innerHTML = h;
   $("person-fr").onclick = () => {
-    state.friends = state.friends || {};
-    if (state.friends[personKey]) delete state.friends[personKey]; else state.friends[personKey] = p.n || "";
-    saveState(); renderPerson();
+    if (isF) removeFriendByName(p.n); else toggleFriendKey(personKey, p.n || "");
+    renderPerson();
   };
   // A képzést csak igény szerint kérjük le, és eltesszük, hogy egyszer fusson.
   if (!p.tr && p.id && isNative) {
@@ -5131,10 +5159,16 @@ function renderFriends() {
   const norm = searchNorm(friendsQuery);
   const entries = Object.keys(people).map((k) => ({ k, n: people[k].n || "", c: people[k].c || [] }));
   // A barátok azok is, akiket még nem gyűjtöttünk be (pl. egy óra névsorából jelölted).
-  Object.keys(fr).forEach((k) => { if (!people[k]) entries.push({ k, n: fr[k] || "", c: [] }); });
+  // Névre is nézünk, hogy ugyanaz az ember ne jelenjen meg kétszer másik kulcson.
+  const seenNames = new Set(entries.map((e) => searchNorm(e.n)));
+  Object.keys(fr).forEach((k) => {
+    const n = fr[k] || "", nk = searchNorm(n);
+    if (!people[k] && nk && !seenNames.has(nk)) { seenNames.add(nk); entries.push({ k, n, c: [] }); }
+  });
+  const isFriendEntry = (e) => !!fr[e.k] || (!!searchNorm(e.n) && friendNames().has(searchNorm(e.n)));
   const hit = (e) => !norm || searchNorm(e.n).includes(norm);
-  const friends = entries.filter((e) => fr[e.k]).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
-  const others = entries.filter((e) => !fr[e.k]).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
+  const friends = entries.filter(isFriendEntry).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
+  const others = entries.filter((e) => !isFriendEntry(e)).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
   const row = (e, isF) => `<div class="row fr-row" data-fk="${esc(e.k)}" style="cursor:pointer"><span class="row-ic">${icon("user")}</span>`
     + `<span class="row-main"><span class="row-title">${isF ? `<span style="color:#5fa878">● </span>` : ""}${esc(e.n)}</span>`
     + (e.c.length ? `<span class="row-sub">${esc(e.c.slice(0, 2).join(" · "))}${e.c.length > 2 ? " · +" + (e.c.length - 2) : ""}</span>` : "")
