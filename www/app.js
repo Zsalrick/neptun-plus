@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.263";
+const APP_VERSION = "v0.264";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5099,6 +5099,14 @@ async function rescheduleNotifications() {
   try { await ln.schedule({ notifications: out.slice(0, 64) }); } catch (e) { /* ignore */ }
 }
 // ---- Change alerts (Változás-értesítők) ----
+// Egy órát a KURZUS + NAP azonosít (nem az időpont), hogy az időpont-változást ugyanannak az órának a
+// módosulásaként lássuk (nem új+elmaradó óraként). A típus (Előadás/Gyakorlat) is a kulcsban, hogy az
+// aznapi elmélet és gyakorlat ne keveredjen.
+function classSeriesKey(e) {
+  const p = parseClassSummary(e.summary) || {}; const d = e.S;
+  const day = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  return ((p.name || e.summary || "") + "|" + (p.type || "") + "|" + day).toLowerCase();
+}
 // A compact "what we've seen" snapshot; notifyChanges() diffs the fresh data against the previous one.
 function changeSnapshot() {
   const g = state.grades || {}, m = state.messages || {}, f = state.finance || {};
@@ -5106,7 +5114,7 @@ function changeSnapshot() {
   (g.terms || []).forEach((t) => (t.subjects || []).forEach((s) => { if (s.value || s.result) gradeKeys.push((s.code || s.subject || "?") + "|" + (s.value || s.result)); }));
   const now = Date.now(), wEnd = now + 7 * 864e5;
   let classes = [];
-  try { classes = (visibleClassEvents() || []).filter((e) => e.S && e.S.getTime() > now && e.S.getTime() < wEnd).map((e) => ({ k: occKey(e), t: e.S.getTime(), sum: e.summary || "", loc: e.location || "" })); } catch (e) {}
+  try { classes = (visibleClassEvents() || []).filter((e) => e.S && e.S.getTime() > now && e.S.getTime() < wEnd).map((e) => ({ sk: classSeriesKey(e), k: occKey(e), t: e.S.getTime(), te: e.E ? e.E.getTime() : 0, sum: e.summary || "", loc: e.location || "" })); } catch (e) {}
   return {
     gradeKeys,
     offered: (g.offered || []).map((o) => o.id).filter(Boolean),
@@ -5168,23 +5176,34 @@ async function notifyChanges() {
     const detail = "Jóváírás érkezett:\n" + nsc.map((x) => "· " + (x.name || "Ösztöndíj") + ": " + ftFt(x.amount, x.currency) + (x.date ? " (" + exFmtDate(x.date) + ")" : "")).join("\n");
     news.push({ kind: "finance", title: "Ösztöndíj jóváírva", body, detail, target: { tab: "tab-fin-scholar" } });
   }
-  // Órarend változott (a következő 7 napon belül: új / elmaradó óra + teremváltozás)
-  if (had(prev.classes)) {
-    const prevBy = {}; (prev.classes || []).forEach((c) => { prevBy[c.k] = c; });
-    const prevK = setOf((prev.classes || []).map((c) => c.k)), curK = setOf(cur.classes.map((c) => c.k));
-    const addedL = cur.classes.filter((c) => !prevK.has(c.k));
-    const removedL = (prev.classes || []).filter((c) => c.t > Date.now() && !curK.has(c.k));
-    // Ugyanaz az óra (azonos kulcs), de MÁS terem → teremváltozás.
-    const movedL = cur.classes.filter((c) => prevBy[c.k] && (prevBy[c.k].loc || "") !== (c.loc || "") && (prevBy[c.k].loc || c.loc)).map((c) => ({ c, from: prevBy[c.k].loc || "?" }));
-    const total = addedL.length + removedL.length + movedL.length;
+  // Órarend változott (következő 7 nap): új / elmaradó óra + IDŐPONT- és TEREMVÁLTOZÁS (miből → mire).
+  // Az órát a kurzus+nap (sk) köti össze, így az időpont-változás nem új+elmaradó óraként jelenik meg.
+  if (had(prev.classes) && prev.classes[0] && prev.classes[0].sk) { // csak ha a régi baseline már az új (sk) formátumú
+    const prevBy = {}; (prev.classes || []).forEach((c) => { if (c.sk) prevBy[c.sk] = c; });
+    const curBy = {}; cur.classes.forEach((c) => { curBy[c.sk] = c; });
+    const nm = (c) => { const p = parseClassSummary(c.sum || ""); return (p && p.name) || c.sum || "Óra"; };
+    const addedL = [], timeL = [], roomL = [], removedL = [];
+    cur.classes.forEach((c) => {
+      const p = prevBy[c.sk];
+      if (!p) { addedL.push(c); }
+      else if (p.t !== c.t) { timeL.push({ c, from: p.t }); }
+      else if ((p.loc || "") !== (c.loc || "") && (p.loc || c.loc)) { roomL.push({ c, from: p.loc || "?" }); }
+    });
+    (prev.classes || []).forEach((c) => { if (c.t > Date.now() && !curBy[c.sk]) removedL.push(c); });
+    const total = addedL.length + timeL.length + roomL.length + removedL.length;
     if (total && total <= CAP) {
-      const body = [addedL.length ? addedL.length + " új óra" : "", removedL.length ? removedL.length + " elmaradó óra" : "", movedL.length ? movedL.length + " teremváltozás" : ""].filter(Boolean).join(" · ");
-      const line = (c, pfx) => { const p = parseClassSummary(c.sum || ""); const nm2 = (p && p.name) || c.sum || "Óra"; const d = new Date(c.t); return pfx + nm2 + " · " + dayHeading(d) + " " + hm(d) + (c.loc ? " · " + c.loc : ""); };
-      const mline = (mv) => { const p = parseClassSummary(mv.c.sum || ""); const nm2 = (p && p.name) || mv.c.sum || "Óra"; const d = new Date(mv.c.t); return "Terem: " + nm2 + " · " + dayHeading(d) + " " + hm(d) + " · " + mv.from + " → " + (mv.c.loc || "?"); };
-      const detail = "Változott az órarended:\n" + [].concat(addedL.map((c) => line(c, "Új: ")), removedL.map((c) => line(c, "Elmarad: ")), movedL.map(mline)).join("\n");
+      const body = [addedL.length ? addedL.length + " új óra" : "", timeL.length ? timeL.length + " időpont-változás" : "", roomL.length ? roomL.length + " teremváltozás" : "", removedL.length ? removedL.length + " elmaradó óra" : ""].filter(Boolean).join(" · ");
+      const lines = [];
+      addedL.forEach((c) => { const d = new Date(c.t); lines.push("Új óra: " + nm(c) + " · " + dayHeading(d) + " " + hm(d) + (c.loc ? " · " + c.loc : "")); });
+      timeL.forEach((mv) => { const d = new Date(mv.c.t), o = new Date(mv.from); lines.push("Időpont változott: " + nm(mv.c) + " · " + dayHeading(d) + " · " + dayHeading(o) + " " + hm(o) + " → " + dayHeading(d) + " " + hm(mv.c.t) + (mv.c.loc ? " · " + mv.c.loc : "")); });
+      roomL.forEach((mv) => { const d = new Date(mv.c.t); lines.push("Terem változott: " + nm(mv.c) + " · " + dayHeading(d) + " " + hm(d) + " · " + mv.from + " → " + (mv.c.loc || "?")); });
+      removedL.forEach((c) => { const d = new Date(c.t); lines.push("Elmaradó óra: " + nm(c) + " · " + dayHeading(d) + " " + hm(d)); });
+      const detail = "Változott az órarended:\n" + lines.join("\n");
       let target = { tab: "tab-timetable" };
-      if (addedL.length === 1 && !removedL.length && !movedL.length) target = { openClass: { k: addedL[0].k, sum: addedL[0].sum, s: addedL[0].t } };
-      else if (movedL.length === 1 && !addedL.length && !removedL.length) target = { openClass: { k: movedL[0].c.k, sum: movedL[0].c.sum, s: movedL[0].c.t } };
+      const only = (addedL.length === 1 && !timeL.length && !roomL.length && !removedL.length) ? addedL[0]
+        : (timeL.length === 1 && !addedL.length && !roomL.length && !removedL.length) ? timeL[0].c
+        : (roomL.length === 1 && !addedL.length && !timeL.length && !removedL.length) ? roomL[0].c : null;
+      if (only) target = { openClass: { k: only.k, sum: only.sum, s: only.t } };
       news.push({ kind: "timetable", title: "Órarend változott", body, detail, target });
     }
   }
