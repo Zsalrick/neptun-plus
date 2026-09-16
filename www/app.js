@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.262";
+const APP_VERSION = "v0.263";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -893,6 +893,8 @@ function updateScrollPad() {
 }
 document.querySelectorAll(".nav-btn").forEach((b) => b.onclick = () => navTo(b.dataset.tab));
 document.querySelectorAll("[data-settings]").forEach((b) => b.onclick = () => pushScreen("tab-settings"));
+// The notification bell lives on every main page's topbar — wire them all once.
+document.querySelectorAll(".notif-bell").forEach((b) => b.onclick = () => pushScreen("tab-notifs"));
 // Every sub-screen back arrow (topbar) pops the nav stack — one handler for all of them.
 document.querySelectorAll("[data-back]").forEach((b) => b.onclick = popScreen);
 // Settings hub rows that open a settings sub-page.
@@ -1047,7 +1049,6 @@ function renderHome() {
   const hp = $("home-profile");
   if (hp) { hp.onclick = openProfilePicker; hp.classList.toggle("has-multi", (state.profiles || []).length > 1); }
   wireHubSearch();
-  { const nb = $("notif-bell"); if (nb && !nb.__wired) { nb.__wired = true; nb.onclick = () => pushScreen("tab-notifs"); } }
   try { if (isNative) catchUpBrief(); } catch (e) {} // a mai reggeli összefoglaló bekerül az Értesítésekbe
   updateNotifBell();
   renderHub();
@@ -5210,7 +5211,7 @@ function logNotif(o) {
 }
 function logHas(id) { return (state.notifLog || []).some((n) => n.id === id); }
 function notifUnread() { const now = Date.now(); return (state.notifLog || []).filter((n) => !n.read && n.at <= now).length; }
-function updateNotifBell() { const b = $("notif-bell-badge"); if (!b) return; const n = notifUnread(); b.textContent = n > 99 ? "99+" : String(n); b.hidden = !n; }
+function updateNotifBell() { const n = notifUnread(), txt = n > 99 ? "99+" : String(n); document.querySelectorAll(".notif-bell-badge").forEach((b) => { b.textContent = txt; b.hidden = !n; }); }
 const NOTIF_ICON = { grades: "note", messages: "mail", finance: "wallet", timetable: "calendar", brief: "clock", periods: "clock" };
 function openNotifTarget(t) {
   if (!t) return;
@@ -5220,18 +5221,43 @@ function openNotifTarget(t) {
   }
   if (t.tab) { openTab(t.tab); return; }
 }
-let detailNotifId = null;
+let detailNotifId = null, notifSearch = "", notifUnreadSnap = new Set();
+function notifDayBucket(at, now) {
+  const t = new Date(now), startToday = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+  if (at >= startToday) return "Ma";
+  if (at >= startToday - 86400000) return "Tegnap";
+  if (at >= startToday - 6 * 86400000) return "Ezen a héten";
+  return "Korábbi";
+}
+function renderNotifResults(all, now) {
+  const box = $("notif-results"); if (!box) return;
+  const q = notifSearch.trim().toLowerCase();
+  const list = q ? all.filter((n) => ((n.title || "") + " " + (n.body || "")).toLowerCase().includes(q)) : all;
+  if (!list.length) { box.innerHTML = `<div class="dash-empty" style="padding:26px 8px">Nincs találat.</div>`; return; }
+  const groups = []; list.forEach((n) => { const b = notifDayBucket(n.at, now); let g = groups[groups.length - 1]; if (!g || g.name !== b) { g = { name: b, items: [] }; groups.push(g); } g.items.push(n); });
+  box.innerHTML = groups.map((g) => `<div class="dash-label">${g.name}</div><div class="card">`
+    + g.items.map((n) => `<button class="row notif-row${notifUnreadSnap.has(n.id) ? " unread" : ""}" data-nid="${esc(n.id)}" type="button">`
+      + `<span class="row-ic">${icon(NOTIF_ICON[n.kind] || "note")}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(n.title)}</span><span class="row-sub">${esc(n.body)}</span></span>`
+      + `<span class="notif-when">${esc(fmtWhen(n.at))}</span></button>`).join("") + `</div>`).join("");
+  box.querySelectorAll("[data-nid]").forEach((b) => b.onclick = () => { detailNotifId = b.dataset.nid; pushScreen("tab-notif"); });
+}
 function renderNotifs() {
   const host = $("notifs-scroll"); if (!host) return;
   const now = Date.now();
-  const list = (state.notifLog || []).filter((n) => n.at <= now).sort((a, b) => b.at - a.at); // csak a már kiküldöttek
-  if (!list.length) { host.innerHTML = `<div class="dash-empty" style="padding:40px 24px">Még nincs értesítésed. Itt jelennek meg az új jegyek, üzenetek, befizetnivalók és órarend-változások, amikről szólunk.</div>`; }
-  else {
-    host.innerHTML = `<div class="hint" style="margin:2px 4px 10px">Az elmúlt 30 nap értesítései. Koppints a részletekért.</div><div class="card">`
-      + list.map((n) => `<button class="row" data-nid="${esc(n.id)}" type="button"><span class="row-ic">${icon(NOTIF_ICON[n.kind] || "note")}</span><span class="row-main"><span class="row-title">${esc(n.title)}</span><span class="row-sub">${esc(n.body)}</span></span><span class="row-sub" style="flex:0 0 auto;margin-left:8px">${esc(fmtWhen(n.at))}</span></button>`).join("")
-      + `</div><button class="btn tonal" id="notif-clear" style="margin-top:14px">${icon("trash")} Összes törlése</button>`;
-    host.querySelectorAll("[data-nid]").forEach((b) => b.onclick = () => { detailNotifId = b.dataset.nid; pushScreen("tab-notif"); });
-    { const c = $("notif-clear"); if (c) c.onclick = () => { state.notifLog = []; saveState(); updateNotifBell(); renderNotifs(); }; }
+  const all = (state.notifLog || []).filter((n) => n.at <= now).sort((a, b) => b.at - a.at); // csak a már kiküldöttek
+  notifUnreadSnap = new Set(all.filter((n) => !n.read).map((n) => n.id)); // pillanatkép, mielőtt olvasottá tesszük
+  if (!all.length) {
+    host.innerHTML = `<div class="empty" style="flex:none;padding:48px 28px 8px"><div class="empty-ic">${icon("bell")}</div>`
+      + `<h2>Nincs értesítés</h2><p>Itt jelennek meg az új jegyek, üzenetek, befizetnivalók és órarend-változások, amikről szólunk.</p></div>`;
+  } else {
+    host.innerHTML = `<div class="field-ic" style="margin-bottom:16px"><span class="ic-left">${icon("search")}</span>`
+      + `<input class="input" id="notif-search" placeholder="Keresés az értesítésekben" value="${esc(notifSearch)}" autocomplete="off"></div>`
+      + `<div id="notif-results"></div>`
+      + `<button class="btn tonal" id="notif-clear" style="margin-top:16px">${icon("trash")} Összes törlése</button>`;
+    const si = $("notif-search"); if (si) si.oninput = () => { notifSearch = si.value; renderNotifResults(all, now); };
+    const c = $("notif-clear"); if (c) c.onclick = () => { state.notifLog = []; notifSearch = ""; saveState(); updateNotifBell(); renderNotifs(); };
+    renderNotifResults(all, now);
   }
   // megnyitáskor a már kiküldöttek olvasottá válnak
   let changed = false; (state.notifLog || []).forEach((n) => { if (!n.read && n.at <= now) { n.read = true; changed = true; } });

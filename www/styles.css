@@ -180,6 +180,16 @@ button.row:active { background: var(--surface-2); }
   color: var(--ink-2); cursor: pointer; display: grid; place-items: center; flex: none; }
 .iconbtn:active { background: var(--surface-3); }
 .iconbtn.plain { border-color: transparent; background: transparent; }
+/* Notification bell (on every main page) + unread count badge */
+.notif-bell { position: relative; }
+.notif-bell-badge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
+  border-radius: 8px; background: var(--brand-plus); color: #0e1116; font-family: var(--font-mono); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+/* Notifications feed */
+.notif-row { align-items: flex-start; }
+.notif-when { font-size: 12px; color: var(--ink-3); flex: 0 0 auto; margin-left: 10px; padding-top: 1px; white-space: nowrap; }
+.notif-row.unread .row-title { font-weight: 650; }
+.notif-row.unread .notif-when::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--brand-plus); margin-right: 6px; vertical-align: middle; }
 
 /* ---------- Home ---------- */
 .hero { padding: 18px; }

@@ -197,7 +197,7 @@
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Kredit<span class="plus">+</span></div><div class="topbar-sub" id="home-sub">Készen áll a belépésre</div></div>
                 <button class="iconbtn plain" id="hub-edit" title="Kezdőlap testreszabása"><span data-icon="pencil"></span></button>
-                <button class="iconbtn plain" id="notif-bell" title="Értesítések" style="position:relative"><span data-icon="bell"></span><span id="notif-bell-badge" hidden style="position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--brand-plus,#f5b221);color:#0e1116;font-size:10px;font-weight:700;line-height:16px;text-align:center"></span></button>
+                <button class="iconbtn plain notif-bell" title="Értesítések"><span data-icon="bell"></span><span class="notif-bell-badge" hidden></span></button>
                 <button class="iconbtn plain" id="home-profile" title="Profil"><span data-icon="user"></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
@@ -237,6 +237,7 @@
             <section class="tabscreen" id="tab-more">
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Több</div><div class="topbar-sub">Szolgáltatások és eszközök</div></div>
+                <button class="iconbtn plain notif-bell" title="Értesítések"><span data-icon="bell"></span><span class="notif-bell-badge" hidden></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll" id="more-scroll"></div>
@@ -267,6 +268,7 @@
                 <div style="flex:1"><div class="wordmark">Órarend</div><div class="topbar-sub" id="tt-sub">Feliratkozási link szükséges</div></div>
                 <button class="iconbtn" id="tt-image" title="Kép mentése"><span data-icon="download"></span></button>
                 <button class="iconbtn" id="tt-refresh" title="Frissítés" hidden><span data-icon="refresh"></span></button>
+                <button class="iconbtn plain notif-bell" title="Értesítések"><span data-icon="bell"></span><span class="notif-bell-badge" hidden></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="ptr" id="tt-ptr" data-icon="refresh"></div>
@@ -277,6 +279,7 @@
               <header class="topbar">
                 <div style="flex:1"><div class="wordmark">Vizsgák</div><div class="topbar-sub" id="ex-sub">Számonkérések</div></div>
                 <button class="iconbtn" id="ex-refresh" title="Frissítés" hidden><span data-icon="refresh"></span></button>
+                <button class="iconbtn plain notif-bell" title="Értesítések"><span data-icon="bell"></span><span class="notif-bell-badge" hidden></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="ptr" id="ex-ptr" data-icon="refresh"></div>
@@ -998,42 +1001,49 @@
         <div class="meta">
           <b>Szolgáltató és adatkezelő:</b> Kiss Ádám egyéni vállalkozó<br>
           Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844<br>
-          Email: info@kissadamev.hu
+          Email: info@kreditplus.hu
         </div>
-        <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 9.</div>
-        <h3>1. A tájékoztató tárgya</h3>
-        <p>Ez a tájékoztató a Kredit+ alkalmazás adatkezelését ismerteti, a GDPR szabályaival összhangban. A weboldal adatkezeléséről külön tájékoztató szól a kissadamev.hu címen.</p>
-        <h3>2. Milyen adatokat kezel az alkalmazás</h3>
-        <p>Az alkalmazás a működéshez a következőket tárolja az eszközödön:</p>
+        <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 15.</div>
+        <p>A lényeg egy mondatban: a Neptun belépési adataid és a tanulmányi adataid <b>soha nem hagyják el a telefonodat</b>. Nincs felhasználói fiók, nincs regisztráció, és nincs olyan szerver, ahova az app feltöltené, amit a Neptunból kiolvas.</p>
+        <h3>1. Ki kezeli az adataidat</h3>
+        <p>A Kredit+ egyéni vállalkozásban készül, a fenti adatokkal. Nincs külön adatvédelmi tisztviselő, az adatokkal kapcsolatos bármilyen ügyben közvetlenül az info@kreditplus.hu címen lehet hozzám fordulni.</p>
+        <h3>2. Mi van a telefonodon</h3>
+        <p>Az app a működéshez a következőket tárolja az eszközöd helyi tárolójában, csak nálad:</p>
         <ul>
-          <li>Neptun azonosító és jelszó</li>
-          <li>Kétlépcsős azonosítás (2FA) kulcsa, ha megadod</li>
-          <li>A kiválasztott egyetem és Neptun szerver</li>
-          <li>Alkalmazászár: PIN kódod titkosított lenyomata és a biometria kapcsolója</li>
-          <li>Órarend: a feliratkozási link és a letöltött órarend, vizsgák, saját ZH‑k, jegyzetek, elrejtett órák</li>
-          <li>Tanulmányi adatok: beolvasott félévek és kredit‑előrehaladás</li>
-          <li>Beállítások: értesítések, biztonsági kapcsolók, letöltött kiegészítők (pl. számlatükör)</li>
+          <li>a Neptun azonosítód és jelszavad,</li>
+          <li>a kétlépcsős azonosítás kulcsa, ha megadtad,</li>
+          <li>a kiválasztott egyetem és Neptun szerver,</li>
+          <li>az alkalmazászár PIN kódjának titkosított lenyomata és a biometria kapcsolója,</li>
+          <li>a letöltött órarend, jegyek, vizsgák, kreditek, tantárgyak, pénzügyek,</li>
+          <li>a saját ZH-id, jegyzeteid, emlékeztetőid, elrejtett óráid,</li>
+          <li>a beállításaid és a letöltött kiegészítők.</li>
         </ul>
-        <h3>3. Hol tárolódnak</h3>
-        <p>Ezek az adatok kizárólag a te eszközödön tárolódnak, az alkalmazás helyi tárolójában. A Szolgáltató ezekhez nem fér hozzá, és nem is látja őket.</p>
-        <h3>4. Hálózati kapcsolatok</h3>
-        <p>Az alkalmazás a személyes adataidat nem küldi el a Szolgáltatónak. Két külső kapcsolat jöhet létre:</p>
+        <p>Ezeket <b>nem látom és nem tudom lekérdezni</b>. Nincs hozzájuk távoli hozzáférésem, mert nincs hova feltöltődniük.</p>
+        <h3>3. Milyen hálózati kapcsolat jön létre</h3>
         <ul>
-          <li><b>Egyetemi Neptun szerver:</b> a te eszközöd és az általad választott egyetem Neptun szervere között, a bejelentkezéshez és az órarend‑link, félévek, kredit lekéréséhez. Ezt a szervert az adott egyetem üzemelteti.</li>
-          <li><b>GitHub (frissítés és kiegészítők):</b> az alkalmazás frissítéseit és a letölthető kiegészítőket a GitHubról tölti le (github.com, raw.githubusercontent.com). Ehhez a GitHub – mint külső szolgáltató – a szokásos módon láthatja az eszköz IP‑címét, de személyes adatot (azonosító, jelszó) nem küldünk.</li>
+          <li><b>Az egyetemed Neptun szervere.</b> A belépés és az adatlekérés közvetlenül a telefonod és az egyetem szervere között zajlik, ugyanúgy, mintha böngészőből lépnél be. Ezt a szervert az egyetemed üzemelteti, nem mi. Az app a te saját adataiddal, a hivatalos belépési felületen lép be.</li>
+          <li><b>GitHub.</b> Innen tölti le az app a frissítéseket és a letölthető kiegészítőket (github.com, raw.githubusercontent.com). Ilyenkor a GitHub, mint külső szolgáltató, a szokásos módon látja az eszközöd IP-címét. Személyes adatot, azonosítót vagy jelszót nem küldünk neki.</li>
+          <li><b>Google Play.</b> Az app a telefonon ellenőrzi a Google Play szolgáltatásánál, hogy van-e érvényes előfizetésed. Erről a 4. pont szól.</li>
         </ul>
+        <h3>4. Előfizetés és fizetés</h3>
+        <p>A vásárlás és a számlázás teljes egészében a Google Play áruházon keresztül történik. A <b>Google</b> a fizetési szolgáltató: ő kezeli a bankkártya adatait, ő vonja le a díjat, és ő állítja ki a nyugtát.</p>
+        <p>A Szolgáltató <b>nem lát és nem tárol bankkártya számot, banki adatot vagy számlázási címet</b>. Az app annyit tud meg, hogy van-e érvényes előfizetésed. A Google saját adatkezelésére a Google adatvédelmi szabályzata vonatkozik.</p>
         <h3>5. Értesítések</h3>
-        <p>Az óra/ZH/vizsga emlékeztetők helyi értesítések: az eszközöd hozza létre és jeleníti meg őket. Ehhez nem hagy el adat az eszközt.</p>
+        <p>Az óra, ZH és vizsga emlékeztetők helyi értesítések: az eszközöd hozza létre és jeleníti meg őket. Ehhez semmilyen adat nem hagyja el az eszközt, és nincs szükség szerverre.</p>
         <h3>6. Biztonsági mentés</h3>
-        <p>Ha mentést készítesz, az az eszköz Dokumentumok/neptunplus mappájába kerül, és a Neptun jelszavaddal titkosítjuk (AES‑GCM). A mentés érzékeny adatokat tartalmaz (jelszó, 2FA kulcs). A kiexportált mentésfájl kezeléséért, megosztásáért és a jelszó megőrzéséért a felhasználó felel.</p>
-        <h3>7. Nyomon követés</h3>
-        <p>Az alkalmazás nem használ analitikát, reklámot, sütit vagy egyéb nyomkövetést a Szolgáltató részéről.</p>
+        <p>Ha mentést készítesz, az az eszköz Dokumentumok/neptunplus mappájába kerül, és a Neptun jelszavaddal titkosítjuk (AES-GCM). A mentés érzékeny adatokat tartalmaz, köztük a jelszavadat és a 2FA kulcsot. A mentésfájl tárolása, megosztása és a jelszó megőrzése a te felelősséged. Ha elveszted a jelszót, a mentés nem állítható vissza, mert nálunk nincs róla másolat.</p>
+        <h3>7. Nincs nyomkövetés és nincs profilalkotás</h3>
+        <p>Az app nem használ analitikát, reklámot, sütit vagy egyéb nyomkövetést a Szolgáltató részéről. Nem készítünk rólad profilt, és nincs olyan algoritmus, ami rólad automatikusan döntene. Minden kiszámolt adat, például a kreditátlagod, a saját telefonodon keletkezik és ott is marad.</p>
         <h3>8. Az adatok törlése</h3>
-        <p>Az adatok bármikor törölhetők a Beállítások menü Minden adat törlése pontjával, vagy az alkalmazás eltávolításával. A Dokumentumok/neptunplus mappában lévő mentésfájlokat külön törölheted.</p>
-        <h3>9. Jogaid és kapcsolat</h3>
-        <p>Mivel a Szolgáltató nem fér hozzá az adataidhoz és nem tárolja azokat, érdemi adatkezelést nem végez. Kérdés esetén az info@kissadamev.hu címen fordulhatsz hozzá.</p>
-        <h3>10. Külső rendszerek</h3>
-        <p>A Neptun rendszert és az egyetemek szervereit, valamint a GitHubot önálló szervezetek üzemeltetik. Az azokon végzett adatkezelésre ez a tájékoztató nem terjed ki.</p>
+        <p>Az adatok bármikor törölhetők a Beállítások menü Minden adat törlése pontjával, vagy az app eltávolításával. A Dokumentumok/neptunplus mappában lévő mentésfájlokat külön kell törölnöd.</p>
+        <h3>9. Mit kérhetsz tőlünk</h3>
+        <p>Megillet a tájékoztatás, a másolat kérése, a javítás, a törlés, a korlátozás, a tiltakozás és az adathordozhatóság joga. Fontos azonban, hogy az <b>appban tárolt adataidhoz nem férünk hozzá</b>, ezért azokat nem tudjuk helyetted kiadni vagy törölni. Azok a telefonodon vannak, és a 8. pont szerint te tudod megszüntetni őket. Bármilyen kérdéssel írj az info@kreditplus.hu címre, legkésőbb egy hónapon belül érdemben válaszolunk.</p>
+        <h3>10. A weboldalról külön</h3>
+        <p>A kreditplus.hu weboldalon van hírlevél feliratkozás és tesztelői jelentkezés. Az ott beírt adatok, szemben az appal, <b>szerveren tárolódnak</b>. Ez az app működését nem érinti, és csak akkor vonatkozik rád, ha a weboldalon te magad kitöltöttél egy űrlapot. A részletes leírás a kreditplus.hu/adatkezeles címen olvasható, ahol ennek a tájékoztatónak a teljes változata is megtalálható.</p>
+        <h3>11. Külső rendszerek</h3>
+        <p>A Neptun rendszert és az egyetemek szervereit, a GitHubot és a Google Play áruházat önálló szervezetek üzemeltetik. Az ő saját adatkezelésükre a saját szabályzataik vonatkoznak, arra nekünk nincs ráhatásunk.</p>
+        <h3>12. Ha nem vagy elégedett</h3>
+        <p>Először írj nekünk, a legtöbb kérdés egy levéllel rendezhető. Ha ezután sem vagy elégedett, panasszal fordulhatsz a Nemzeti Adatvédelmi és Információszabadság Hatósághoz (1055 Budapest, Falk Miksa utca 9-11., naih.hu), vagy bírósághoz fordulhatsz.</p>
       </div>
       <div class="sheet-actions"><button class="btn outline" id="privacy-close">Bezárás</button></div>
     </div>
@@ -1047,31 +1057,68 @@
         <div class="meta">
           <b>Szolgáltató:</b> Kiss Ádám egyéni vállalkozó<br>
           Adószám: 90429633-1-39 · Nyilvántartási szám: 59620844<br>
-          Email: info@kissadamev.hu
+          Email: info@kreditplus.hu
         </div>
-        <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 9.</div>
+        <div class="meta" style="margin-top:0">Hatályos: 2026. szeptember 15.</div>
         <h3>1. Az alkalmazás</h3>
-        <p>A Kredit+ egy segédalkalmazás, amely a felhasználó eszközén tárolt adatokkal megkönnyíti a Neptun használatát: belépés, órarend, vizsgák és ZH‑k, emlékeztetők, félév‑ és kredit‑áttekintés, valamint letölthető kiegészítők (pl. számlatükör).</p>
-        <h3>2. Díj</h3>
-        <p>Az alkalmazás használata ingyenes.</p>
-        <h3>3. Használat</h3>
-        <p>Az alkalmazást a felhasználó kizárólag a saját Neptun fiókjához, jogszerűen használhatja. A belépési adatok védelme a felhasználó felelőssége.</p>
-        <h3>4. Függetlenség</h3>
-        <p>Az alkalmazás nem hivatalos. Nincs kapcsolatban sem az egyetemekkel, sem a Neptun rendszer fejlesztőjével vagy üzemeltetőjével.</p>
-        <h3>5. Frissítések és kiegészítők</h3>
-        <p>Az alkalmazás frissítéseit és a kiegészítőket a GitHubról tölti le. A kiegészítők tartalma (pl. a számlatükör) tájékoztató jellegű, nem hivatalos, és elavulhat.</p>
-        <h3>6. Az adatok pontossága</h3>
-        <p>A Neptunból beolvasott adatok (órarend, félévek, kreditek) legjobb szándék szerint készülnek, de a Neptun változásai miatt hibásak vagy hiányosak lehetnek. A hivatalos, mérvadó adatot mindig a Neptun rendszerben ellenőrizd.</p>
-        <h3>7. Biztonsági mentés</h3>
-        <p>A mentés a Neptun jelszavaddal titkosított, és az eszközödön tárolódik. A mentésfájl és a jelszó megőrzése a felhasználó felelőssége; ezek nélkül a mentés nem állítható vissza.</p>
-        <h3>8. Felelősség korlátozása</h3>
-        <p>Az alkalmazás abban az állapotában érhető el, ahogy van, mindenféle jótállás nélkül. A Szolgáltató nem felel az esetleges hibákból, a Neptun oldal változásaiból, az elmaradt belépésből, hibás értesítésből vagy adatvesztésből eredő károkért. A használat a felhasználó saját felelősségére történik.</p>
-        <h3>9. Módosítás</h3>
-        <p>A Szolgáltató a feltételeket módosíthatja. A módosítás az alkalmazás frissítésével lép hatályba.</p>
-        <h3>10. Irányadó jog</h3>
-        <p>A feltételekre a magyar jog az irányadó.</p>
-        <h3>11. Elfogadás</h3>
-        <p>Az alkalmazás használatával a felhasználó elfogadja ezeket a feltételeket.</p>
+        <p>A Kredit+ egy segédalkalmazás, ami a saját tanulmányi fiókodhoz ad kényelmesebb hozzáférést: belép helyetted, és egy helyre hozza az órarendedet, a jegyeidet, a kreditjeidet, a vizsgáidat, a tantárgyaidat és a pénzügyeidet. Emlékeztetőket és változás értesítőket küld, és kiegészítőket is le lehet tölteni hozzá.</p>
+        <h3>2. Mennyibe kerül</h3>
+        <p>Az app egyes funkciói előfizetéshez kötöttek. Három időszak közül lehet választani, a jelen feltételek közzétételekor érvényes árakon:</p>
+        <ul>
+          <li><b>Havi:</b> 299 Ft, minden hónapban.</li>
+          <li><b>Féléves:</b> 1 615 Ft, félévente. Ez körülbelül 269 Ft havonta.</li>
+          <li><b>Éves:</b> 2 691 Ft, évente. Ez körülbelül 224 Ft havonta.</li>
+        </ul>
+        <p>Az árak a végső, fogyasztói árak. A rád vonatkozó, mindenkor érvényes árat <b>mindig a Google Play mutatja meg a vásárlás megerősítése előtt</b>, és eltérés esetén az ott kijelzett ár az irányadó. Az árat később módosíthatjuk, de a változás a már futó, kifizetett időszakodat nem érinti, és a Google Play a megújulás előtt külön értesít róla.</p>
+        <h3>3. Az ingyenes próbaidőszak</h3>
+        <p>Mindhárom időszak <b>14 napos ingyenes próbával indul</b>. Ha ajánlói kóddal regisztrálsz, 14 nap helyett <b>31 nap</b> a próba.</p>
+        <ul>
+          <li>A próbaidőszak alatt nem történik terhelés, és bármikor, következmény nélkül lemondhatsz.</li>
+          <li>Ha a próbaidőszak utolsó napjáig nem mondod le, az előfizetés automatikusan fizetőssé válik, és a Google Play levonja a választott időszak díját.</li>
+          <li>A próbaidőszak a Google Play feltételei szerint egyszer vehető igénybe. Ha korábban már próbáltad, egy újabb előfizetés rögtön fizetőssé válik.</li>
+        </ul>
+        <h3>4. Fizetés és lemondás</h3>
+        <p>A vásárlás és a számlázás a Google Play áruházon keresztül történik. A Google a fizetési szolgáltató: ő vonja le a díjat és ő állítja ki a nyugtát. A Szolgáltató bankkártya adatot nem lát és nem tárol.</p>
+        <p>Az előfizetés az időszak végén <b>automatikusan megújul</b>, hogy ne szakadjon meg a hozzáférésed. Ezt bármikor kikapcsolhatod a Google Play alkalmazásban: a profilképed, majd Fizetések és előfizetések, Előfizetések, Kredit+, Előfizetés lemondása.</p>
+        <p>A lemondás nem vonja meg azonnal a hozzáférést: a már kifizetett időszak végéig használhatod tovább az appot, csak új terhelés nem lesz. Az előfizetés a Google fiókodhoz kötődik, nem az eszközödhöz.</p>
+        <h3>5. Elállási jog</h3>
+        <p>Az előfizetés digitális szolgáltatás, amelynek teljesítése a vásárláskor, a te kérésedre azonnal elkezdődik, hiszen rögtön használni akarod az appot. Ezért a vásárlás megerősítésével kifejezetten kéred az azonnali megkezdést, és <b>tudomásul veszed, hogy ezzel elveszíted a 14 napos elállási jogodat</b> a már teljesített részre. Ez a fogyasztói szerződésekre vonatkozó magyar rendelet szerint történik így, és minden hasonló digitális előfizetésnél ugyanez a helyzet.</p>
+        <p>Ez a gyakorlatban nem jelent hátrányt, mert a 14, illetve 31 napos próbaidőszak alatt mindent kipróbálhatsz fizetés nélkül, és addig bármikor kiszállhatsz. A visszatérítésekre a Google Play saját szabályzata vonatkozik, ezért visszatérítési kérelemmel közvetlenül a Google felé érdemes fordulni.</p>
+        <h3>6. Ajánlói program</h3>
+        <p>Minden felhasználó kap egy saját ajánlói kódot, amit az appban talál meg. Ha valaki a te kódoddal regisztrál, <b>ő</b> 14 nap helyett 31 nap próbát kap, <b>neked</b> pedig minden sikeres meghívásért 31 nap ajándék hozzáférést írunk jóvá. Sikeresnek az a meghívás számít, amikor a meghívott új felhasználóként, valós saját fiókkal aktiválja az appot a kódoddal.</p>
+        <p>Az ajándék napok nem válthatók pénzre és nem ruházhatók át. Visszaélés esetén, például ha valaki saját magát hívja meg több fiókkal vagy hamis fiókokat hoz létre, a jóváírást visszavonhatjuk és a kódot letilthatjuk. A programot bármikor módosíthatjuk vagy lezárhatjuk, de a már jóváírt napokat ez nem érinti.</p>
+        <h3>7. Tesztelői prémium</h3>
+        <p>Aki hivatalos tesztelőként végigvitte a zárt Android tesztet, díjmentes prémium hozzáférést kap. Ennek pontos feltételei a kreditplus.hu/teszteles/feltetelek címen olvashatók.</p>
+        <h3>8. Hogyan használhatod</h3>
+        <ul>
+          <li>Kizárólag a <b>saját</b> tanulmányi fiókodhoz, jogszerűen, az egyetemed és a tanulmányi rendszer szabályzatait betartva.</li>
+          <li>A belépési adataid védelme a te felelősséged.</li>
+          <li>Az előfizetésed személyes. Ne oszd meg másokkal, és ne add tovább.</li>
+          <li>Ne próbáld visszafejteni, módosítani vagy megkerülni az előfizetés ellenőrzését.</li>
+        </ul>
+        <p>Ha ezeket megszeged, a hozzáférésedet felfüggeszthetjük vagy megszüntethetjük.</p>
+        <h3>9. Függetlenség</h3>
+        <p>Az alkalmazás nem hivatalos. Nincs kapcsolatban sem az egyetemekkel, sem a Neptun rendszer fejlesztőjével vagy üzemeltetőjével. A Neptun a jogtulajdonosának védjegye, itt kizárólag a kompatibilitás jelölésére szerepel.</p>
+        <h3>10. Az adatok pontossága</h3>
+        <p>Az app a tanulmányi rendszerből olvassa ki az adatokat, és legjobb tudásunk szerint jeleníti meg őket. A rendszer időnként változik, ezért előfordulhat, hogy egy adat késve frissül, hiányos vagy hibás.</p>
+        <p><b>A hivatalos, mérvadó adat mindig maga a tanulmányi rendszer.</b> A fontos határidőknél, például vizsgajelentkezésnél, tárgyfelvételnél vagy befizetésnél, mindig ellenőrizd ott is, amit az app mutat, és ne csak az app értesítéseire támaszkodj.</p>
+        <h3>11. Frissítések és kiegészítők</h3>
+        <p>Az app frissítéseit és a kiegészítőket a GitHubról tölti le. A kiegészítők tartalma, például a számlatükör, tájékoztató jellegű, nem hivatalos, és elavulhat.</p>
+        <h3>12. Biztonsági mentés</h3>
+        <p>A mentés a Neptun jelszavaddal titkosított, és az eszközödön tárolódik. A mentésfájl és a jelszó megőrzése a te felelősséged, ezek nélkül a mentés nem állítható vissza.</p>
+        <h3>13. Elérhetőség és változások</h3>
+        <p>Az app folyamatosan fejlődik, az új funkciók a frissítésekkel érkeznek. Előfordulhat, hogy egy funkció megváltozik vagy megszűnik, például ha a tanulmányi rendszer oldalán változik valami. Nem vállalunk garanciát arra, hogy a szolgáltatás megszakítás nélkül, hiba nélkül működik.</p>
+        <p>Ha a szolgáltatást véglegesen megszüntetnénk, arról ésszerű időben előre értesítünk, és a már kifizetett, még fel nem használt időszakra arányos visszatérítést biztosítunk.</p>
+        <h3>14. Felelősség</h3>
+        <p>Az alkalmazás abban az állapotában érhető el, ahogy van. A Szolgáltató a jogszabály engedte legnagyobb mértékben kizárja a felelősségét azokért a károkért, amelyek a tanulmányi rendszer változásaiból, egy elmaradt vagy sikertelen belépésből, hibás vagy késve érkező értesítésből, a helyi adatok elvesztéséből vagy a kiegészítők tartalmából erednek.</p>
+        <p>Ez a korlátozás <b>nem érinti</b> azt a felelősséget, amelyet jogszabály szerint nem lehet kizárni, például a szándékos károkozásért, illetve az emberi életet, testi épséget vagy egészséget megkárosító szerződésszegésért való felelősséget. A fogyasztókat megillető kötelező jogokat ez a pont nem korlátozza.</p>
+        <h3>15. Panasz és jogérvényesítés</h3>
+        <p>Panasszal, kérdéssel írj az info@kreditplus.hu címre. A panaszt megvizsgáljuk, és legkésőbb 30 napon belül írásban válaszolunk. Fizetéssel, terheléssel és visszatérítéssel kapcsolatos igényedet a Google Play felé tudod érvényesíteni, mert a vásárlás ott történik.</p>
+        <p>Ha fogyasztóként nem értünk egyet, díjmentesen fordulhatsz a lakóhelyed szerint illetékes békéltető testülethez, amelyek a megyei kereskedelmi és iparkamarák mellett működnek. Fogyasztóvédelmi panasszal a területileg illetékes kormányhivatalhoz is fordulhatsz. A bírósági út is nyitva áll.</p>
+        <h3>16. Módosítás és irányadó jog</h3>
+        <p>A Szolgáltató a feltételeket módosíthatja, ha a szolgáltatás vagy a jogszabályi környezet változik. A módosítás az app frissítésével, illetve a weboldalon való közzététellel lép hatályba. Ha a változás érdemben érinti az előfizetésedet, például az árat, arról a megújulás előtt külön értesítünk, és lemondhatsz, mielőtt a változás rád vonatkozna. A feltételekre a magyar jog az irányadó.</p>
+        <h3>17. Elfogadás</h3>
+        <p>Az alkalmazás használatával, illetve az előfizetés megvásárlásával elfogadod ezeket a feltételeket.</p>
       </div>
       <div class="sheet-actions"><button class="btn outline" id="terms-close">Bezárás</button></div>
     </div>
