@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.267";
+const APP_VERSION = "v0.268";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -61,7 +61,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -4855,7 +4855,8 @@ function renderDetail() {
     return;
   }
   // Segmented sections for a class/exam occurrence.
-  const segs = [["info", "Tárgy"], ["tutors", "Oktatók"], ["students", "Diákok"], ["notes", "Megjegyzések"]];
+  const frN = detailCourse && detailCourse.students ? friendsInRoster(detailCourse.students) : 0;
+  const segs = [["info", "Tárgy"], ["tutors", "Oktatók"], ["students", frN ? "Diákok · " + frN : "Diákok"], ["notes", "Megjegyzések"]];
   html += `<div class="seg" style="margin-bottom:12px">` + segs.map(([id, l]) => `<button class="seg-btn${detailSeg === id ? " active" : ""}" data-cseg="${id}" type="button">${l}</button>`).join("") + `</div>`;
   html += `<div id="course-sec"></div>`;
   body.innerHTML = html;
@@ -4878,6 +4879,21 @@ function renderDetail() {
   if ($("detail-close")) $("detail-close").onclick = popScreen;
   renderCourseSeg(e);
 }
+// ---- Barátok (helyi, profilonként; a névsor stabil id-jét használjuk, ha van, különben normalizált név) ----
+function friendId(s) {
+  const raw = s.studentNeptunCode || s.neptunCode || s.contactId || s.studentId || s.id;
+  if (raw != null && String(raw).trim()) return "id:" + String(raw).trim();
+  return "nm:" + searchNorm(studentName(s));
+}
+function studentName(s) { return s.printname || s.name || s.studentName || s.fullName || s.nickname || "Hallgató"; }
+function isFriend(s) { return !!(state.friends && state.friends[friendId(s)]); }
+function toggleFriend(s) {
+  state.friends = state.friends || {};
+  const k = friendId(s);
+  if (state.friends[k]) delete state.friends[k]; else state.friends[k] = studentName(s);
+  saveState();
+}
+function friendsInRoster(list) { let n = 0; for (const s of (list || [])) if (isFriend(s)) n++; return n; }
 function renderCourseSeg(e) {
   const host = $("course-sec"); if (!host) return;
   const loading = !detailCourse && !detailCourseErr && !e.manual && !detailExamMode && isNative;
@@ -4914,8 +4930,21 @@ function renderCourseSeg(e) {
   if (detailSeg === "students") {
     const list = c.students || [];
     if (!list.length) { host.innerHTML = `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni." : "Nincs elérhető hallgatói névsor."}</div>`; return; }
-    host.innerHTML = `<div class="hint" style="margin:0 2px 8px">${list.length} hallgató</div><div class="card">`
-      + list.map((s) => { const nm = s.printname || s.name || s.studentName || s.fullName || s.nickname || "Hallgató"; return `<div class="row"><span class="row-ic">${icon("user")}</span><span class="row-main"><span class="row-title">${esc(nm)}</span></span></div>`; }).join("") + `</div>`;
+    const fr = list.filter(isFriend), other = list.filter((s) => !isFriend(s));
+    const row = (s) => {
+      const f = isFriend(s), k = friendId(s);
+      return `<div class="row"><span class="row-ic">${icon("user")}</span>`
+        + `<span class="row-main"><span class="row-title">${f ? `<span style="color:#5fa878">● </span>` : ""}${esc(studentName(s))}</span></span>`
+        + `<button class="fr-btn" data-fk="${esc(k)}" type="button" title="${f ? "Barát eltávolítása" : "Hozzáadás barátként"}" style="background:none;border:0;padding:6px;cursor:pointer;color:${f ? "#5fa878" : "var(--muted)"}">${icon(f ? "check" : "plus")}</button></div>`;
+    };
+    const head = fr.length
+      ? `<div class="hint" style="margin:0 2px 8px">${list.length} hallgató · ${fr.length} barátod jár ide</div>`
+      : `<div class="hint" style="margin:0 2px 8px">${list.length} hallgató</div>`;
+    host.innerHTML = head + `<div class="card">` + fr.concat(other).map(row).join("") + `</div>`;
+    host.querySelectorAll(".fr-btn").forEach((b) => b.onclick = () => {
+      const s = list.find((x) => friendId(x) === b.dataset.fk);
+      if (s) { toggleFriend(s); renderDetail(); }
+    });
     return;
   }
   // "info" — subject + course data
