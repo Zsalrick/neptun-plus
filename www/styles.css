@@ -16,6 +16,10 @@
   --focus: rgba(233,231,225,.28);
   --danger: #cf6b6b;
   --radius: 12px;
+  /* Control height scale — every tappable control lands on one of these three steps. */
+  --ctl-sm: 36px;   /* chips, inline pills, segmented items */
+  --ctl-md: 44px;   /* icon buttons, dropdowns, checkboxes, grade cells (comfortable touch target) */
+  --ctl-lg: 52px;   /* primary buttons */
   --shadow: 0 12px 34px rgba(0,0,0,.45);
   --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.2);
   --nav-h: 72px;
@@ -162,9 +166,9 @@ button.row:active { background: var(--surface-2); }
 .field-ic .input { padding-left: 42px; }
 
 /* ---------- Buttons ---------- */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 14px 16px;
-  border-radius: 10px; font-size: 15px; font-weight: 600; border: 1px solid transparent; cursor: pointer;
-  width: 100%; transition: filter .15s, background .15s, transform .09s ease; font-size: 16px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 18px;
+  min-height: var(--ctl-lg); border-radius: 10px; font-size: 16px; font-weight: 600; border: 1px solid transparent; cursor: pointer;
+  width: 100%; transition: filter .15s, background .15s, transform .09s ease; }
 .btn:disabled { opacity: .38; cursor: not-allowed; }
 .btn:active:not(:disabled) { transform: scale(.985); }
 .btn.primary { color: var(--accent-ink); background: var(--accent); }
@@ -177,9 +181,9 @@ button.row:active { background: var(--surface-2); }
 /* Friend add/remove: soft tonal surface, quiet red text for the destructive (remove) state. */
 .friend-btn svg.ic { width: 17px; height: 17px; opacity: .9; }
 .btn.tonal.friend-btn.rm { color: var(--danger); }
-.btn.narrow { width: auto; padding: 12px 14px; }
-.btn.lg { padding: 15px; font-size: 15.5px; }
-.iconbtn { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-2);
+.btn.narrow { width: auto; padding: 8px 16px; min-height: var(--ctl-md); }
+.btn.lg { min-height: var(--ctl-lg); }
+.iconbtn { width: var(--ctl-md); height: var(--ctl-md); border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-2);
   color: var(--ink-2); cursor: pointer; display: grid; place-items: center; flex: none; }
 .iconbtn:active { background: var(--surface-3); }
 .iconbtn.plain { border-color: transparent; background: transparent; }
@@ -207,7 +211,7 @@ button.row:active { background: var(--surface-2); }
 .hero-user .u-name { font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
 .hero-user .u-server { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: transparent;
-  color: var(--ink-2); padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  color: var(--ink-2); padding: 0 12px; min-height: var(--ctl-sm); border-radius: 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 
 .totp-tile { display: flex; align-items: center; gap: 15px; padding: 15px; margin-top: 14px;
   background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
@@ -222,7 +226,7 @@ button.row:active { background: var(--surface-2); }
 .totp-code { font-family: var(--font-mono); font-size: 28px; font-weight: 600;
   letter-spacing: 3px; color: var(--ink); line-height: 1.25; }
 .chip-muted { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2);
-  background: var(--surface-2); border: 1px solid var(--line); padding: 9px 12px; border-radius: 10px; margin-top: 13px; }
+  background: var(--surface-2); border: 1px solid var(--line); padding: 0 12px; min-height: var(--ctl-sm); border-radius: 10px; margin-top: 13px; }
 
 /* ---------- Profile row (dashboard header) ---------- */
 .profile-row { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; font: inherit; color: inherit;
@@ -267,7 +271,7 @@ button.row:active { background: var(--surface-2); }
 .cl-v { font-family: var(--font-mono); font-weight: 700; color: var(--ink); }
 
 /* Finance page */
-.fin-acc { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 12px; border: 1px solid var(--line-2);
+.fin-acc { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 0 12px; min-height: var(--ctl-sm); border: 1px solid var(--line-2);
   background: var(--surface-2); color: var(--ink-2); border-radius: 10px; font-family: var(--font-mono); font-size: 13px; cursor: pointer; }
 .fin-acc:active { background: var(--surface-3); }
 .fin-acc svg.ic { width: 15px; height: 15px; }
@@ -513,7 +517,7 @@ button.grade-row:active { background: var(--surface-2); }
 
 /* ---------- Custom picker buttons ---------- */
 .period-btn { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface-2);
-  border: 1px solid var(--line-2); color: var(--ink); border-radius: 10px; padding: 12px 14px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+  border: 1px solid var(--line-2); color: var(--ink); border-radius: 10px; padding: 8px 14px; min-height: var(--ctl-md); font-size: 14.5px; font-weight: 600; cursor: pointer; }
 .period-btn svg.ic { width: 18px; height: 18px; color: var(--ink-3); flex: none; }
 #pk-chips { position: relative; }
 .pk-dd-menu { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 5; background: var(--surface); border: 1px solid var(--line-2);
@@ -536,7 +540,7 @@ button.grade-row:active { background: var(--surface-2); }
 /* ---------- Time picker ---------- */
 .time-cols { display: flex; gap: 10px; margin-top: 12px; }
 .time-col { flex: 1; height: 236px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
-.time-cell { border: 0; background: transparent; color: var(--ink-2); font-size: 17px; font-family: var(--font-mono); padding: 10px; border-radius: 8px; cursor: pointer; }
+.time-cell { display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--ink-2); font-size: 17px; font-family: var(--font-mono); padding: 0 10px; min-height: var(--ctl-md); border-radius: 10px; cursor: pointer; }
 .time-cell.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 
 /* ---------- Calendar picker ---------- */
@@ -575,12 +579,12 @@ button.grade-row:active { background: var(--surface-2); }
 .lead-lbl { font-size: 12px; font-weight: 550; color: var(--ink-3); margin-right: 2px; }
 .lead-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 0; padding: 0 14px 14px 47px; }
 .lead-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink);
-  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 10px 6px 12px; cursor: pointer; }
+  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 10px 0 14px; min-height: var(--ctl-sm); cursor: pointer; }
 .lead-chip .lx { display: inline-flex; opacity: .6; }
 .lead-chip .lx svg.ic { width: 13px; height: 13px; }
 .lead-chip:active { background: var(--surface-3); }
 .lead-add { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ink-2);
-  background: transparent; border: 1px dashed var(--line-2); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+  background: transparent; border: 1px dashed var(--line-2); border-radius: 999px; padding: 0 14px; min-height: var(--ctl-sm); cursor: pointer; }
 .lead-add svg.ic { width: 14px; height: 14px; }
 
 /* Notification alert (shown when a push is tapped) */
@@ -624,7 +628,7 @@ button.grade-row:active { background: var(--surface-2); }
 .cred-fill { height: 100%; background: var(--accent); border-radius: 999px; }
 /* Hub segmented control (Belépés / Áttekintés) */
 .seg { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
-.seg-btn { flex: 1; border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 14px; font-weight: 600; padding: 9px 0; border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; }
+.seg-btn { flex: 1; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 14px; font-weight: 600; padding: 0 8px; min-height: var(--ctl-sm); border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; }
 .seg-btn.active { background: var(--surface-3); color: var(--ink); }
 .seg-3 .seg-btn { font-size: 13px; padding: 9px 2px; }
 .seg-ind { display: none; }
@@ -809,7 +813,7 @@ button.grade-row:active { background: var(--surface-2); }
 .cr-flag.set { color: var(--ink-2); }
 /* Grade picker — one connected segmented control, centered under the subject */
 .cg-seg { align-self: center; display: flex; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
-.cg-o { width: 52px; height: 42px; border: 0; border-left: 1px solid var(--line-2); border-radius: 0; background: var(--surface-2); color: var(--ink-2); font-family: var(--font-mono); font-size: 15px; font-weight: 600; cursor: pointer; }
+.cg-o { width: 52px; height: var(--ctl-md); border: 0; border-left: 1px solid var(--line-2); border-radius: 0; background: var(--surface-2); color: var(--ink-2); font-family: var(--font-mono); font-size: 15px; font-weight: 600; cursor: pointer; }
 .cg-o:first-child { border-left: 0; }
 .cg-o.on { background: var(--accent); color: var(--accent-ink); }
 /* Mark the real Neptun grade with a small static dot at the top of that cell (kept even when overridden). */
@@ -937,7 +941,7 @@ button.grade-row:active { background: var(--surface-2); }
 .opt .o-t { font-size: 14px; font-weight: 550; display: block; }
 .opt .o-b { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 
-.check { display: flex; align-items: center; gap: 13px; padding: 14px; border: 1px solid var(--line-2); border-radius: 10px;
+.check { display: flex; align-items: center; gap: 13px; padding: 10px 14px; min-height: var(--ctl-md); border: 1px solid var(--line-2); border-radius: 10px;
   background: var(--surface); cursor: pointer; width: 100%; text-align: left; color: inherit; font: inherit; }
 .check.on { border-color: var(--ink-2); background: var(--surface-2); }
 .check .box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--ink-3); flex: none; display: grid; place-items: center; color: var(--accent-ink); }
