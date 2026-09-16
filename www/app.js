@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.264";
+const APP_VERSION = "v0.265";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5107,6 +5107,9 @@ function classSeriesKey(e) {
   const day = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
   return ((p.name || e.summary || "") + "|" + (p.type || "") + "|" + day).toLowerCase();
 }
+// Ösztöndíj STABIL azonosítója: a Neptun id-je lekérésenként változhat (efemer), ezért tartalom alapján
+// azonosítjuk (név + összeg + félév + dátum), különben minden frissítésnél újként riasztana.
+function scholKey(s) { return [s.name || "", s.amount || "", s.term || "", s.date || ""].join("|"); }
 // A compact "what we've seen" snapshot; notifyChanges() diffs the fresh data against the previous one.
 function changeSnapshot() {
   const g = state.grades || {}, m = state.messages || {}, f = state.finance || {};
@@ -5120,7 +5123,7 @@ function changeSnapshot() {
     offered: (g.offered || []).map((o) => o.id).filter(Boolean),
     msgs: (m.received || []).map((x) => x.id).filter(Boolean),
     toPay: (f.toPay || []).map((x) => x.id).filter(Boolean),
-    schols: (f.scholarships || []).map((x) => x.id).filter(Boolean),
+    schols: (f.scholarships || []).map(scholKey),
     classes, at: now,
   };
 }
@@ -5169,7 +5172,7 @@ async function notifyChanges() {
     news.push({ kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel", detail: fdetail, target: { tab: "tab-fin-topay" } });
   }
   // Ösztöndíj jóváírva (pénz-pozitív)
-  const ps = setOf(prev.schols), nsc = ((state.finance && state.finance.scholarships) || []).filter((x) => x.id && !ps.has(x.id));
+  const ps = setOf(prev.schols), nsc = ((state.finance && state.finance.scholarships) || []).filter((x) => !ps.has(scholKey(x)));
   if (nsc.length && had(prev.schols) && nsc.length <= CAP) {
     const sum = nsc.reduce((a, x) => a + (+x.amount || 0), 0);
     const body = nsc.length === 1 ? (nsc[0].name || "Ösztöndíj") + " · " + ftFt(nsc[0].amount, nsc[0].currency) : nsc.length + " új kifizetés · " + ftFt(sum, "HUF");
