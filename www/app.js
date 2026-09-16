@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.278";
+const APP_VERSION = "v0.280";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -61,7 +61,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining", "plans"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -569,6 +569,9 @@ function renderForTab(id) {
   else if (id === "tab-search") renderSearch();
   else if (id === "tab-friends") renderFriends();
   else if (id === "tab-person") renderPerson();
+  else if (id === "tab-plans") renderPlans();
+  else if (id === "tab-plan") renderPlan();
+  else if (id === "tab-plan-pick") renderPlanPick();
   else if (id === "tab-notifs") renderNotifs();
   else if (id === "tab-notif") renderNotifDetail();
   else if (id === "tab-export") renderExport();
@@ -1193,7 +1196,7 @@ const MORE_SERVICES = [
   { id: "calc", group: "Tanulmányok", label: "Kalkulátor", sub: "Átlag, kreditindex, célszámítás", icon: "chart", go: () => pushScreen("tab-calc") },
   { id: "dlc", group: "Eszközök", label: "Kiegészítők", sub: "Szak letöltések", icon: "down", go: () => openDlc() },
   { id: "sync", group: "Eszközök", label: "Adatok frissítése", sub: "Beolvasás a Neptunból", icon: "refresh", go: () => openDataSync(null) },
-  { id: "reg-course", group: "Ügyintézés", label: "Tárgyfelvétel", sub: "Automatikus felvétel", icon: "plus", soon: true },
+  { id: "reg-course", group: "Ügyintézés", label: "Tárgyfelvétel", sub: () => { const n = (state.plans || []).length; return n ? n + " tervezet" : "Tervezés és felvétel"; }, icon: "plus", go: () => pushScreen("tab-plans") },
   { id: "reg-exam", group: "Ügyintézés", label: "Vizsgajelentkezés", sub: "Automatikus jelentkezés", icon: "clipboard", soon: true },
 ];
 // Több is now a two-level hub: category rows → a category page with that group's tiles.
@@ -5102,6 +5105,159 @@ async function collectPeople() {
   state.people = people; saveState(); renderFriends();
   toast(Object.keys(people).length + " diák a listádban.");
 }
+// =====================================================================
+//  TÁRGYFELVÉTEL TERVEZŐ
+//  A tervezetek HELYIEK (több is lehet), a Neptunhoz csak a tényleges felvételkor nyúlunk.
+//  Végpontok (a publikus Neptun bundle-ből): SubjectApplication/{Terms,SystemParameters,
+//  GetSubjectsCourses,SubjectSignin}. A felvétel törzse:
+//  { courseIds, curriculumTemplateId, curriculumTemplateLineId, subjectId, termId }
+// =====================================================================
+function plans() { return (state.plans = state.plans || []); }
+function planById(id) { return plans().find((p) => p.id === id) || null; }
+function planCredits(p) { return (p.items || []).reduce((s, i) => s + (+i.credits || 0), 0); }
+function planNew(name) {
+  const p = { id: "p" + Date.now().toString(36), name: name || "Új tervezet", items: [], at: new Date().toISOString() };
+  plans().unshift(p); saveState(); return p;
+}
+// Felvehető tárgyak: a mintatantervből, ami még nincs teljesítve. Offline is működik.
+function planCandidates() {
+  const req = (state.curriculum && state.curriculum.required) || [];
+  return req.filter((s) => !s.completed && (s.name || s.code));
+}
+// Egy tárgy már benne van a tervezetben?
+function planHas(p, s) { return (p.items || []).some((i) => (i.subjectId && i.subjectId === s.subjectId) || (i.code && i.code === s.code)); }
+
+let planKey = "", planPickQuery = "";
+function openPlan(id) { planKey = id; pushScreen("tab-plan"); }
+
+function renderPlans() {
+  const host = $("plans-scroll"); if (!host) return;
+  const list = plans();
+  let h = `<div class="hint" style="margin:0 2px 10px">A tervezetek csak nálad vannak. A Neptunhoz csak akkor nyúlunk, amikor tényleg felveszed a tárgyakat.</div>`;
+  h += `<div class="detail-add" style="margin-bottom:14px"><button class="btn tonal" id="plan-new">${icon("plus")} Új tervezet</button></div>`;
+  if (!list.length) h += `<div class="dash-empty" style="padding:24px 2px">Még nincs tervezeted. Készíts egyet, és tedd össze előre a következő féléved.</div>`;
+  else h += `<div class="card">` + list.map((p) => {
+    const n = (p.items || []).length, kr = planCredits(p);
+    return `<div class="row pl-row" data-pid="${esc(p.id)}" style="cursor:pointer"><span class="row-ic">${icon("clipboard")}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(p.name)}</span>`
+      + `<span class="row-sub">${n} tárgy · ${kr} kredit</span></span>${icon("chev")}</div>`;
+  }).join("") + `</div>`;
+  host.innerHTML = h;
+  $("plan-new").onclick = async () => {
+    const nm = await askText({ title: "Új tervezet", placeholder: "Például: 2026/27/1 terv", value: "", body: "Adj nevet a tervezetnek. Több tervezeted is lehet egymás mellett." });
+    if (nm == null) return;
+    const p = planNew(nm.trim() || "Új tervezet"); renderPlans(); openPlan(p.id);
+  };
+  host.querySelectorAll(".pl-row").forEach((b) => b.onclick = () => openPlan(b.dataset.pid));
+}
+
+function renderPlan() {
+  const host = $("plan-scroll"); if (!host) return;
+  const p = planById(planKey);
+  const ttl = $("plan-title");
+  if (!p) { if (ttl) ttl.textContent = "Tervezet"; host.innerHTML = `<div class="dash-empty" style="padding:24px 2px">Ez a tervezet már nincs meg.</div>`; return; }
+  if (ttl) ttl.textContent = p.name;
+  const items = p.items || [], kr = planCredits(items.length ? p : p);
+  let h = `<div class="card kv"><div class="kv-row"><span class="kv-k">Tárgyak</span><span class="kv-v">${items.length}</span></div>`
+    + `<div class="kv-row"><span class="kv-k">Kredit összesen</span><span class="kv-v">${kr}</span></div></div>`;
+  h += `<div class="detail-add" style="margin-top:12px"><button class="btn tonal" id="plan-add">${icon("plus")} Tárgy hozzáadása</button></div>`;
+  if (items.length) {
+    h += `<div class="dash-label">A tervezetben</div><div class="card">` + items.map((i, ix) => {
+      const sub = [i.code, (i.credits ? i.credits + " kr" : ""), i.type].filter(Boolean).join(" · ");
+      return `<div class="row"><span class="row-ic">${icon("book")}</span>`
+        + `<span class="row-main"><span class="row-title">${esc(i.name || "Tárgy")}</span>`
+        + (sub ? `<span class="row-sub">${esc(sub)}</span>` : "") + `</span>`
+        + `<button class="pl-del" data-ix="${ix}" type="button" title="Levétel a tervezetből" style="background:none;border:0;padding:6px;cursor:pointer;color:var(--muted)">${icon("x")}</button></div>`;
+    }).join("") + `</div>`;
+    h += `<div class="detail-add" style="margin-top:14px"><button class="btn tonal friend-btn" id="plan-submit">${icon("check")} Tárgyak felvétele a Neptunban</button></div>`;
+    h += `<div class="hint" style="margin:8px 2px">A felvétel csak tárgyfelvételi időszakban sikerül. Időszakon kívül a Neptun hibát ad, ez normális.</div>`;
+  }
+  h += `<div class="dash-label">Tervezet</div><div class="card">`
+    + `<div class="row" id="plan-rename" style="cursor:pointer"><span class="row-ic">${icon("note")}</span><span class="row-main"><span class="row-title">Átnevezés</span></span>${icon("chev")}</div>`
+    + `<div class="row" id="plan-delete" style="cursor:pointer"><span class="row-ic">${icon("x")}</span><span class="row-main"><span class="row-title" style="color:var(--danger)">Tervezet törlése</span></span></div></div>`;
+  host.innerHTML = h;
+  $("plan-add").onclick = () => { planPickQuery = ""; const q = $("plan-pick-q"); if (q) q.value = ""; pushScreen("tab-plan-pick"); };
+  host.querySelectorAll(".pl-del").forEach((b) => b.onclick = () => { p.items.splice(+b.dataset.ix, 1); saveState(); renderPlan(); });
+  $("plan-rename").onclick = async () => {
+    const nm = await askText({ title: "Tervezet átnevezése", value: p.name, placeholder: "Név" });
+    if (nm == null) return; p.name = nm.trim() || p.name; saveState(); renderPlan();
+  };
+  $("plan-delete").onclick = async () => {
+    const ok = await ask({ title: "Tervezet törlése", okText: "Törlés", cancelText: "Mégse", body: `Biztosan törlöd?<br><b>${esc(p.name)}</b>` });
+    if (!ok) return;
+    state.plans = plans().filter((x) => x.id !== p.id); saveState(); popScreen(); renderPlans();
+  };
+  const sb = $("plan-submit"); if (sb) sb.onclick = () => planSubmit(p);
+}
+
+function renderPlanPick() {
+  const host = $("plan-pick-scroll"); if (!host) return;
+  const p = planById(planKey);
+  const q = $("plan-pick-q");
+  if (q && !q.dataset.wired) { q.dataset.wired = "1"; q.oninput = () => { planPickQuery = q.value; renderPlanPick(); }; }
+  const norm = searchNorm(planPickQuery);
+  let list = planCandidates();
+  if (!list.length) { host.innerHTML = `<div class="dash-empty" style="padding:24px 2px">Nincs mintatanterv adat. Olvasd be a Neptunból az Adatok frissítésével.</div>`; return; }
+  if (norm) list = list.filter((s) => searchNorm(s.name).includes(norm) || searchNorm(s.code).includes(norm));
+  // Ajánlott félév szerint csoportosítva, mert a tervezéshez ez a leghasznosabb rendezés.
+  const byTerm = {};
+  list.forEach((s) => { const t = s.term || 0; (byTerm[t] = byTerm[t] || []).push(s); });
+  const terms = Object.keys(byTerm).map(Number).sort((a, b) => a - b);
+  let h = `<div class="hint" style="margin:0 2px 8px">${list.length} felvehető tárgy a mintatantervedből</div>`;
+  terms.forEach((t) => {
+    h += `<div class="dash-label">${t ? t + ". ajánlott félév" : "Nincs ajánlott félév"}</div><div class="card">`
+      + byTerm[t].map((s) => {
+        const inp = p && planHas(p, s);
+        const sub = [s.code, (s.credits ? s.credits + " kr" : ""), s.type].filter(Boolean).join(" · ");
+        return `<div class="row pk-row" data-sid="${esc(s.subjectId || "")}" data-code="${esc(s.code || "")}" style="cursor:pointer"><span class="row-ic">${icon("book")}</span>`
+          + `<span class="row-main"><span class="row-title">${inp ? `<span style="color:#5fa878">● </span>` : ""}${esc(s.name || "Tárgy")}</span>`
+          + (sub ? `<span class="row-sub">${esc(sub)}</span>` : "") + `</span>`
+          + `<span style="color:var(--muted);padding:6px">${icon(inp ? "check" : "plus")}</span></div>`;
+      }).join("") + `</div>`;
+  });
+  host.innerHTML = h;
+  host.querySelectorAll(".pk-row").forEach((b) => b.onclick = () => {
+    if (!p) return;
+    const s = planCandidates().find((x) => (b.dataset.sid && x.subjectId === b.dataset.sid) || (b.dataset.code && x.code === b.dataset.code));
+    if (!s) return;
+    if (planHas(p, s)) p.items = p.items.filter((i) => !((i.subjectId && i.subjectId === s.subjectId) || (i.code && i.code === s.code)));
+    else p.items.push({ subjectId: s.subjectId || "", code: s.code || "", name: s.name || "", credits: +s.credits || 0, type: s.type || "", term: s.term || 0, courseIds: [] });
+    saveState(); renderPlanPick();
+  });
+}
+
+// Tényleges felvétel. Tárgyanként egy SubjectSignin hívás, és megmutatjuk, mi sikerült.
+// Tárgyfelvételi időszakon kívül a Neptun hibát ad, ez várt viselkedés.
+async function planSubmit(p) {
+  if (!isNative) { toast("A felvétel a telefonos alkalmazásban működik."); return; }
+  const items = p.items || []; if (!items.length) return;
+  const ok = await ask({ title: "Tárgyak felvétele", okText: "Felvétel", cancelText: "Mégse",
+    body: `A Neptunban megpróbálom felvenni a tervezet <b>${items.length}</b> tárgyát.<br><br>Ez éles művelet a Neptunban. Tárgyfelvételi időszakon kívül hibát fog adni.` });
+  if (!ok) return;
+  showBusy("Felvétel…", true);
+  const sess = await getApiSession();
+  if (!sess || !sess.token) { hideBusy(); await ask({ title: "Felvétel", okText: "OK", body: "Nem sikerült kapcsolódni a Neptunhoz." }); return; }
+  let termId = "";
+  try { const t = await apiGet(sess, "SubjectApplication/Terms"); const arr = (t && t.data && t.data.data) || []; termId = (arr[0] && (arr[0].value || arr[0].id)) || ""; } catch (e) {}
+  if (!termId) termId = await getActualTermId(sess);
+  const lines = [];
+  for (const i of items) {
+    $("busy-text").textContent = (i.name || "Tárgy") + "…";
+    try {
+      const r = await apiPost(sess, "SubjectApplication/SubjectSignin", {
+        courseIds: i.courseIds || [], curriculumTemplateId: i.curriculumTemplateId || "",
+        curriculumTemplateLineId: i.curriculumTemplateLineId || "", subjectId: i.subjectId || "", termId,
+      });
+      const d = r && r.data;
+      const note = d && d.notification && d.notification.length ? String(d.notification[0].message || d.notification[0]) : "";
+      const good = r && r.status >= 200 && r.status < 300 && !note;
+      lines.push(`${good ? "✓" : "✗"} ${esc(i.name || i.code)}${note ? " · " + esc(note.slice(0, 90)) : (good ? "" : " · " + (r ? r.status : "hiba"))}`);
+    } catch (e) { lines.push(`✗ ${esc(i.name || i.code)} · ${esc(String(e && e.message || e).slice(0, 80))}`); }
+  }
+  hideBusy();
+  await ask({ title: "Felvétel eredménye", okText: "OK", cancelText: "Bezárás", body: lines.join("<br>") });
+}
+
 // ---- Egy hallgató részletei (nyílra koppintva) ----
 let personKey = "", personTmp = null;
 function openPerson(k, seed) {
