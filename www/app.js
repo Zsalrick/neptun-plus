@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.277";
+const APP_VERSION = "v0.278";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -5125,7 +5125,7 @@ async function renderPerson() {
   const isF = !!(state.friends && state.friends[personKey]) || (!!searchNorm(p.n || "") && friendNames().has(searchNorm(p.n || "")));
   const courses = p.c || [];
   const rows = [["Név", p.n || "—"]];
-  if (p.nk) rows.push(["Becenév", p.nk]);
+  if (p.nk && searchNorm(p.nk) !== searchNorm(p.n || "")) rows.push(["Becenév", p.nk]);
   if (p.tr && p.tr.length) rows.push(["Képzés", p.tr.join(", ")]);
   rows.push(["Közös órák", String(courses.length)]);
   rows.push(["Kapcsolat", isF ? "Barát" : "Nem barát"]);
@@ -5236,7 +5236,7 @@ function renderCourseSeg(e) {
       const self = !!(opts && opts.self);
       return `<div class="row${self ? "" : " st-row"}"${self ? "" : ` data-fk="${esc(k)}" style="cursor:pointer"`}><span class="row-ic">${icon("user")}</span>`
         + `<span class="row-main"><span class="row-title">${f ? `<span style="color:#5fa878">● </span>` : ""}${esc(studentName(s))}</span>`
-        + (s.nickname && !self ? `<span class="row-sub">${esc(s.nickname)}</span>` : "")
+        + (s.nickname && !self && searchNorm(s.nickname) !== searchNorm(studentName(s)) ? `<span class="row-sub">${esc(s.nickname)}</span>` : "")
         + `</span>${self ? "" : icon("chev")}</div>`;
     };
     let h = fr.length
