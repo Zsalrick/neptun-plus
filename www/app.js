@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.271";
+const APP_VERSION = "v0.272";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -61,7 +61,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -4960,7 +4960,10 @@ function friendsInRoster(list) { let n = 0; for (const s of (list || [])) if (is
 // A saját nevünk kinyerése egy már lekért válaszból. Csak nevesített SZEMÉLYNÉV-mezők, semmi
 // heurisztika: a trainingName/programName is tartalmaz szóközt, azt nem szabad névnek nézni.
 function harvestMyName(o) {
-  if (!o || state.myName) return;
+  if (!o) return;
+  // A képzés nevét eltesszük: ezzel szűrünk, ha több "én" jelölt akad a névsorokban.
+  if (o.trainingName && o.trainingName !== state.myTraining) { state.myTraining = o.trainingName; saveState(); }
+  if (state.myName) return;
   for (const k of ["studentName", "studentPrintName", "printName", "studentFullName", "fullName"]) {
     const v = o[k];
     if (typeof v === "string" && v.trim().length >= 4 && v.length <= 80 && /\s/.test(v.trim()) && !/szak|képzés|training|program|tagozat/i.test(v)) {
@@ -4970,10 +4973,37 @@ function harvestMyName(o) {
 }
 // Magunk felismerése a névsorban: elsőként Neptun-kód egyezés, különben a tokenből mentett név.
 function isMe(s) {
+  const sid = s.studentId || s.id;
+  if (state.myId && sid && String(sid) === state.myId) return true; // a legerősebb: stabil studentId
   const code = String(state.neptunCode || "").toUpperCase();
   if (code) { const raw = s.studentNeptunCode || s.neptunCode; if (raw && String(raw).trim().toUpperCase() === code) return true; }
   const mn = searchNorm(state.myName || "");
   return !!mn && searchNorm(studentName(s)) === mn;
+}
+// Magunk automatikus felismerése: MINDEN kurzusunk névsorában ott vagyunk, a többiek csak
+// egy részében. Ha több jelölt marad (egy csoportba járók), a képzés nevével szűrünk.
+async function identifyMe(people, tally, rosters) {
+  if (state.myId || state.myName || rosters < 2) return;
+  let cand = Object.keys(tally).filter((k) => tally[k] === rosters);
+  if (!cand.length) return;
+  if (cand.length > 1 && state.myTraining) {
+    const sess = await getApiSession();
+    const mine = searchNorm(state.myTraining), keep = [];
+    for (const k of cand.slice(0, 8)) {
+      const id = people[k] && people[k].id; if (!id || !sess) continue;
+      try {
+        const u = await apiGet(sess, "UserSearch/GetUserData", { userId: id });
+        const d = (u.data && u.data.data) || {};
+        const tn = (d.additionalStudentData && d.additionalStudentData.trainingNames) || [];
+        if (tn.some((x) => searchNorm(x) === mine)) keep.push(k);
+      } catch (e) {}
+    }
+    if (keep.length) cand = keep;
+  }
+  if (cand.length !== 1) return; // bizonytalan → marad a kézi megadás
+  const me = people[cand[0]];
+  state.myName = me.n; state.myId = me.id || ""; saveState();
+  toast("Felismertelek: " + me.n);
 }
 // Az összes kurzusom névsorának összegyűjtése egy kereshető listába (state.people).
 // Kurzusonként egy hívás, ezért folyamatjelzővel megy és csak kérésre indul.
@@ -4994,20 +5024,32 @@ async function collectPeople() {
   if (!courses.length) { toast("Nem találtam kurzust az órarendedben."); return; }
   friendsBusy = { done: 0, total: courses.length }; renderFriends();
   const people = Object.assign({}, state.people || {});
+  const tally = {}; // k → hány névsorban szerepel EBBEN a futásban (a felismeréshez)
+  let rosters = 0;
   for (const ev of courses) {
     const cn = ev.title || ev.subject || ev.subjectName || ev.courseCode || "";
     try {
       const r = await apiGet(sess, "SubjectCourse/GetSubjectCourseStudents", { courseId: ev.courseId, subjectId: ev.subjectId, selectedTermId: termId, firstRow: 0, lastRow: 500 });
-      for (const s of ((r && r.data && r.data.data) || [])) {
-        if (isMe(s)) continue;
-        const k = friendId(s);
-        const p = people[k] || (people[k] = { n: studentName(s), c: [] });
-        if (cn && p.c.indexOf(cn) < 0) p.c.push(cn);
+      const list = (r && r.data && r.data.data) || [];
+      if (list.length) {
+        rosters++;
+        for (const s of list) {
+          const k = friendId(s);
+          tally[k] = (tally[k] || 0) + 1;
+          const p = people[k] || (people[k] = { n: studentName(s), c: [], id: s.studentId || s.id || "" });
+          if (!p.id && (s.studentId || s.id)) p.id = s.studentId || s.id;
+          if (cn && p.c.indexOf(cn) < 0) p.c.push(cn);
+        }
       }
     } catch (e) {}
     friendsBusy.done++; renderFriends();
   }
   friendsBusy = null;
+  await identifyMe(people, tally, rosters);
+  for (const k of Object.keys(people)) { // magunkat kivesszük a diáklistából
+    const p = people[k];
+    if ((state.myId && p.id === state.myId) || (state.myName && searchNorm(p.n) === searchNorm(state.myName))) delete people[k];
+  }
   state.people = people; saveState(); renderFriends();
   toast(Object.keys(people).length + " diák a listádban.");
 }
