@@ -4,7 +4,7 @@ import { UNIVERSITIES } from "./data/universities.js";
 import { parseICS } from "./lib/ical.js";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.273";
+const APP_VERSION = "v0.274";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -568,6 +568,7 @@ function renderForTab(id) {
   else if (id === "tab-periods") renderPeriods();
   else if (id === "tab-search") renderSearch();
   else if (id === "tab-friends") renderFriends();
+  else if (id === "tab-person") renderPerson();
   else if (id === "tab-notifs") renderNotifs();
   else if (id === "tab-notif") renderNotifDetail();
   else if (id === "tab-export") renderExport();
@@ -5024,6 +5025,8 @@ async function collectPeople() {
   if (!courses.length) { toast("Nem találtam kurzust az órarendedben."); return; }
   friendsBusy = { done: 0, total: courses.length }; renderFriends();
   const tally = {}; // k → hány névsorban szerepel EBBEN a futásban (a felismeréshez)
+  const subjMap = {}; // subjectId → tárgynév, a már letöltött tárgylistából
+  ((state.courses && state.courses.list) || []).forEach((c) => { if (c.subjectId && c.name) subjMap[c.subjectId] = c.name; });
   // Ugyanaz a név ne szerepeljen két kulcson (a névsorok nem mindig adják ugyanazt az azonosítót).
   // Egyben összevonjuk a korábbi gyűjtésekből maradt azonos nevű duplikátumokat is.
   const people = {}, byName = {};
@@ -5031,14 +5034,16 @@ async function collectPeople() {
     const p = state.people[k], nk = searchNorm(p.n || "");
     const ex = byName[nk];
     if (ex) { const t = people[ex]; (p.c || []).forEach((x) => { if (t.c.indexOf(x) < 0) t.c.push(x); }); if (!t.id && p.id) t.id = p.id; continue; }
-    byName[nk] = k; people[k] = { n: p.n, c: (p.c || []).slice(), id: p.id || "" };
+    // A korábbi futásokból bekerült kurzuskódokat (ONVH_N1 alak) eldobjuk, nem tárgynevek.
+    byName[nk] = k; people[k] = { n: p.n, c: (p.c || []).filter((x) => !/^[A-Z]{2,6}_[A-Z0-9]{1,4}$/.test(x)), id: p.id || "", nk: p.nk || "" };
   }
   let rosters = 0;
   for (const ev of courses) {
-    // A tárgy IGAZI neve a GetSubjectDetails-ből jön; az esemény title-je csak a kurzuskód (pl. ONVH_N1).
-    let cn = "";
-    try { const d = await apiGet(sess, "SubjectCourse/GetSubjectDetails", { courseId: ev.courseId, subjectId: ev.subjectId, termId }); cn = (d && d.data && d.data.data && d.data.data.subjectName) || ""; } catch (e) {}
-    if (!cn) cn = ev.subjectName || ev.title || ev.subject || "";
+    // A tárgy neve elsősorban a MÁR MEGLÉVŐ tárgylistából (ingyen, és minden félévre megvan).
+    // Tartalék a GetSubjectDetails. Az esemény title-je NEM jó: az a kurzus kódja (pl. ONVH_N1),
+    // nem a tárgykód, ezért inkább semmit nem írunk ki, mint azt.
+    let cn = subjMap[ev.subjectId] || "";
+    if (!cn) { try { const d = await apiGet(sess, "SubjectCourse/GetSubjectDetails", { courseId: ev.courseId, subjectId: ev.subjectId, termId }); cn = (d && d.data && d.data.data && d.data.data.subjectName) || ""; } catch (e) {} }
     try {
       const r = await apiGet(sess, "SubjectCourse/GetSubjectCourseStudents", { courseId: ev.courseId, subjectId: ev.subjectId, selectedTermId: termId, firstRow: 0, lastRow: 500 });
       const list = (r && r.data && r.data.data) || [];
@@ -5052,6 +5057,7 @@ async function collectPeople() {
           tally[k] = (tally[k] || 0) + 1;
           const p = people[k] || (people[k] = { n: nm, c: [], id: s.studentId || s.id || "" });
           if (!p.id && (s.studentId || s.id)) p.id = s.studentId || s.id;
+          if (!p.nk && s.nickname) p.nk = s.nickname;
           if (cn && p.c.indexOf(cn) < 0) p.c.push(cn);
         }
       }
@@ -5067,6 +5073,55 @@ async function collectPeople() {
   state.people = people; saveState(); renderFriends();
   toast(Object.keys(people).length + " diák a listádban.");
 }
+// ---- Egy hallgató részletei (nyílra koppintva) ----
+let personKey = "", personTmp = null;
+function openPerson(k, seed) {
+  personKey = k;
+  personTmp = ((state.people || {})[k]) ? null : (seed || null);
+  pushScreen("tab-person");
+}
+function personRec() {
+  const p = (state.people || {})[personKey];
+  if (p) return p;
+  if (personTmp) return personTmp;
+  const nm = state.friends && state.friends[personKey];
+  return nm ? { n: nm, c: [] } : null;
+}
+async function renderPerson() {
+  const host = $("person-scroll"); if (!host) return;
+  const p = personRec();
+  const ttl = $("person-title");
+  if (!p) { if (ttl) ttl.textContent = "Hallgató"; host.innerHTML = `<div class="dash-empty" style="padding:24px 2px">Nincs adat erről a hallgatóról.</div>`; return; }
+  if (ttl) ttl.textContent = p.n || "Hallgató";
+  const isF = !!(state.friends && state.friends[personKey]);
+  const courses = p.c || [];
+  const rows = [["Név", p.n || "—"]];
+  if (p.nk) rows.push(["Becenév", p.nk]);
+  if (p.tr && p.tr.length) rows.push(["Képzés", p.tr.join(", ")]);
+  rows.push(["Közös órák", String(courses.length)]);
+  rows.push(["Kapcsolat", isF ? "Barát" : "Nem barát"]);
+  let h = `<div class="card kv">` + rows.map(([k, v]) => `<div class="kv-row"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(v)}</span></div>`).join("") + `</div>`;
+  h += `<div class="detail-add" style="margin-top:14px"><button class="btn ${isF ? "danger" : "tonal"}" id="person-fr">${isF ? "Barát törlése" : "Barát hozzáadása"}</button></div>`;
+  if (courses.length) h += `<div class="dash-label">Közös órák</div><div class="card">` + courses.map((c) => `<div class="row"><span class="row-ic">${icon("book")}</span><span class="row-main"><span class="row-title">${esc(c)}</span></span></div>`).join("") + `</div>`;
+  else h += `<div class="dash-empty" style="padding:18px 2px">Nincs ismert közös órád vele. Gyűjtsd össze a diákokat a Barátok oldalon.</div>`;
+  host.innerHTML = h;
+  $("person-fr").onclick = () => {
+    state.friends = state.friends || {};
+    if (state.friends[personKey]) delete state.friends[personKey]; else state.friends[personKey] = p.n || "";
+    saveState(); renderPerson();
+  };
+  // A képzést csak igény szerint kérjük le, és eltesszük, hogy egyszer fusson.
+  if (!p.tr && p.id && isNative) {
+    try {
+      const sess = await getApiSession();
+      const u = await apiGet(sess, "UserSearch/GetUserData", { userId: p.id });
+      const d = (u && u.data && u.data.data) || {};
+      p.tr = (d.additionalStudentData && d.additionalStudentData.trainingNames) || [];
+      if (!p.nk && d.nickname) p.nk = d.nickname;
+      saveState(); renderPerson();
+    } catch (e) { p.tr = []; }
+  }
+}
 let friendsQuery = "";
 function renderFriends() {
   const host = $("friends-scroll"); if (!host) return;
@@ -5080,10 +5135,10 @@ function renderFriends() {
   const hit = (e) => !norm || searchNorm(e.n).includes(norm);
   const friends = entries.filter((e) => fr[e.k]).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
   const others = entries.filter((e) => !fr[e.k]).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
-  const row = (e, isF) => `<div class="row"><span class="row-ic">${icon("user")}</span>`
+  const row = (e, isF) => `<div class="row fr-row" data-fk="${esc(e.k)}" style="cursor:pointer"><span class="row-ic">${icon("user")}</span>`
     + `<span class="row-main"><span class="row-title">${isF ? `<span style="color:#5fa878">● </span>` : ""}${esc(e.n)}</span>`
     + (e.c.length ? `<span class="row-sub">${esc(e.c.slice(0, 2).join(" · "))}${e.c.length > 2 ? " · +" + (e.c.length - 2) : ""}</span>` : "")
-    + `</span><button class="fr-btn" data-fk="${esc(e.k)}" data-fn="${esc(e.n)}" type="button" title="${isF ? "Barát eltávolítása" : "Hozzáadás barátként"}" style="background:none;border:0;padding:6px;cursor:pointer;color:${isF ? "#5fa878" : "var(--muted)"}">${icon(isF ? "check" : "plus")}</button></div>`;
+    + `</span>${icon("chev")}</div>`;
   let h = `<div class="dash-label">Én</div><div class="card"><div class="row" id="fr-me" style="cursor:pointer"><span class="row-ic">${icon("user")}</span>`
     + `<span class="row-main"><span class="row-title">${esc(state.myName || "Ismeretlen név")}</span>`
     + `<span class="row-sub">${state.myName ? esc(state.neptunCode || "") + (state.neptunCode ? " · " : "") + "koppints a módosításhoz" : "Koppints, és add meg a neved"}</span></span>${icon("chev")}</div></div>`;
@@ -5101,12 +5156,7 @@ function renderFriends() {
       body: "Írd be a neved úgy, ahogy a Neptun névsoraiban szerepel. Ez alapján ismerlek fel a diáklistákban, és kerülsz az „Én” csoportba." });
     if (v != null) { state.myName = v.trim(); saveState(); renderFriends(); }
   };
-  host.querySelectorAll(".fr-btn").forEach((b) => b.onclick = () => {
-    state.friends = state.friends || {};
-    const k = b.dataset.fk;
-    if (state.friends[k]) delete state.friends[k]; else state.friends[k] = b.dataset.fn || "";
-    saveState(); renderFriends();
-  });
+  host.querySelectorAll(".fr-row").forEach((b) => b.onclick = () => openPerson(b.dataset.fk));
 }
 function renderCourseSeg(e) {
   const host = $("course-sec"); if (!host) return;
@@ -5149,10 +5199,11 @@ function renderCourseSeg(e) {
     const other = list.filter((s) => !isMe(s) && !isFriend(s));
     const row = (s, opts) => {
       const f = isFriend(s), k = friendId(s);
-      return `<div class="row"><span class="row-ic">${icon("user")}</span>`
-        + `<span class="row-main"><span class="row-title">${f ? `<span style="color:#5fa878">● </span>` : ""}${esc(studentName(s))}</span></span>`
-        + (opts && opts.self ? "" : `<button class="fr-btn" data-fk="${esc(k)}" type="button" title="${f ? "Barát eltávolítása" : "Hozzáadás barátként"}" style="background:none;border:0;padding:6px;cursor:pointer;color:${f ? "#5fa878" : "var(--muted)"}">${icon(f ? "check" : "plus")}</button>`)
-        + `</div>`;
+      const self = !!(opts && opts.self);
+      return `<div class="row${self ? "" : " st-row"}"${self ? "" : ` data-fk="${esc(k)}" style="cursor:pointer"`}><span class="row-ic">${icon("user")}</span>`
+        + `<span class="row-main"><span class="row-title">${f ? `<span style="color:#5fa878">● </span>` : ""}${esc(studentName(s))}</span>`
+        + (s.nickname && !self ? `<span class="row-sub">${esc(s.nickname)}</span>` : "")
+        + `</span>${self ? "" : icon("chev")}</div>`;
     };
     let h = fr.length
       ? `<div class="hint" style="margin:0 2px 8px">${list.length} hallgató · ${fr.length} barátod jár ide</div>`
@@ -5161,9 +5212,9 @@ function renderCourseSeg(e) {
     if (fr.length) h += `<div class="dash-label">Barátok · ${fr.length}</div><div class="card">` + fr.map((s) => row(s)).join("") + `</div>`;
     if (other.length) h += `<div class="dash-label">Hallgatók · ${other.length}</div><div class="card">` + other.map((s) => row(s)).join("") + `</div>`;
     host.innerHTML = h;
-    host.querySelectorAll(".fr-btn").forEach((b) => b.onclick = () => {
+    host.querySelectorAll(".st-row").forEach((b) => b.onclick = () => {
       const s = list.find((x) => friendId(x) === b.dataset.fk);
-      if (s) { toggleFriend(s); renderDetail(); }
+      if (s) openPerson(b.dataset.fk, { n: studentName(s), id: s.studentId || s.id || "", nk: s.nickname || "", c: [] });
     });
     return;
   }
