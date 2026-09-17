@@ -118,8 +118,7 @@ function mvLayout(anchor) {
     mv.slots = mv.doc.pages.map((pg, i) => {
       const sheet = document.createElement("div");
       sheet.className = "mv-sheet"; sheet.style.width = cssW + "px";
-      const kind = pg.kind === "blank" ? " · üres oldal" : "";
-      sheet.innerHTML = `<div class="mv-phead"><span class="mv-plabel">${i + 1}. oldal${kind}</span>`
+      sheet.innerHTML = `<div class="mv-phead"><span class="mv-plabel">${mvPageLabel(pg, i)}</span>`
         + `<button class="mv-pmenu" type="button" data-pix="${i}" aria-label="${i + 1}. oldal műveletei">${icon("more")}</button></div>`;
       const el = document.createElement("div");
       el.className = "mv-page"; el.dataset.ix = i;
@@ -192,6 +191,7 @@ async function mvRenderSlot(sl) {
   sl.rendered = true; sl.stale = false;
   sl.inkW = W; sl.inkH = H;
   mvDrawInk(sl);
+  if (sl.pg.kind === "blank") return mvPaintBlank(sl, W, H);
   if (sl.pg.kind !== "pdf" || !mv.pdf) return;
   try {
     const page = await mv.pdf.getPage(sl.pg.n);
@@ -409,6 +409,7 @@ function mvApplyOp(op, fwd) {
     else [...op.removed].sort((p, q) => p.ix - q.ix).forEach((r) => a.splice(r.ix, 0, r.item));
   } else if (op.type === "edit") { const t = op.item.text; op.item.text = op.before; op.before = t; }
   else if (op.type === "prop") { const cur = mvTextProps(op.item); Object.assign(op.item, op.before); op.before = cur; }
+  else if (op.type === "bg") { op.list.forEach((e) => { const t = e.pg.bg || "plain"; e.pg.bg = e.bg; e.bg = t; }); mvSave(); mvBgRefresh(); mvRenderBar(); return; }
   else if (op.type === "addPage" || op.type === "delPage") {
     const insert = (op.type === "addPage") === fwd;
     if (insert) { mv.doc.pages.splice(op.index, 0, op.page); if (op.items) items[op.page.id] = op.items; }
@@ -1337,7 +1338,7 @@ function mvScrollToPage(ix) {
 // Új üres oldal a megadott oldal UTÁN, annak méretével.
 function mvAddPage(ix) {
   const ref = mv.doc.pages[ix] || MAT_A4;
-  const pg = { id: "b" + uid(), kind: "blank", w: ref.w || MAT_A4.w, h: ref.h || MAT_A4.h };
+  const pg = { id: "b" + uid(), kind: "blank", w: ref.w || MAT_A4.w, h: ref.h || MAT_A4.h, bg: (ref.kind === "blank" && ref.bg) || mvPrefs().pageBg || "plain" };
   mv.doc.pages.splice(ix + 1, 0, pg);
   mvPush({ type: "addPage", index: ix + 1, page: pg });
   mvSave(); mvLayout();
@@ -1384,15 +1385,77 @@ async function mvPageMenu(ix) {
   const miss = mvMissingPdfPages(), pg = mv.doc.pages[ix], only = mv.doc.pages.length <= 1;
   const list = miss.slice(0, 6).join(", ") + (miss.length > 6 ? "…" : "");
   const opts = [{ icon: "plus", label: "Új üres oldal ez után", sub: "Ugyanakkora, mint ez az oldal", value: "add" }];
+  if (pg && pg.kind === "blank") opts.push({ icon: "grid", label: "Oldal háttere", sub: MV_BG_NAMES[pg.bg || "plain"], value: "bg" });
   if (miss.length) opts.push({ icon: "refresh", label: miss.length === 1 ? "Törölt eredeti oldal visszaállítása" : "Törölt eredeti oldalak visszaállítása",
     sub: (miss.length === 1 ? "Az eredeti PDF " : "Az eredeti PDF oldalai: ") + list + (miss.length === 1 ? ". oldala" : ""), value: "restore" });
   opts.push({ icon: "trash", label: "Oldal törlése", danger: true, disabled: only, sub: only ? "Az egyetlen oldal nem törölhető" : "Visszavonással visszahozható", value: "del" });
-  const kind = pg && pg.kind === "blank" ? "Üres oldal" : "PDF-oldal";
+  const kind = pg && pg.kind === "blank" ? "Saját oldal" : "PDF-oldal";
   const act = await askPick({ title: (ix + 1) + ". oldal", body: `<div class="hint">${kind} · ${mv.doc.pages.length} oldalból</div>`, options: opts });
   if (!mv) return;
   if (act === "add") mvAddPage(ix);
   else if (act === "del") mvDeletePage(ix);
   else if (act === "restore") mvRestorePdfPages();
+  else if (act === "bg") mvPageBgMenu(ix);
+}
+
+// ---- Saját oldalak háttere: sima, vonalas, kockás ----
+// A minta a lap szélességéhez arányos (vonalköz 8 mm, kocka 5 mm egy A4-es lapon), így nagyítva és a megosztott
+// PDF-ben is ugyanott vannak a vonalak. A megjelenítőben az oldal (egyébként üres) PDF-vásznára rajzolódik.
+const MV_BG_NAMES = { plain: "Sima", lines: "Vonalas", grid: "Kockás" };
+const MV_BG_STEP = { lines: 8 / 210, grid: 5 / 210 };
+function mvPageLabel(pg, i) {
+  if (pg.kind !== "blank") return `${i + 1}. oldal`;
+  return `${i + 1}. oldal · saját oldal${pg.bg && pg.bg !== "plain" ? " · " + MV_BG_NAMES[pg.bg].toLowerCase() : ""}`;
+}
+// A minta vonalai: [x0, y0, x1, y1] a lap szélességének arányában (y is szélesség-egységben, lefelé).
+function mvPatternLines(bg, aspect) {
+  const st = MV_BG_STEP[bg], out = []; if (!st) return out;
+  for (let y = bg === "lines" ? st * 2 : st; y < aspect; y += st) out.push([0, y, 1, y]);
+  if (bg === "grid") for (let x = st; x < 1; x += st) out.push([x, 0, x, aspect]);
+  return out;
+}
+function mvPaintBlank(sl, W, H) {
+  const bg = sl.pg.bg || "plain", cv = sl.pdfCv;
+  if (!MV_BG_STEP[bg]) { if (cv.width) { cv.width = 0; cv.height = 0; } return; }
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d"), lw = Math.max(1, Math.round(W / 700));
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = bg === "lines" ? "#c5cfdc" : "#d9e0e8";
+  for (const [x0, y0, x1, y1] of mvPatternLines(bg, H / W)) {
+    if (y0 === y1) ctx.fillRect(0, Math.round(y0 * W - lw / 2), W, lw);
+    else ctx.fillRect(Math.round(x0 * W - lw / 2), 0, lw, H);
+  }
+}
+function mvBgRefresh() {
+  mv.slots.forEach((sl, i) => {
+    if (sl.pg.kind !== "blank") return;
+    const lab = sl.sheet.querySelector(".mv-plabel"); if (lab) lab.textContent = mvPageLabel(sl.pg, i);
+    if (sl.rendered) sl.stale = true;
+  });
+  mvSchedule();
+}
+async function mvPageBgMenu(ix) {
+  const pg = mv.doc.pages[ix]; if (!pg) return;
+  const cur = pg.bg || "plain";
+  const bg = await askPick({ title: "Oldal háttere", body: `<div class="hint">${ix + 1}. oldal</div>`,
+    options: Object.keys(MV_BG_NAMES).map((k) => ({ label: MV_BG_NAMES[k], sub: k === cur ? "Jelenlegi" : "", value: k })) });
+  if (!bg || !mv) return;
+  const blanks = mv.doc.pages.filter((p) => p.kind === "blank");
+  let targets = [pg];
+  if (blanks.length > 1) {
+    const scope = await askPick({ title: MV_BG_NAMES[bg] + " háttér", options: [
+      { label: "Csak erre az oldalra", sub: (ix + 1) + ". oldal", value: "one" },
+      { label: "Az összes saját oldalra", sub: blanks.length + " oldal", value: "all" }] });
+    if (!scope || !mv) return;
+    if (scope === "all") targets = blanks;
+  }
+  const list = targets.filter((p) => (p.bg || "plain") !== bg).map((p) => ({ pg: p, bg: p.bg || "plain" }));
+  mvPrefs().pageBg = bg; saveState(); // az új oldalak is ilyenek lesznek
+  if (!list.length) return;
+  list.forEach((e) => { e.pg.bg = bg; });
+  mvPush({ type: "bg", list });
+  mvSave(); mvBgRefresh();
+  toast(list.length === 1 ? `Háttér: ${MV_BG_NAMES[bg].toLowerCase()}.` : `Háttér: ${MV_BG_NAMES[bg].toLowerCase()}, ${list.length} oldalon.`);
 }
 
 // ---- Két ujjal: nagyítás és mozgatás (minden eszközzel, így rajzolás közben sem kell a kézre váltani) ----
@@ -1484,7 +1547,12 @@ async function matSharePdf(id) {
           page.drawImage(await out.embedPng(await mvCanvasBytes(cv)), { x: 0, y: 0, width: pg.w, height: pg.h });
           continue;
         }
-      } else page = out.addPage([pg.w || MAT_A4.w, pg.h || MAT_A4.h]);
+      } else {
+        page = out.addPage([pg.w || MAT_A4.w, pg.h || MAT_A4.h]);
+        const { width, height } = page.getSize(), bg = pg.bg || "plain"; // háttérminta vektoros vonalakként
+        const color = bg === "lines" ? PDFLib.rgb(0.773, 0.812, 0.863) : PDFLib.rgb(0.851, 0.878, 0.91), thickness = Math.max(0.5, width / 700);
+        for (const [x0, y0, x1, y1] of mvPatternLines(bg, height / width)) page.drawLine({ start: { x: x0 * width, y: height - y0 * width }, end: { x: x1 * width, y: height - y1 * width }, thickness, color });
+      }
       if (items.length) {
         const { width, height } = page.getSize();
         const cv = document.createElement("canvas"); cv.width = Math.round(width * 2); cv.height = Math.round(height * 2);

@@ -153,6 +153,13 @@ első megnyitásakor töltődnek be, az app indulását nem lassítják.
   betűiből mérve (pontosak), az aktuális narancs keretes. Az oldalak szövege sorban töltődik, a számláló közben
   „…”-t mutat. Teszt: 40 találat a 3. oldalon, lépegetés, az aktuális látható helyen.
 
+**v0.299: saját oldalak háttere**
+- Saját (üres) oldal ⋯ menüje → **Oldal háttere**: sima, vonalas (8 mm vonalköz, felül 2 sornyi hely), kockás (5 mm),
+  A4-es lapra arányosítva. Ha több saját oldal van: „Csak erre az oldalra” vagy „Az összes saját oldalra”.
+  Visszavonható (`type: "bg"`). Az új oldal a mellette lévő saját oldal (vagy az utoljára választott) hátterét kapja.
+- Megjelenítő: a minta az oldal PDF-vásznára rajzolódik (nagyításkor újra, élesen). Megosztott PDF: vektoros
+  vonalak (pdf-lib `drawLine`), ugyanazzal a geometriával (`mvPatternLines`). Oldalcímke: „2. oldal · saját oldal · kockás”.
+
 ### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
 Amit a diákok tényleg használnak, prioritás szerint:
 1. ~~Szöveg kijelölése a PDF-ben~~ (v0.294, KÉSZ)
@@ -160,7 +167,7 @@ Amit a diákok tényleg használnak, prioritás szerint:
 3. **Lasszó**: jegyzetek kijelölése, mozgatása, átméretezése, színezése.
 4. ~~Keresés a PDF szövegében~~ (v0.298, KÉSZ)
 5. **Alakzat-felismerés** (egyenes, nyíl, kör, téglalap tartásra kiegyenesedik).
-6. Nagyításhoz igazodó tollvastagság; sablonos üres oldalak (vonalas, négyzethálós, pontozott).
+6. Nagyításhoz igazodó tollvastagság; ~~sablonos üres oldalak~~ (v0.299: vonalas, kockás; pontozott még nincs).
 7. ~~Kitakarás + átírás~~ (v0.294, KÉSZ: a PDF-sor átírása)
 
 **A PDF eredeti szövegének szerkesztése** (betűnként átírni, mint egy Word-dokumentumban): ezt csak az
