@@ -40,9 +40,24 @@ Havi előfizetésnél ez tartja meg a felhasználót. A Moodle-integrációval e
   mert az oldal alatti ⋯ miatt véletlenül rossz oldal törlődött. Menü: új oldal ez után,
   oldal törlése (megerősítés, a címben az oldalszám), **törölt eredeti PDF-oldalak
   visszaállítása** (a fájlban megvannak, így újranyitás után is visszahozhatók).
-- Szöveg közvetlenül a lapra: T eszközzel koppintva ott villog a kurzor (textarea a lap
-  koordinátáin, a vászon "middle" alapvonallal rajzol, hogy egybeessen), meglévő szövegre
-  koppintva szerkeszthető, máshova koppintva ment, üresen törlődik.
+- ~~Szöveg közvetlenül a lapra (v0.289)~~ → a telefonon bugos volt, v0.290-ben átépítve:
+
+**v0.290: szövegdobozok a Samsung Notes mintájára**
+- T eszköz, koppintás üres helyre: új doboz, rögtön villog a kurzor. A doboznak szélessége
+  van (`bw`), a szöveg sort tör benne.
+- Koppintás dobozra: **kijelölés** (kék keret + jobb oldali fogantyú). Húzás: mozgatás,
+  fogantyú: szélesség. Kijelölt dobozra koppintás: **szerkesztés**.
+- Lebegő mini-eszköztár a doboz FÖLÖTT: Kész / Szerkesztés, szín, A−, A+, Törlés.
+  A gombok `pointerdown`-ja preventDefault, hogy ne vegyék el a fókuszt (billentyűzet marad).
+- Üres helyre koppintás: ha szerkesztés vagy kijelölés van, az első koppintás csak lezár,
+  a második hoz létre új dobozt.
+- **Nincs mentés fókuszvesztéskor** (a v0.289 így csinálta; Androidon gépelés közben is jöhet
+  blur, és bezárta a szerkesztőt). Csak Kész, máshova koppintás, eszközváltás, kilépés ment.
+- A kész szöveg DOM rétegben él (`.mv-texts`), ugyanazzal a CSS-sel, mint a szerkesztő:
+  mérve 0 px eltérés. A megosztott PDF-hez vászonra rajzolódik saját sortöréssel (`mvWrapLines`).
+- Szerkesztéskor a doboz a látható rész felső felébe görget, mert a billentyűzet alulról
+  takar, és edge-to-edge Androidon nem biztos, hogy a WebView összemegy
+  (`visualViewport` resize is figyelve).
 - Toll, kiemelő, szöveg beállításai (az aktív eszközre újra koppintva vagy a színkörre):
   11 szín, vastagság, átlátszatlanság, betűméret. `state.inkPrefs`-ben megmaradnak.
   Áttetsző tollvonás egy útvonalként rajzolódik, hogy ne sötétedjen be az átfedéseknél.

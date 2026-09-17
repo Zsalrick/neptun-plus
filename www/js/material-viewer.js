@@ -1,16 +1,18 @@
-// Anyag-megjelenítő: PDF oldalak + jegyzetréteg (toll, kiemelő, radír, szöveg), oldalkezelés, megosztás.
+// Anyag-megjelenítő: PDF oldalak + jegyzetréteg (toll, kiemelő, radír, szövegdobozok), oldalkezelés, megosztás.
 // Sima szkript, KÖZÖS hatókörrel: a www/index.html tölti be sorrendben. Lásd PROJECT.md "Fájlok".
 "use strict";
 
 // A jegyzetek NORMALIZÁLT (0..1) koordinátákban tárolódnak az oldal szélességéhez/magasságához képest,
 // így a nagyítás és a képernyőméret nem számít. A vastagság és a betűméret is az oldal szélességéhez viszonyított.
-// Elem: { t:"ink", tool:"pen"|"hl", c, w, a, pts:[x,y,p, x,y,p, ...] } | { t:"text", x, y, s, c, text }
-// (a régi, "a" nélküli elemeknél: toll 1, kiemelő 0.38)
+// Elem: { t:"ink", tool:"pen"|"hl", c, w, a, pts:[x,y,p, ...] }
+//     | { t:"text", x, y, bw, s, c, text }   (bw = a szövegdoboz szélessége, ezen belül tör sort)
+// (a régi, "a" nélküli vonásoknál: toll 1, kiemelő 0.38; a régi, "bw" nélküli szövegnél a lap széléig)
 const MV_PALETTE = ["#1b1d22", "#6b7079", "#2457c5", "#3aa0ff", "#1f9d6b", "#7fd48a", "#f2d33c", "#f08a24", "#c62f2f", "#f39ac4", "#8e44ad"];
 const MV_REF = 360; // a csúszkák px-értékei ekkora szélességű oldalra vonatkoznak
 const MV_DEFAULTS = { pen: { c: "#1b1d22", w: 2.2 / MV_REF, a: 1 }, hl: { c: "#f2d33c", w: 12 / MV_REF, a: 0.35 }, text: { c: "#1b1d22", s: 14 / MV_REF } };
 const MV_ZOOMS = [1, 1.5, 2, 3];
 const MV_ZMIN = 1, MV_ZMAX = 4;
+const MV_FONT = `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
 let mv = null;
 
 // Az eszközbeállítások (szín, vastagság, átlátszóság, betűméret) megmaradnak az app újraindítása után is.
@@ -28,7 +30,7 @@ function mvPrefs() {
 async function openMaterial(id) {
   const m = matById(id); if (!m) { toast("Ez az anyag már nincs meg."); return; }
   mvClose();
-  mv = { id, m, doc: null, pdf: null, z: 1, tool: "pan", penSeen: false, undo: [], slots: [], io: null, saving: Promise.resolve(), draw: null, edit: null, popOpen: false };
+  mv = { id, m, doc: null, pdf: null, z: 1, tool: "pan", penSeen: false, undo: [], slots: [], io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
   pushScreen("tab-mat-view");
 }
 function renderMatView() {
@@ -73,6 +75,7 @@ function mvClose() {
 
 // ---- Elrendezés és lusta renderelés ----
 // Minden oldal fölött fejléc: "N. oldal" és a ⋯ menü, az oldalak között vékony elválasztó vonal.
+// Oldalon belül: PDF vászon, tinta-vászon, és felül a szövegdobozok rétege (DOM, hogy a szerkesztővel azonos legyen).
 // anchor: { cx, cy, mx, my, k }: nagyításnál a csípés közepe maradjon helyben (lásd mvSetZoom).
 function mvLayout(anchor) {
   const pages = $("mv-pages"), scroll = $("mv-scroll");
@@ -93,21 +96,28 @@ function mvLayout(anchor) {
     el.className = "mv-page"; el.dataset.ix = i;
     const cssH = Math.round(cssW * (pg.h / pg.w));
     el.style.width = cssW + "px"; el.style.height = cssH + "px";
-    el.innerHTML = `<canvas class="mv-pdf"></canvas><canvas class="mv-ink"></canvas>`;
+    el.innerHTML = `<canvas class="mv-pdf"></canvas><canvas class="mv-ink"></canvas><div class="mv-texts"></div>`;
     sheet.appendChild(el);
     pages.appendChild(sheet);
-    return { pg, el, sheet, cssW, cssH, pdfCv: el.children[0], inkCv: el.children[1], rendered: false, task: null };
+    return { pg, el, sheet, cssW, cssH, pdfCv: el.children[0], inkCv: el.children[1], textLayer: el.children[2], rendered: false, task: null };
   });
-  scroll.classList.toggle("mv-drawing", mv.tool !== "pan");
+  // A kijelölés a régi oldal-objektumra mutatna: átkötjük az újra.
+  if (mv.sel) { const ns = mv.slots.find((x) => x.pg.id === mv.sel.s.pg.id); if (ns) mv.sel.s = ns; else mv.sel = null; }
+  mvApplyToolClass();
   scroll.style.overflowX = mv.z > 1.001 ? "auto" : "hidden";
   mv.io = new IntersectionObserver((ents) => ents.forEach((en) => {
     const s = mv && mv.slots[+en.target.dataset.ix]; if (!s) return;
     if (en.isIntersecting) mvRenderSlot(s); else mvReleaseSlot(s);
   }), { root: scroll, rootMargin: "800px 0px" });
-  mv.slots.forEach((s) => mv.io.observe(s.el));
+  mv.slots.forEach((s) => { mv.io.observe(s.el); mvRenderTexts(s); });
   pages.querySelectorAll(".mv-pmenu").forEach((b) => b.onclick = () => mvPageMenu(+b.dataset.pix));
   if (anchor) { scroll.scrollLeft = anchor.cx * anchor.k - anchor.mx; scroll.scrollTop = anchor.cy * anchor.k - anchor.my; }
   else scroll.scrollTop = ratio * scroll.scrollHeight;
+}
+function mvApplyToolClass() {
+  const scroll = $("mv-scroll"); if (!scroll || !mv) return;
+  scroll.classList.toggle("mv-drawing", mv.tool !== "pan" && mv.tool !== "text");
+  scroll.classList.toggle("mv-textmode", mv.tool === "text");
 }
 function mvDpr(s) { // a vászon ne legyen irdatlan nagy (memória): legfeljebb 2x és ~4000 px széles
   return Math.max(1, Math.min(window.devicePixelRatio || 1, 2, 4000 / s.cssW));
@@ -129,18 +139,19 @@ async function mvRenderSlot(s) {
 }
 function mvReleaseSlot(s) {
   if (!s.rendered) return;
-  if (mv && mv.edit && mv.edit.s === s) return; // éppen ide írnak
+  if (mv && mv.sel && mv.sel.s === s) return; // itt szerkesztenek
   try { s.task && s.task.cancel(); } catch (e) {}
   s.rendered = false;
   for (const cv of [s.pdfCv, s.inkCv]) { cv.width = 0; cv.height = 0; }
 }
 
 // ---- Jegyzetréteg rajzolása ----
-function mvDrawItems(ctx, items, W, H, live, skip) {
-  const all = (skip ? items.filter((it) => it !== skip) : items).concat(live ? [live] : []);
+// withText: a megjelenítőben a szöveg DOM-ban él (false); a megosztott PDF-hez vászonra kell (true).
+function mvDrawItems(ctx, items, W, H, live, withText) {
+  const all = items.concat(live ? [live] : []);
   ctx.clearRect(0, 0, W, H);
   for (const pass of ["hl", "pen"]) all.forEach((it) => { if (it.t === "ink" && it.tool === pass) mvDrawStroke(ctx, it, W, H); });
-  all.forEach((it) => { if (it.t === "text") mvDrawText(ctx, it, W, H); });
+  if (withText) all.forEach((it) => { if (it.t === "text") mvDrawText(ctx, it, W, H); });
 }
 function mvDrawStroke(ctx, it, W, H) {
   const p = it.pts; if (p.length < 3) return;
@@ -159,8 +170,7 @@ function mvDrawStroke(ctx, it, W, H) {
     }
     ctx.stroke();
   } else {
-    // Fedő toll: középpontos simítás (felezőponttól felezőpontig, a pont a kontrollpont), szakaszonként a
-    // nyomás szerinti vastagsággal. A kerek végek miatt a szakaszok hézag nélkül illeszkednek.
+    // Fedő toll: középpontos simítás, szakaszonként a nyomás szerinti vastagsággal.
     if (n === 1) { ctx.beginPath(); ctx.arc(X(0), Y(0), Math.max(0.6, it.w * W * (0.5 + p[2])) / 2, 0, Math.PI * 2); ctx.fill(); }
     let sx = X(0), sy = Y(0);
     for (let i = 1; i < n; i++) {
@@ -173,26 +183,34 @@ function mvDrawStroke(ctx, it, W, H) {
   }
   ctx.restore();
 }
-const MV_FONT = `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-function mvTextFont(it, W) { return `600 ${Math.max(6, it.s * W)}px ${MV_FONT}`; }
-// A szöveg sorai "middle" alapvonallal: így esik egybe a szerkesztő (textarea) sorközepével.
+function mvTextBw(it) { return it.bw != null ? it.bw : Math.max(0.15, 1 - it.x - 0.02); }
+function mvTextFont(it, W) { return `500 ${Math.max(6, it.s * W)}px ${MV_FONT}`; }
+// Sortörés a vászonra (a megosztott PDF-hez), a böngésző pre-wrap tördeléséhez igazítva.
+function mvWrapLines(ctx, text, maxW) {
+  const out = [];
+  for (const para of String(text).split("\n")) {
+    let line = "";
+    for (const tok of para.split(/(\s+)/)) {
+      if (!tok) continue;
+      if (ctx.measureText(line + tok).width <= maxW || !line.trim()) {
+        if (!line && ctx.measureText(tok).width > maxW) { // egy szó is túl hosszú: karakterenként
+          for (const ch of tok) { if (line && ctx.measureText(line + ch).width > maxW) { out.push(line); line = ch; } else line += ch; }
+        } else line += tok;
+      } else { out.push(line.replace(/\s+$/, "")); line = /^\s+$/.test(tok) ? "" : tok; }
+    }
+    out.push(line);
+  }
+  return out;
+}
 function mvDrawText(ctx, it, W, H) {
   const lh = it.s * W * 1.25;
   ctx.save(); ctx.fillStyle = it.c; ctx.font = mvTextFont(it, W); ctx.textBaseline = "middle";
-  String(it.text).split("\n").forEach((ln, i) => ctx.fillText(ln, it.x * W, it.y * H + (i + 0.5) * lh));
+  mvWrapLines(ctx, it.text, mvTextBw(it) * W).forEach((ln, i) => ctx.fillText(ln, it.x * W, it.y * H + (i + 0.5) * lh));
   ctx.restore();
 }
 function mvDrawInk(s, live) {
   if (!s.rendered || !mv) return;
-  const ctx = s.inkCv.getContext("2d");
-  mvDrawItems(ctx, mv.doc.items[s.pg.id] || [], s.inkCv.width, s.inkCv.height, live, mv.edit && mv.edit.s === s ? mv.edit.it : null);
-}
-function mvTextBox(it, W, H, ctx) { // a szöveg befoglaló téglalapja normalizált koordinátákban
-  ctx.save(); ctx.font = mvTextFont(it, W);
-  const lines = String(it.text).split("\n");
-  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) / W;
-  ctx.restore();
-  return { x: it.x, y: it.y, w, h: (lines.length * it.s * W * 1.25) / H };
+  mvDrawItems(s.inkCv.getContext("2d"), mv.doc.items[s.pg.id] || [], s.inkCv.width, s.inkCv.height, live, false);
 }
 
 // ---- Mentés és visszavonás ----
@@ -209,14 +227,15 @@ function mvUndo() {
   mvTextCommit();
   const op = mv && mv.undo.pop(); if (!op) return;
   const items = mv.doc.items;
-  if (op.type === "add") { const arr = items[op.page] || []; const ix = arr.indexOf(op.item); if (ix >= 0) arr.splice(ix, 1); }
+  if (op.type === "add") { const arr = items[op.page] || []; const ix = arr.indexOf(op.item); if (ix >= 0) arr.splice(ix, 1); if (mv.sel && mv.sel.it === op.item) mv.sel = null; }
   else if (op.type === "remove") { const arr = (items[op.page] = items[op.page] || []); op.removed.sort((a, b) => a.ix - b.ix).forEach((r) => arr.splice(r.ix, 0, r.item)); }
   else if (op.type === "edit") { op.item.text = op.before; }
+  else if (op.type === "prop") { Object.assign(op.item, op.before); }
   else if (op.type === "addPage") { mv.doc.pages.splice(op.index, 1); delete items[op.pageId]; mvSave(); mvLayout(); mvRenderBar(); return; }
   else if (op.type === "delPage") { mv.doc.pages.splice(op.index, 0, op.page); if (op.items) items[op.page.id] = op.items; mvSave(); mvLayout(); mvRenderBar(); mvScrollToPage(op.index); return; }
   mvSave(); mvRedrawPage(op.page); mvRenderBar();
 }
-function mvRedrawPage(pageId) { (mv.slots || []).forEach((s) => { if (s.pg.id === pageId) mvDrawInk(s); }); }
+function mvRedrawPage(pageId) { (mv.slots || []).forEach((s) => { if (s.pg.id === pageId) { mvDrawInk(s); mvRenderTexts(s); } }); }
 
 // ---- Bemenet: toll, kiemelő, radír, szöveg ----
 function mvSlotAt(ev) { const el = ev.target.closest && ev.target.closest(".mv-page"); return el && mv ? mv.slots[+el.dataset.ix] : null; }
@@ -227,18 +246,21 @@ function mvWireInput() {
   $("mv-addpage").onclick = () => mvAction("addpage");
   $("mv-share").onclick = () => mvAction("share");
   mvWirePinch(scroll);
+  // A billentyűzet megjelenésekor a szerkesztett doboz maradjon látható.
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", () => mvTextKeepVisible());
   scroll.addEventListener("pointerdown", (ev) => {
     if (!mv || !mv.doc || mv.pinch) return;
-    if (ev.target.closest && (ev.target.closest(".mv-textedit") || ev.target.closest(".mv-phead"))) return;
+    const t = ev.target;
+    if (t.closest && (t.closest(".mv-textedit") || t.closest(".mv-phead") || t.closest(".mv-tctx"))) return;
     if (mv.popOpen) { mv.popOpen = false; mvRenderPop(); mvRenderBar(); }
-    if (mv.tool === "pan") { mvTextCommit(); return; }
+    if (mv.tool === "text") return mvTextPointerDown(ev);
+    if (mv.tool === "pan") return;
     if (ev.pointerType === "pen") mv.penSeen = true;
     // Tenyér-elutasítás: ha egyszer tollat láttunk, az ujj már csak görget.
     if (ev.pointerType === "touch" && mv.penSeen) { mv.draw = { pan: true, id: ev.pointerId, y: ev.clientY, x: ev.clientX }; return; }
     if (mv.draw) return; // egyszerre egy mozdulat
     const s = mvSlotAt(ev); if (!s) return;
     ev.preventDefault();
-    mvTextCommit(); // ha máshova koppintunk, a nyitott szöveg lezárul
     try { scroll.setPointerCapture(ev.pointerId); } catch (e) {}
     const q = mvNorm(s, ev), pr = ev.pressure > 0 && ev.pointerType !== "mouse" ? ev.pressure : 0.5;
     if (mv.tool === "pen" || mv.tool === "hl") {
@@ -246,14 +268,13 @@ function mvWireInput() {
       mv.draw = { id: ev.pointerId, s, item: { t: "ink", tool: mv.tool, c: p.c, w: p.w, a: p.a, pts: [q.x, q.y, pr] } };
       mvDrawInk(s, mv.draw.item);
     } else if (mv.tool === "eraser") {
-      mv.draw = { id: ev.pointerId, s, removed: [] }; mvErase(s, q);
-    } else if (mv.tool === "text") {
-      mv.draw = { id: ev.pointerId, s, q, x0: ev.clientX, y0: ev.clientY, text: true };
+      mv.draw = { id: ev.pointerId, s, removed: [] }; mvErase(s, q, ev);
     }
   });
   scroll.addEventListener("pointermove", (ev) => {
     const d = mv && mv.draw; if (!d || d.id !== ev.pointerId) return;
     if (d.pan) { scroll.scrollTop -= ev.clientY - d.y; scroll.scrollLeft -= ev.clientX - d.x; d.y = ev.clientY; d.x = ev.clientX; return; }
+    if (d.mode) return mvTextPointerMove(ev, d);
     ev.preventDefault();
     const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
     if (d.item) {
@@ -264,12 +285,13 @@ function mvWireInput() {
         p.push(q.x, q.y, pr);
       }
       if (!d.raf) d.raf = requestAnimationFrame(() => { d.raf = 0; if (mv && mv.draw === d) mvDrawInk(d.s, d.item); });
-    } else if (d.removed) mvErase(d.s, mvNorm(d.s, ev));
+    } else if (d.removed) mvErase(d.s, mvNorm(d.s, ev), ev);
   });
   const end = (ev) => {
     const d = mv && mv.draw; if (!d || d.id !== ev.pointerId) return;
     mv.draw = null;
     if (d.pan) return;
+    if (d.mode) return mvTextPointerEnd(ev, d);
     const pageId = d.s.pg.id, arr = (mv.doc.items[pageId] = mv.doc.items[pageId] || []);
     if (d.item) {
       if (d.raf) cancelAnimationFrame(d.raf);
@@ -277,82 +299,238 @@ function mvWireInput() {
       arr.push(d.item); mvPush({ type: "add", page: pageId, item: d.item }); mvSave(); mvDrawInk(d.s);
     } else if (d.removed) {
       if (d.removed.length) { mvPush({ type: "remove", page: pageId, removed: d.removed }); mvSave(); }
-    } else if (d.text && ev.type === "pointerup" && Math.abs(ev.clientX - d.x0) + Math.abs(ev.clientY - d.y0) < 10) {
-      mvTextTap(d.s, d.q); // szinkron: a billentyűzet csak felhasználói mozdulaton belüli fókuszra nyílik meg
     }
   };
   scroll.addEventListener("pointerup", end);
   scroll.addEventListener("pointercancel", end);
 }
-function mvErase(s, q) {
+function mvErase(s, q, ev) {
   const arr = mv.doc.items[s.pg.id] || []; if (!arr.length) return;
-  const W = s.inkCv.width || s.cssW, H = s.inkCv.height || s.cssH, r = 14 / s.cssW;
-  const ctx = s.inkCv.getContext("2d");
-  let changed = false;
+  const W = s.inkCv.width || s.cssW, H = s.inkCv.height || s.cssH, r = 14 / s.cssW, aspect = H / W;
+  const hitText = new Set();
+  [...s.textLayer.children].forEach((el) => { // szövegdoboz: a tényleges (DOM) doboza alapján
+    if (!el._it) return;
+    const b = el.getBoundingClientRect(), tol = 14;
+    if (ev.clientX >= b.left - tol && ev.clientX <= b.right + tol && ev.clientY >= b.top - tol && ev.clientY <= b.bottom + tol) hitText.add(el._it);
+  });
+  let changed = false, textChanged = false;
   for (let i = arr.length - 1; i >= 0; i--) {
     const it = arr[i]; let hit = false;
     if (it.t === "ink") {
-      const lim = r + it.w / 2, aspect = H / W;
+      const lim = r + it.w / 2;
       for (let k = 0; k < it.pts.length; k += 3) { const dx = it.pts[k] - q.x, dy = (it.pts[k + 1] - q.y) * aspect; if (dx * dx + dy * dy < lim * lim) { hit = true; break; } }
-    } else if (it.t === "text") {
-      const b = mvTextBox(it, W, H, ctx); hit = q.x >= b.x - r && q.x <= b.x + b.w + r && q.y >= b.y - r && q.y <= b.y + b.h + r;
-    }
-    if (hit) { mv.draw.removed.push({ ix: i, item: it }); arr.splice(i, 1); changed = true; }
+    } else if (it.t === "text") { hit = hitText.has(it); if (hit) textChanged = true; }
+    if (hit) { mv.draw.removed.push({ ix: i, item: it }); arr.splice(i, 1); changed = true; if (mv.sel && mv.sel.it === it) mv.sel = null; }
   }
   if (changed) mvDrawInk(s);
+  if (textChanged) mvRenderTexts(s);
 }
 
-// ---- Szöveg közvetlenül a lapra ----
-// T eszközzel koppintva ott nyílik egy szerkesztő (villogó kurzorral), meglévő szövegre koppintva azt szerkeszti.
-// Máshova koppintva, eszközt váltva vagy kilépve lezárul és mentődik; üresen hagyva törlődik.
-function mvTextTap(s, q) {
-  const arr = mv.doc.items[s.pg.id] || [];
-  const W = s.inkCv.width || s.cssW, H = s.inkCv.height || s.cssH, ctx = s.inkCv.getContext("2d");
-  const hit = arr.slice().reverse().find((it) => { if (it.t !== "text") return false; const b = mvTextBox(it, W, H, ctx); return q.x >= b.x - 0.01 && q.x <= b.x + b.w + 0.01 && q.y >= b.y - 0.01 && q.y <= b.y + b.h + 0.01; });
-  const p = mvPrefs().text;
-  mvTextEdit(s, hit || { t: "text", x: q.x, y: Math.max(0, q.y - (p.s * 1.25 * s.cssW) / 2 / s.cssH), s: p.s, c: p.c, text: "" }, !!hit);
+// =====================================================================
+//  SZÖVEGDOBOZOK (a Samsung Notes szövegdobozainak mintájára)
+//  - T eszköz, koppintás üres helyre: új doboz, rögtön villog a kurzor.
+//  - Koppintás egy dobozra: kijelölés (keret, jobb oldali fogantyú). Húzás: mozgatás, fogantyú: szélesség.
+//  - Kijelölt dobozra koppintás: szerkesztés. Lebegő mini-eszköztár a doboz fölött.
+//  - NINCS mentés fókuszvesztéskor (Androidon gépelés közben is előfordul): csak Kész gombra,
+//    máshova koppintásra, eszközváltásra, kilépésre.
+// =====================================================================
+function mvTextProps(it) { return { x: it.x, y: it.y, bw: it.bw, s: it.s, c: it.c }; }
+function mvStyleText(el, it, s) {
+  if (it.bw == null) it.bw = mvTextBw(it);
+  Object.assign(el.style, { left: it.x * 100 + "%", top: it.y * 100 + "%", width: it.bw * 100 + "%", fontSize: it.s * s.cssW + "px", color: it.c, fontFamily: MV_FONT });
 }
-function mvTextEdit(s, it, existing) {
-  mvTextCommit();
+function mvTextElFor(s, it) { return [...s.textLayer.children].find((el) => el._it === it) || null; }
+function mvRenderTexts(s) {
+  if (!mv || !s.textLayer) return;
+  s.textLayer.innerHTML = "";
+  for (const it of mv.doc.items[s.pg.id] || []) {
+    if (it.t !== "text" || (mv.edit && mv.edit.it === it)) continue;
+    const el = document.createElement("div");
+    const selected = mv.sel && mv.sel.it === it;
+    el.className = "mv-tbox" + (selected ? " sel" : "");
+    mvStyleText(el, it, s);
+    el.textContent = it.text;
+    el._it = it;
+    if (selected) { const h = document.createElement("span"); h.className = "mv-thandle"; h.setAttribute("aria-label", "Szélesség"); el.appendChild(h); }
+    s.textLayer.appendChild(el);
+  }
+  mvRenderTextCtx();
+}
+function mvTextPointerDown(ev) {
+  const s = mvSlotAt(ev);
+  if (!s) { mvTextFinish(); return; }
+  const base = { id: ev.pointerId, s, sx: ev.clientX, sy: ev.clientY };
+  const handle = ev.target.closest(".mv-thandle"), box = ev.target.closest(".mv-tbox");
+  if (handle && mv.sel) {
+    ev.preventDefault(); try { $("mv-scroll").setPointerCapture(ev.pointerId); } catch (e) {}
+    mv.draw = Object.assign(base, { mode: "resize", it: mv.sel.it, bw0: mv.sel.it.bw, before: mvTextProps(mv.sel.it) });
+    return;
+  }
+  if (box && box._it) {
+    if (mv.sel && mv.sel.it === box._it) {
+      ev.preventDefault(); try { $("mv-scroll").setPointerCapture(ev.pointerId); } catch (e) {}
+      mv.draw = Object.assign(base, { mode: "move", it: box._it, x0: box._it.x, y0: box._it.y, moved: false, before: mvTextProps(box._it) });
+    } else mv.draw = Object.assign(base, { mode: "select", it: box._it });
+    return;
+  }
+  mv.draw = Object.assign(base, { mode: "tap", q: mvNorm(s, ev) });
+}
+function mvTextPointerMove(ev, d) {
+  const dx = ev.clientX - d.sx, dy = ev.clientY - d.sy;
+  if (d.mode === "move") {
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) < 8) return;
+    d.moved = true; ev.preventDefault();
+    d.it.x = Math.max(0, Math.min(1 - d.it.bw, d.x0 + dx / d.s.cssW));
+    d.it.y = Math.max(0, Math.min(0.98, d.y0 + dy / d.s.cssH));
+    const el = mvTextElFor(d.s, d.it); if (el) { el.style.left = d.it.x * 100 + "%"; el.style.top = d.it.y * 100 + "%"; }
+    mvPlaceTextCtx();
+  } else if (d.mode === "resize") {
+    ev.preventDefault();
+    d.it.bw = Math.max(0.08, Math.min(1 - d.it.x, d.bw0 + dx / d.s.cssW));
+    const el = mvTextElFor(d.s, d.it); if (el) el.style.width = d.it.bw * 100 + "%";
+    mvPlaceTextCtx();
+  }
+}
+function mvTextPointerEnd(ev, d) {
+  const tap = ev.type === "pointerup" && Math.abs(ev.clientX - d.sx) + Math.abs(ev.clientY - d.sy) < 10;
+  if (d.mode === "move") {
+    if (!d.moved) { if (ev.type === "pointerup") mvTextEdit(d.s, d.it, false); return; }
+    mvPush({ type: "prop", page: d.s.pg.id, item: d.it, before: d.before }); mvSave();
+  } else if (d.mode === "resize") {
+    if (d.it.bw !== d.bw0) { mvPush({ type: "prop", page: d.s.pg.id, item: d.it, before: d.before }); mvSave(); }
+  } else if (d.mode === "select") {
+    if (tap) { mvTextFinish(); mv.sel = { s: d.s, it: d.it }; mv.ctxColors = false; mvRenderTexts(d.s); }
+  } else if (d.mode === "tap") {
+    if (!tap) return;
+    // Ha éppen szerkesztettél vagy ki volt jelölve valami, az első koppintás csak lezár (mint a Samsung Notesban).
+    if (mv.edit || mv.sel) mvTextFinish();
+    else mvTextCreate(d.s, d.q);
+  }
+}
+function mvTextCreate(s, q) {
+  const p = mvPrefs().text;
+  const bw = Math.max(0.2, Math.min(0.62, 0.98 - q.x));
+  const lineH = (p.s * s.cssW * 1.25) / s.cssH;
+  const it = { t: "text", x: Math.max(0, Math.min(q.x, 0.98 - bw)), y: Math.max(0, Math.min(0.98, q.y - lineH / 2)), bw, s: p.s, c: p.c, text: "" };
+  mvTextEdit(s, it, true);
+}
+// Szerkesztés indítása. Szinkron kell maradnia (koppintáson belül), különben Androidon nem nyílik meg a billentyűzet.
+function mvTextEdit(s, it, isNew) {
+  if (mv.edit) mvTextCommit();
+  mv.sel = { s, it }; mv.ctxColors = false;
   const ta = document.createElement("textarea");
-  ta.className = "mv-textedit";
-  ta.value = it.text; ta.spellcheck = false; ta.rows = 1;
+  ta.className = "mv-textedit"; ta.value = it.text; ta.spellcheck = false; ta.rows = 1;
   ta.setAttribute("autocapitalize", "sentences"); ta.setAttribute("aria-label", "Szöveg a lapon");
-  const fs = it.s * s.cssW;
-  Object.assign(ta.style, { left: it.x * 100 + "%", top: it.y * 100 + "%", fontSize: fs + "px", color: it.c, fontFamily: MV_FONT });
+  mvStyleText(ta, it, s);
   s.el.appendChild(ta);
-  mv.edit = { s, it, existing, before: existing ? it.text : null, ta };
-  const fit = () => {
-    ta.style.width = "0px"; ta.style.height = "0px";
-    ta.style.width = Math.min(s.cssW * (1 - it.x), ta.scrollWidth + fs * 0.6) + "px";
-    ta.style.height = ta.scrollHeight + "px";
-  };
-  ta.addEventListener("input", fit);
-  ta.addEventListener("blur", () => mvTextCommit());
-  fit();
-  mvDrawInk(s); // a szerkesztett szöveg ne látsszon duplán
+  mv.edit = { s, it, isNew, before: it.text, ta };
+  const grow = () => { ta.style.height = "0px"; ta.style.height = Math.max(ta.scrollHeight, it.s * s.cssW * 1.25) + "px"; mvPlaceTextCtx(); };
+  ta.addEventListener("input", () => { grow(); mvTextKeepVisible(); });
+  mvRenderTexts(s); // az eredeti doboz eltűnik, amíg szerkesztjük, és kirajzolódik a mini-eszköztár
+  grow();
   try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); }
   ta.setSelectionRange(ta.value.length, ta.value.length);
-  // A fókusz ne görgesse el a képernyőt (a fejléc eltűnne); csak a PDF-listát igazítjuk, ha a szerkesztő kilóg.
-  setTimeout(() => {
-    const scr = $("tab-mat-view"); if (scr) scr.scrollTop = 0;
-    const sc = $("mv-scroll"); if (!sc || !mv || !mv.edit || mv.edit.ta !== ta) return;
-    const r = ta.getBoundingClientRect(), R = sc.getBoundingClientRect();
-    if (r.bottom > R.bottom - 90) sc.scrollTop += r.bottom - R.bottom + 120;
-    else if (r.top < R.top + 10) sc.scrollTop -= R.top - r.top + 40;
-  }, 350);
+  setTimeout(mvTextKeepVisible, 60);
+  setTimeout(mvTextKeepVisible, 450); // a billentyűzet animációja után
 }
+// Lezárja a szerkesztést és ment. A kijelölés megmarad (a Kész után mozgatható, átméretezhető).
 function mvTextCommit() {
   const e = mv && mv.edit; if (!e) return;
   mv.edit = null;
   const txt = e.ta.value.replace(/\s+$/, "");
   e.ta.remove();
   const pageId = e.s.pg.id, arr = (mv.doc.items[pageId] = mv.doc.items[pageId] || []);
-  if (e.existing) {
-    if (!txt) { const ix = arr.indexOf(e.it); if (ix >= 0) { arr.splice(ix, 1); mvPush({ type: "remove", page: pageId, removed: [{ ix, item: e.it }] }); mvSave(); } }
-    else if (txt !== e.before) { mvPush({ type: "edit", page: pageId, item: e.it, before: e.before }); e.it.text = txt; mvSave(); }
-  } else if (txt) { e.it.text = txt; arr.push(e.it); mvPush({ type: "add", page: pageId, item: e.it }); mvSave(); }
-  mvDrawInk(e.s);
+  if (e.isNew) {
+    if (txt) { e.it.text = txt; arr.push(e.it); mvPush({ type: "add", page: pageId, item: e.it }); mvSave(); }
+    else mv.sel = null;
+  } else if (!txt) {
+    const ix = arr.indexOf(e.it);
+    if (ix >= 0) { arr.splice(ix, 1); mvPush({ type: "remove", page: pageId, removed: [{ ix, item: e.it }] }); mvSave(); }
+    mv.sel = null;
+  } else if (txt !== e.before) { mvPush({ type: "edit", page: pageId, item: e.it, before: e.before }); e.it.text = txt; mvSave(); }
+  mvRenderTexts(e.s);
+}
+// Lezár mindent: szerkesztés mentése és a kijelölés megszüntetése.
+function mvTextFinish() {
+  if (!mv) return;
+  const s = (mv.edit && mv.edit.s) || (mv.sel && mv.sel.s);
+  mvTextCommit();
+  mv.sel = null; mv.ctxColors = false;
+  if (s) mvRenderTexts(s); else mvRenderTextCtx();
+}
+function mvTextDelete() {
+  const sel = mv && mv.sel; if (!sel) return;
+  if (mv.edit) { const e = mv.edit; mv.edit = null; e.ta.remove(); if (e.isNew) { mv.sel = null; mvRenderTexts(e.s); return; } }
+  const arr = mv.doc.items[sel.s.pg.id] || [], ix = arr.indexOf(sel.it);
+  if (ix >= 0) { arr.splice(ix, 1); mvPush({ type: "remove", page: sel.s.pg.id, removed: [{ ix, item: sel.it }] }); mvSave(); }
+  mv.sel = null; mvRenderTexts(sel.s);
+  toast("Szöveg törölve.");
+}
+// Tulajdonság (szín, méret) a kijelölt dobozra; új, még nem mentett doboznál nincs mit visszavonni.
+function mvTextSetProp(fn) {
+  const sel = mv && mv.sel; if (!sel) return;
+  const before = mvTextProps(sel.it);
+  fn(sel.it);
+  const p = mvPrefs().text; p.c = sel.it.c; p.s = sel.it.s; saveState(); // a következő doboz is ilyen legyen
+  const isNew = mv.edit && mv.edit.isNew && mv.edit.it === sel.it;
+  if (!isNew) { mvPush({ type: "prop", page: sel.s.pg.id, item: sel.it, before }); mvSave(); }
+  if (mv.edit && mv.edit.it === sel.it) { mvStyleText(mv.edit.ta, sel.it, sel.s); mv.edit.ta.dispatchEvent(new Event("input")); }
+  mvRenderTexts(sel.s);
+}
+function mvRenderTextCtx() {
+  document.querySelectorAll(".mv-tctx").forEach((x) => x.remove());
+  const sel = mv && mv.sel; if (!sel || mv.tool !== "text") return;
+  const bar = document.createElement("div");
+  bar.className = "mv-tctx";
+  const b = (act, inner, label, extra) => `<button type="button" data-tx="${act}" aria-label="${label}" title="${label}"${extra || ""}>${inner}</button>`;
+  if (mv.ctxColors) {
+    bar.innerHTML = b("back", icon("back"), "Vissza") + MV_PALETTE.map((c) => b("color:" + c, `<span class="mv-sw-mini${c === sel.it.c ? " on" : ""}" style="background:${c}"></span>`, "Szín")).join("");
+  } else {
+    bar.innerHTML = (mv.edit ? b("done", icon("check") + "<span>Kész</span>", "Kész", ' class="primary"') : b("edit", icon("pencil") + "<span>Szerkesztés</span>", "Szerkesztés", ' class="primary"'))
+      + b("colors", `<span class="mv-sw-mini" style="background:${sel.it.c}"></span>`, "Szín")
+      + b("smaller", "A−", "Kisebb betű") + b("bigger", "A+", "Nagyobb betű")
+      + b("delete", icon("trash"), "Törlés");
+  }
+  sel.s.el.appendChild(bar);
+  // A gombok ne vegyék el a fókuszt a szerkesztőtől (különben lecsukódna a billentyűzet).
+  bar.addEventListener("pointerdown", (ev) => ev.preventDefault());
+  bar.querySelectorAll("[data-tx]").forEach((btn) => btn.onclick = () => mvTextCtxAction(btn.dataset.tx));
+  mvPlaceTextCtx();
+}
+function mvPlaceTextCtx() {
+  const bar = document.querySelector(".mv-tctx"), sel = mv && mv.sel; if (!bar || !sel) return;
+  const el = (mv.edit && mv.edit.ta) || mvTextElFor(sel.s, sel.it); if (!el) return;
+  const top = el.offsetTop, h = el.offsetHeight, left = el.offsetLeft;
+  let y = top - bar.offsetHeight - 12;
+  if (y < 4) y = top + h + 12;
+  bar.style.top = y + "px";
+  bar.style.left = Math.max(4, Math.min(left, sel.s.cssW - bar.offsetWidth - 4)) + "px";
+}
+function mvTextCtxAction(a) {
+  const sel = mv && mv.sel; if (!sel) return;
+  const PX = [9, 11, 13, 14, 16, 18, 21, 24, 28, 34, 40, 48, 56];
+  if (a === "done") { mvTextCommit(); return; }
+  if (a === "edit") { mvTextEdit(sel.s, sel.it, false); return; }
+  if (a === "delete") return mvTextDelete();
+  if (a === "colors") { mv.ctxColors = true; mvRenderTextCtx(); return; }
+  if (a === "back") { mv.ctxColors = false; mvRenderTextCtx(); return; }
+  if (a.startsWith("color:")) { const c = a.slice(6); mv.ctxColors = false; mvTextSetProp((it) => { it.c = c; }); return; }
+  if (a === "smaller" || a === "bigger") {
+    const cur = sel.it.s * MV_REF;
+    const next = a === "bigger" ? (PX.find((v) => v > cur + 0.5) || PX[PX.length - 1]) : ([...PX].reverse().find((v) => v < cur - 0.5) || PX[0]);
+    mvTextSetProp((it) => { it.s = next / MV_REF; });
+  }
+}
+// A szerkesztett/kijelölt doboz a látható rész FELSŐ felébe kerüljön: a billentyűzet alulról takar,
+// és nem biztos, hogy a WebView összemegy tőle (edge-to-edge Android), ezért nem arra hagyatkozunk.
+function mvTextKeepVisible() {
+  const sel = mv && mv.sel; if (!sel) return;
+  const el = (mv.edit && mv.edit.ta) || mvTextElFor(sel.s, sel.it); if (!el) return;
+  const sc = $("mv-scroll"), R = sc.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const vv = window.visualViewport, visBottom = Math.min(R.bottom, vv ? vv.offsetTop + vv.height : R.bottom);
+  const limit = R.top + (visBottom - R.top) * (mv.edit ? 0.5 : 0.85);
+  if (r.top < R.top + 60 || r.bottom > limit) sc.scrollTop += r.top - (R.top + 70);
+  const scr = $("tab-mat-view"); if (scr) scr.scrollTop = 0;
 }
 
 // ---- Eszköztár és beállítások ----
@@ -369,18 +547,18 @@ function mvRenderBar() {
     + btn("zoom", MV_ZOOMS.some((z) => z > mv.z + 0.01) ? "zoomin" : "zoomout", "Nagyítás: " + Math.round(mv.z * 100) + "%", mv.z > 1.001);
   bar.querySelectorAll("[data-mv]").forEach((b) => b.onclick = () => mvAction(b.dataset.mv));
 }
-// Beállító panel az eszköztár fölött: szín, vastagság, átlátszóság (szövegnél betűméret).
+// Beállító panel az eszköztár fölött: szín, vastagság, átlátszóság (szövegnél betűméret az ÚJ dobozokhoz).
 function mvRenderPop() {
   const pop = $("mv-pop"); if (!pop) return;
   const t = mv && mv.tool;
   if (!mv || !mv.popOpen || !["pen", "hl", "text"].includes(t)) { pop.classList.add("hidden"); return; }
   const p = mvPrefs()[t];
-  const title = { pen: "Toll", hl: "Kiemelő", text: "Szöveg" }[t];
+  const title = { pen: "Toll", hl: "Kiemelő", text: "Szöveg (új dobozokhoz)" }[t];
   const px = (v) => Math.round(v * MV_REF * 10) / 10;
   let h = `<div class="mv-pop-title">${title}</div><div class="mv-swatches">`
     + MV_PALETTE.map((c) => `<button class="mv-sw${c === p.c ? " on" : ""}" data-c="${c}" type="button" style="background:${c}" aria-label="Szín ${c}"></button>`).join("") + `</div>`;
   if (t === "text") {
-    h += `<label class="mv-range"><span>Betűméret</span><input type="range" data-k="s" min="8" max="44" step="1" value="${px(p.s)}"><b data-v="s">${Math.round(px(p.s))} px</b></label>`
+    h += `<label class="mv-range"><span>Betűméret</span><input type="range" data-k="s" min="8" max="56" step="1" value="${px(p.s)}"><b data-v="s">${Math.round(px(p.s))} px</b></label>`
       + `<div class="mv-prev mv-prev-text" style="color:${p.c};font-size:${Math.min(28, px(p.s))}px">Minta szöveg</div>`;
   } else {
     const wmin = t === "hl" ? 4 : 0.8, wmax = t === "hl" ? 40 : 14;
@@ -405,9 +583,9 @@ function mvAction(a) {
   if (["pan", "pen", "hl", "eraser", "text"].includes(a)) {
     // Az aktív rajzeszközre újra koppintva nyílik/csukódik a beállító panel.
     if (a === mv.tool && ["pen", "hl", "text"].includes(a)) mv.popOpen = !mv.popOpen;
-    else { mv.popOpen = false; if (a !== "text") mvTextCommit(); }
-    mv.tool = a; $("mv-scroll").classList.toggle("mv-drawing", a !== "pan");
-    mvRenderBar(); mvRenderPop(); return;
+    else { mv.popOpen = false; if (mv.tool === "text" && a !== "text") mvTextFinish(); }
+    mv.tool = a; mvApplyToolClass();
+    mvRenderBar(); mvRenderPop(); mvRenderTextCtx(); return;
   }
   if (a === "color") { mv.popOpen = !mv.popOpen; mvRenderBar(); mvRenderPop(); return; }
   if (a === "undo") return mvUndo();
@@ -454,6 +632,7 @@ async function mvDeletePage(ix) {
     : (items && items.length ? "A rajta lévő jegyzetek is törlődnek." : "Üres oldal.");
   const ok = await ask({ title: `A(z) ${ix + 1}. oldal törlése`, okText: "Törlés", cancelText: "Mégse", body: `${warn}<br><br>Amíg nyitva van az anyag, a Visszavonás gombbal visszahozható.` });
   if (!ok || !mv) return;
+  if (mv.sel && mv.sel.s.pg.id === pg.id) mv.sel = null;
   pages.splice(ix, 1); delete mv.doc.items[pg.id];
   mvPush({ type: "delPage", index: ix, page: pg, items });
   mvSave(); mvLayout();
@@ -480,7 +659,7 @@ async function mvRestorePdfPages() {
 }
 async function mvPageMenu(ix) {
   if (!mv || !mv.doc) return;
-  mvTextCommit();
+  mvTextFinish();
   const miss = mvMissingPdfPages();
   const opts = [
     { label: "Új üres oldal ez után", value: "add" },
@@ -508,8 +687,9 @@ function mvWirePinch(scroll) {
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
   const midpt = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
   scroll.addEventListener("touchstart", (ev) => {
-    if (!mv || !mv.doc || ev.touches.length !== 2) return;
-    if (mv.draw && !mv.draw.pan && mv.draw.s) { const s = mv.draw.s; mv.draw = null; mvDrawInk(s); } // félbehagyott vonás eldobása
+    if (!mv || !mv.doc || ev.touches.length !== 2 || mv.edit) return;
+    if (mv.draw && mv.draw.item && mv.draw.s) { const s = mv.draw.s; mv.draw = null; mvDrawInk(s); } // félbehagyott vonás eldobása
+    else mv.draw = null;
     const r = scroll.getBoundingClientRect(), m = midpt(ev.touches);
     mv.pinch = { d0: dist(ev.touches), k: 1, m, ox: scroll.scrollLeft + m.x - r.left, oy: scroll.scrollTop + m.y - r.top };
     pages.style.transformOrigin = mv.pinch.ox + "px " + mv.pinch.oy + "px";
@@ -565,7 +745,7 @@ async function matSharePdf(id) {
       if (items.length) {
         const { width, height } = page.getSize();
         const cv = document.createElement("canvas"); cv.width = Math.round(width * 2); cv.height = Math.round(height * 2);
-        mvDrawItems(cv.getContext("2d"), items, cv.width, cv.height);
+        mvDrawItems(cv.getContext("2d"), items, cv.width, cv.height, null, true);
         page.drawImage(await out.embedPng(await mvCanvasBytes(cv)), { x: 0, y: 0, width, height });
       }
     }
@@ -582,7 +762,7 @@ async function mvComposePage(pdfjsDoc, pg, items) {
   const ctx = cv.getContext("2d");
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
   const ink = document.createElement("canvas"); ink.width = cv.width; ink.height = cv.height;
-  mvDrawItems(ink.getContext("2d"), items, ink.width, ink.height);
+  mvDrawItems(ink.getContext("2d"), items, ink.width, ink.height, null, true);
   ctx.drawImage(ink, 0, 0);
   return cv;
 }
