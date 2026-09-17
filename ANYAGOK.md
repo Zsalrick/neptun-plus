@@ -101,16 +101,28 @@ első megnyitásakor töltődnek be, az app indulását nem lassítják.
 - Tesztelés: chrome-devtools emulációval, szintetikus érintés- és toll-eseményekkel (scratchpad bench.js).
   Valódi telefonos mérés: USB-hibakeresés + `adb` (a gépen megvan), `dumpsys gfxinfo` képkocka-statisztika.
 
+**v0.294: a PDF saját szövege**
+- **Kijelölés** olvasó módban (kéz): átlátszó szövegréteg a pdf.js szövegtartalmából, hosszan nyomva kijelölhető.
+  Sáv a kijelölés alatt: Másolás, Kiemelés, Aláhúzás, Áthúzás (a sorokra illesztett téglalapok, `t: "mark"`).
+  A darabok szélességét a böngészőben mérjük és nyújtjuk: mérve 0,2 px eltérés a PDF-hez képest.
+- **Átírás** T eszközzel: a PDF szövegére koppintva az a SOR nyílik meg szerkesztésre, a kurzor oda kerül,
+  ahová koppintottál. Az eredeti sort a háttér színével kitakarjuk, fölé ugyanakkora, hasonló betű
+  (a PDF betűnevéből: Arial/Helvetica, Times, Calibri, Courier; vastag, dőlt), a PDF-ből mintázott színnel,
+  a sor szélességéhez igazított betűközzel, ugyanarra az alapvonalra. Változatlanul hagyva nem jön létre semmi;
+  üresre törölve az eredeti szöveg eltűnik; a Törlés gomb visszahozza az eredetit.
+- Korlát: a PDF beágyazott betűjét nem használjuk (általában csak a benne lévő betűket tartalmazza), ezért
+  a betű nagyon hasonló, de nem mindig azonos. A megosztott PDF-ben az eredeti szöveg a takarás alatt megmarad
+  (keresésnél, másolásnál az jön elő). Elforgatott, függőleges szöveg kimarad.
+
 ### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
 Amit a diákok tényleg használnak, prioritás szerint:
-1. **Szöveg kijelölése a PDF-ben** → kiemelés / aláhúzás / áthúzás / másolás, a sorokra
-   illesztve (pdf.js szövegréteg). Minden komoly PDF-app alapfunkciója.
+1. ~~Szöveg kijelölése a PDF-ben~~ (v0.294, KÉSZ)
 2. **Oldal-bélyegképek** oldalsávban (ugrás, átrendezés, törlés, beszúrás).
 3. **Lasszó**: jegyzetek kijelölése, mozgatása, átméretezése, színezése.
 4. **Keresés a PDF szövegében.**
 5. **Alakzat-felismerés** (egyenes, nyíl, kör, téglalap tartásra kiegyenesedik).
 6. Nagyításhoz igazodó tollvastagság; sablonos üres oldalak (vonalas, négyzethálós, pontozott).
-7. **Kitakarás**: fehér téglalap + szövegdoboz, ha a PDF szövegét „felül kell írni".
+7. ~~Kitakarás + átírás~~ (v0.294, KÉSZ: a PDF-sor átírása)
 
 **A PDF eredeti szövegének szerkesztése** (betűnként átírni, mint egy Word-dokumentumban): ezt csak az
 Adobe Acrobat Pro és a PDF Expert fizetős „Szerkesztés" módja tudja, a jegyzetelő appok (Samsung Notes,

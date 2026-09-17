@@ -36,7 +36,7 @@ function mvPrefs() {
 async function openMaterial(id) {
   const m = matById(id); if (!m) { toast("Ez az anyag már nincs meg."); return; }
   mvClose();
-  mv = { id, m, doc: null, pdf: null, z: 1, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
+  mv = { id, m, doc: null, pdf: null, z: 1, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], tcache: {}, io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
   pushScreen("tab-mat-view");
 }
 function renderMatView() {
@@ -71,6 +71,7 @@ async function mvLoad(cur) {
   mvLayout();
 }
 function mvClose() {
+  const sb = $("mv-selbar"); if (sb) sb.remove();
   if (!mv) return;
   mvTextCommit();
   try { mv.io && mv.io.disconnect(); } catch (e) {}
@@ -101,6 +102,7 @@ function mvLayout(anchor) {
         d.lx *= k; d.ly *= k; d.rx *= k; d.ry *= k; d.z = -1;
       }
       sl.cssW = cssW; sl.cssH = Math.round(cssW * (sl.pg.h / sl.pg.w));
+      if (sl.selLayer) sl.selLayer.style.setProperty("--k", cssW);
       sl.sheet.style.width = cssW + "px"; sl.el.style.width = cssW + "px"; sl.el.style.height = sl.cssH + "px";
       if (sl.rendered) sl.stale = true;
       mvRenderTexts(sl);
@@ -149,6 +151,7 @@ function mvApplyToolClass() {
   const scroll = $("mv-scroll"); if (!scroll || !mv) return;
   scroll.classList.toggle("mv-drawing", mv.tool !== "pan" && mv.tool !== "text");
   scroll.classList.toggle("mv-textmode", mv.tool === "text");
+  scroll.classList.toggle("mv-panmode", mv.tool === "pan");
 }
 // Pixelkeret: egy oldal vászna legfeljebb ~4 megapixel. Nagy nagyításnál kicsit lágyabb, de nem fogy el
 // a memória és nem akad. (A 3-4x-es nagyítás korábban oldalanként 20+ MP-t foglalt, két vásznon.)
@@ -189,6 +192,7 @@ async function mvRenderSlot(sl) {
   try {
     const page = await mv.pdf.getPage(sl.pg.n);
     if (gen !== sl.gen || !mv) return;
+    sl.page = page; mvTextLoad(sl, page);
     // Külön vászonra renderelünk, és csak kész állapotban cseréljük: addig a régi kép látszik (nincs villanás).
     const cv = document.createElement("canvas"); cv.className = "mv-pdf"; cv.width = W; cv.height = H;
     const vp = page.getViewport({ scale: W / page.getViewport({ scale: 1 }).width });
@@ -206,6 +210,7 @@ function mvReleaseSlot(sl) {
   try { sl.task && sl.task.cancel(); } catch (e) {}
   sl.task = null; sl.rendered = false; sl.stale = false;
   for (const cv of [sl.pdfCv, sl.inkCv]) { cv.width = 0; cv.height = 0; }
+  if (sl.selLayer) sl.selLayer.innerHTML = "";
   mvDetailDrop(sl);
 }
 
@@ -258,8 +263,18 @@ function mvDetailDrop(sl) {
 function mvDrawItems(ctx, items, W, H, live, withText) {
   const all = items.concat(live ? [live] : []);
   ctx.clearRect(0, 0, W, H);
+  all.forEach((it) => { if (it.t === "mark" && it.k === "hl") mvDrawMark(ctx, it, W, H); });
   for (const pass of ["hl", "pen"]) all.forEach((it) => { if (it.t === "ink" && it.tool === pass) mvDrawStroke(ctx, it, W, H); });
+  all.forEach((it) => { if (it.t === "mark" && it.k !== "hl") mvDrawMark(ctx, it, W, H); });
   if (withText) all.forEach((it) => { if (it.t === "text") mvDrawText(ctx, it, W, H); });
+}
+function mvDrawMark(ctx, it, W, H) {
+  ctx.save(); ctx.globalAlpha = it.a != null ? it.a : 1; ctx.fillStyle = it.c;
+  for (const [x, y, w, h] of it.rects) {
+    if (it.k === "hl") ctx.fillRect(x * W, y * H, w * W, h * H);
+    else { const t = Math.max(1, h * H * 0.08); ctx.fillRect(x * W, (y + h * (it.k === "ul" ? 0.92 : 0.54)) * H - t / 2, w * W, t); }
+  }
+  ctx.restore();
 }
 function mvDrawStroke(ctx, it, W, H) {
   const p = it.pts; if (p.length < 3) return;
@@ -292,7 +307,7 @@ function mvDrawStroke(ctx, it, W, H) {
   ctx.restore();
 }
 function mvTextBw(it) { return it.bw != null ? it.bw : Math.max(0.15, 1 - it.x - 0.02); }
-function mvTextFont(it, W) { return `500 ${Math.max(6, it.s * W)}px ${MV_FONT}`; }
+function mvTextFont(it, W) { return `${it.fi ? "italic " : ""}${it.fw || 500} ${Math.max(6, it.s * W)}px ${it.f || MV_FONT}`; }
 // Sortörés a vászonra (a megosztott PDF-hez), a böngésző pre-wrap tördeléséhez igazítva.
 function mvWrapLines(ctx, text, maxW) {
   const out = [];
@@ -311,9 +326,21 @@ function mvWrapLines(ctx, text, maxW) {
   return out;
 }
 function mvDrawText(ctx, it, W, H) {
-  const lh = it.s * W * 1.25;
-  ctx.save(); ctx.fillStyle = it.c; ctx.font = mvTextFont(it, W); ctx.textBaseline = "middle";
-  mvWrapLines(ctx, it.text, mvTextBw(it) * W).forEach((ln, i) => ctx.fillText(ln, it.x * W, it.y * H + (i + 0.5) * lh));
+  const fs = it.s * W, lh = fs * 1.25;
+  ctx.save(); ctx.font = mvTextFont(it, W);
+  if (it.ls) ctx.letterSpacing = it.ls * fs + "px";
+  const lines = it.cover ? String(it.text).split("\n") : mvWrapLines(ctx, it.text, mvTextBw(it) * W);
+  if (it.cover) { // az eredeti PDF-szöveg kitakarása (átírt sor)
+    const c = it.cover, tw = Math.max(0, ...lines.map((l) => ctx.measureText(l).width));
+    let cw = c.w * W, ch = c.h * H;
+    if (mvCoverInPlace(it)) { cw = Math.max(cw, (it.x - c.x) * W + tw + 3); ch = Math.max(ch, (it.y - c.y) * H + lines.length * lh); }
+    ctx.fillStyle = c.bg; ctx.fillRect(c.x * W, c.y * H, cw, ch);
+  }
+  // Ugyanaz a szabály, mint a böngészőben: alapvonal = félsorköz + a betűkészlet felső kiterjedése.
+  const m = ctx.measureText("Hg"), A = m.fontBoundingBoxAscent, D = m.fontBoundingBoxDescent;
+  const off = A > 0 && D >= 0 ? (lh - (A + D)) / 2 + A : lh / 2 + fs * 0.35;
+  ctx.fillStyle = it.c; ctx.textBaseline = "alphabetic";
+  lines.forEach((ln, i) => ctx.fillText(ln, it.x * W, it.y * H + i * lh + off));
   ctx.restore();
 }
 function mvLiveStart(d) {
@@ -333,7 +360,7 @@ function mvLiveEnd(d) { if (d && d.live) { d.live.width = 0; d.live.remove(); d.
 function mvDrawInk(s, live) {
   if (!s.rendered || !mv) return;
   const items = mv.doc.items[s.pg.id] || [];
-  const need = !!live || items.some((it) => it.t === "ink");
+  const need = !!live || items.some((it) => it.t === "ink" || it.t === "mark");
   const cv = s.inkCv;
   if (!need) { if (cv.width) { cv.width = 0; cv.height = 0; } return; } // üres oldalon nem foglalunk memóriát
   if (cv.width !== s.inkW || cv.height !== s.inkH) { cv.width = s.inkW; cv.height = s.inkH; }
@@ -398,7 +425,8 @@ function mvWireInput() {
   $("mv-addpage").onclick = () => mvAction("addpage");
   $("mv-share").onclick = () => mvAction("share");
   mvWirePinch(scroll);
-  scroll.addEventListener("scroll", () => { if (mv && mv.z > 1.001) mvDetailSchedule(); }, { passive: true });
+  scroll.addEventListener("scroll", () => { if (mv && mv.z > 1.001) mvDetailSchedule(); if ($("mv-selbar")) mvSelBar(); }, { passive: true });
+  document.addEventListener("selectionchange", () => { if (!mv) return; clearTimeout(mv.selT); mv.selT = setTimeout(mvSelBar, 150); });
   // A billentyűzet megjelenésekor a szerkesztett doboz maradjon látható.
   if (window.visualViewport) window.visualViewport.addEventListener("resize", () => mvTextKeepVisible());
   scroll.addEventListener("pointerdown", (ev) => {
@@ -482,6 +510,7 @@ function mvErase(s, q, ev) {
       const lim = r + it.w / 2;
       for (let k = 0; k < it.pts.length; k += 3) { const dx = it.pts[k] - q.x, dy = (it.pts[k + 1] - q.y) * aspect; if (dx * dx + dy * dy < lim * lim) { hit = true; break; } }
     } else if (it.t === "text") { hit = hitText.has(it); if (hit) textChanged = true; }
+    else if (it.t === "mark") { const ry = r / aspect; hit = it.rects.some(([x, y, w, h]) => q.x >= x - r && q.x <= x + w + r && q.y >= y - ry && q.y <= y + h + ry); }
     if (hit) { mv.draw.removed.push({ ix: i, item: it }); arr.splice(i, 1); changed = true; if (mv.sel && mv.sel.it === it) mv.sel = null; }
   }
   if (changed) mvDrawInk(s);
@@ -498,13 +527,33 @@ function mvErase(s, q, ev) {
 // =====================================================================
 function mvTextProps(it) { return { x: it.x, y: it.y, bw: it.bw, s: it.s, c: it.c }; }
 function mvStyleText(el, it, s) {
-  if (it.bw == null) it.bw = mvTextBw(it);
-  Object.assign(el.style, { left: it.x * 100 + "%", top: it.y * 100 + "%", width: it.bw * 100 + "%", fontSize: it.s * s.cssW + "px", color: it.c, fontFamily: MV_FONT });
+  const pdf = !!it.cover;
+  if (!pdf && it.bw == null) it.bw = mvTextBw(it);
+  Object.assign(el.style, { left: it.x * 100 + "%", top: it.y * 100 + "%", width: pdf ? "auto" : it.bw * 100 + "%", fontSize: it.s * s.cssW + "px", color: it.c,
+    fontFamily: it.f || MV_FONT, fontWeight: it.fw || 500, fontStyle: it.fi ? "italic" : "normal", letterSpacing: it.ls ? it.ls + "em" : "normal", whiteSpace: pdf ? "pre" : "" });
+}
+// Átírt PDF-sor: amíg a szöveg az eredeti helyén van, a takarás a hosszabb új szöveggel együtt nő.
+function mvCoverInPlace(it) { return it.ox == null || (Math.abs(it.x - it.ox) < 0.003 && Math.abs(it.y - it.oy) < 0.003); }
+function mvCoverFit(s, it, el) {
+  const cv = [...s.textLayer.children].find((x) => x._cov === it); if (!cv) return;
+  const c = it.cover;
+  let w = c.w * s.cssW, h = c.h * s.cssH;
+  if (el && mvCoverInPlace(it)) { w = Math.max(w, (it.x - c.x) * s.cssW + el.offsetWidth + 3); h = Math.max(h, (it.y - c.y) * s.cssH + el.offsetHeight); }
+  cv.style.width = w + "px"; cv.style.height = h + "px";
 }
 function mvTextElFor(s, it) { return [...s.textLayer.children].find((el) => el._it === it) || null; }
 function mvRenderTexts(s) {
   if (!mv || !s.textLayer) return;
   s.textLayer.innerHTML = "";
+  const all = (mv.doc.items[s.pg.id] || []).slice();
+  if (mv.edit && mv.edit.s === s && !all.includes(mv.edit.it)) all.push(mv.edit.it); // új, még nem mentett átírás takarása
+  for (const it of all) {
+    if (it.t !== "text" || !it.cover) continue;
+    const c = document.createElement("div");
+    c.className = "mv-tcover"; c._cov = it;
+    Object.assign(c.style, { left: it.cover.x * 100 + "%", top: it.cover.y * 100 + "%", width: it.cover.w * s.cssW + "px", height: it.cover.h * s.cssH + "px", background: it.cover.bg });
+    s.textLayer.appendChild(c);
+  }
   for (const it of mv.doc.items[s.pg.id] || []) {
     if (it.t !== "text" || (mv.edit && mv.edit.it === it)) continue;
     const el = document.createElement("div");
@@ -513,8 +562,9 @@ function mvRenderTexts(s) {
     mvStyleText(el, it, s);
     el.textContent = it.text;
     el._it = it;
-    if (selected) { const h = document.createElement("span"); h.className = "mv-thandle"; h.setAttribute("aria-label", "Szélesség"); el.appendChild(h); }
+    if (selected && !it.cover) { const h = document.createElement("span"); h.className = "mv-thandle"; h.setAttribute("aria-label", "Szélesség"); el.appendChild(h); }
     s.textLayer.appendChild(el);
+    if (it.cover) mvCoverFit(s, it, el);
   }
   mvRenderTextCtx();
 }
@@ -542,9 +592,9 @@ function mvTextPointerMove(ev, d) {
   if (d.mode === "move") {
     if (!d.moved && Math.abs(dx) + Math.abs(dy) < 8) return;
     d.moved = true; ev.preventDefault();
-    d.it.x = Math.max(0, Math.min(1 - d.it.bw, d.x0 + dx / d.s.cssW));
+    d.it.x = Math.max(0, Math.min(d.it.cover ? 0.98 : 1 - d.it.bw, d.x0 + dx / d.s.cssW));
     d.it.y = Math.max(0, Math.min(0.98, d.y0 + dy / d.s.cssH));
-    const el = mvTextElFor(d.s, d.it); if (el) { el.style.left = d.it.x * 100 + "%"; el.style.top = d.it.y * 100 + "%"; }
+    const el = mvTextElFor(d.s, d.it); if (el) { el.style.left = d.it.x * 100 + "%"; el.style.top = d.it.y * 100 + "%"; if (d.it.cover) mvCoverFit(d.s, d.it, el); }
     mvPlaceTextCtx();
   } else if (d.mode === "resize") {
     ev.preventDefault();
@@ -564,9 +614,15 @@ function mvTextPointerEnd(ev, d) {
     if (tap) { mvTextFinish(); mv.sel = { s: d.s, it: d.it }; mv.ctxColors = false; mvRenderTexts(d.s); }
   } else if (d.mode === "tap") {
     if (!tap) return;
-    // Ha éppen szerkesztettél vagy ki volt jelölve valami, az első koppintás csak lezár (mint a Samsung Notesban).
-    if (mv.edit || mv.sel) mvTextFinish();
-    else mvTextCreate(d.s, d.q);
+    // Ha éppen szerkesztettél vagy ki volt jelölve valami, az első koppintás lezár (mint a Samsung Notesban).
+    // PDF-szövegre koppintva viszont rögtön az a sor nyílik meg, mert egyértelmű, mit akarsz.
+    const had = mv.edit || mv.sel;
+    if (had) mvTextFinish();
+    const cov = mvCoverAt(d.s, d.q);
+    if (cov) { mv.sel = { s: d.s, it: cov }; mv.ctxColors = false; mvRenderTexts(d.s); return; }
+    const ln = mvPdfLineAt(d.s, d.q);
+    if (ln) return mvTextFromPdf(d.s, ln, d.q);
+    if (!had) mvTextCreate(d.s, d.q);
   }
 }
 function mvTextCreate(s, q) {
@@ -582,11 +638,17 @@ function mvTextEdit(s, it, isNew) {
   mv.sel = { s, it }; mv.ctxColors = false;
   const ta = document.createElement("textarea");
   ta.className = "mv-textedit"; ta.value = it.text; ta.spellcheck = false; ta.rows = 1;
+  if (it.cover) ta.wrap = "off";
   ta.setAttribute("autocapitalize", "sentences"); ta.setAttribute("aria-label", "Szöveg a lapon");
   mvStyleText(ta, it, s);
   s.el.appendChild(ta);
   mv.edit = { s, it, isNew, before: it.text, ta };
-  const grow = () => { ta.style.height = "0px"; ta.style.height = Math.max(ta.scrollHeight, it.s * s.cssW * 1.25) + "px"; mvPlaceTextCtx(); };
+  const grow = () => {
+    if (it.cover) { ta.style.width = "1px"; ta.style.width = Math.max(ta.scrollWidth + 2, (it.cover.w - (it.x - it.cover.x)) * s.cssW) + "px"; }
+    ta.style.height = "0px"; ta.style.height = Math.max(ta.scrollHeight, it.s * s.cssW * 1.25) + "px";
+    if (it.cover) mvCoverFit(s, it, ta);
+    mvPlaceTextCtx();
+  };
   ta.addEventListener("input", () => { grow(); mvTextKeepVisible(); });
   mvRenderTexts(s); // az eredeti doboz eltűnik, amíg szerkesztjük, és kirajzolódik a mini-eszköztár
   grow();
@@ -603,9 +665,9 @@ function mvTextCommit() {
   e.ta.remove();
   const pageId = e.s.pg.id, arr = (mv.doc.items[pageId] = mv.doc.items[pageId] || []);
   if (e.isNew) {
-    if (txt) { e.it.text = txt; arr.push(e.it); mvPush({ type: "add", page: pageId, item: e.it }); mvSave(); }
+    if (e.it.cover ? txt !== e.it.orig : txt) { e.it.text = txt; arr.push(e.it); mvPush({ type: "add", page: pageId, item: e.it }); mvSave(); }
     else mv.sel = null;
-  } else if (!txt) {
+  } else if (!txt && !e.it.cover) {
     const ix = arr.indexOf(e.it);
     if (ix >= 0) { arr.splice(ix, 1); mvPush({ type: "remove", page: pageId, removed: [{ ix, item: e.it }] }); mvSave(); }
     mv.sel = null;
@@ -626,7 +688,7 @@ function mvTextDelete() {
   const arr = mv.doc.items[sel.s.pg.id] || [], ix = arr.indexOf(sel.it);
   if (ix >= 0) { arr.splice(ix, 1); mvPush({ type: "remove", page: sel.s.pg.id, removed: [{ ix, item: sel.it }] }); mvSave(); }
   mv.sel = null; mvRenderTexts(sel.s);
-  toast("Szöveg törölve.");
+  toast(sel.it.cover ? "Az eredeti szöveg visszaállt." : "Szöveg törölve.");
 }
 // Tulajdonság (szín, méret) a kijelölt dobozra; új, még nem mentett doboznál nincs mit visszavonni.
 function mvTextSetProp(fn) {
@@ -694,6 +756,213 @@ function mvTextKeepVisible() {
   const limit = R.top + (visBottom - R.top) * (mv.edit ? 0.5 : 0.85);
   if (r.top < R.top + 60 || r.bottom > limit) sc.scrollTop += r.top - (R.top + 70);
   const scr = $("tab-mat-view"); if (scr) scr.scrollTop = 0;
+}
+
+// =====================================================================
+//  A PDF SAJÁT SZÖVEGE
+//  - Olvasó módban (kéz) átlátszó szövegréteg: hosszan nyomva kijelölhető, a sávból másolás,
+//    kiemelés, aláhúzás, áthúzás (a sorokra illesztve).
+//  - T eszközzel a PDF szövegére koppintva a sor átírható: az eredeti sort a háttérszínnel
+//    kitakarjuk, és ugyanoda, ugyanakkora, hasonló betűvel és színnel kerül a szerkeszthető szöveg.
+//    ponytail: a PDF betűkészletét nem használjuk (általában csak a benne lévő betűket tartalmazza, és
+//    megnyitásonként más a neve), hanem a legközelebbi rendszerbetűt. A megosztott PDF-ben az eredeti
+//    szöveg a takarás alatt megmarad (kereséskor, másoláskor az jön elő).
+// =====================================================================
+let mvMeasureCv = null;
+function mvMeasureCtx() { return (mvMeasureCv = mvMeasureCv || document.createElement("canvas")).getContext("2d"); }
+function mvMul(a, b) { return [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]]; }
+async function mvTextLoad(sl, page) {
+  const cur = mv, n = sl.pg.n;
+  if (!cur.tcache[n]) cur.tcache[n] = page.getTextContent().then((tc) => mvTextParse(tc, page.getViewport({ scale: 1 }))).catch(() => ({ runs: [], lines: [] }));
+  const data = await cur.tcache[n];
+  if (mv !== cur || !sl.rendered) return;
+  sl.tdata = data;
+  mvSelLayer(sl);
+}
+// Szövegdarabok oldal-arányos koordinátákban (x, w, fs: a szélességhez; top, base, h: a magassághoz), és sorokba fűzve.
+function mvTextParse(tc, vp) {
+  const W = vp.width, H = vp.height, raw = [];
+  for (const it of tc.items) {
+    if (!it.str || !it.transform) continue;
+    const tx = mvMul(vp.transform, it.transform);
+    if (tx[0] <= 0 || Math.abs(tx[1]) > 0.02 * tx[0]) continue; // ponytail: elforgatott, függőleges szöveg kimarad
+    const fs = Math.hypot(tx[2], tx[3]); if (fs < 2) continue;
+    const st = tc.styles[it.fontName] || {};
+    const asc = Math.min(1.1, Math.max(0.6, st.ascent || 0.8)), desc = Math.max(-0.4, Math.min(0, st.descent || -0.2));
+    raw.push({ str: it.str, font: it.fontName, fam: st.fontFamily || "sans-serif", x: tx[4], base: tx[5], top: tx[5] - fs * asc, h: fs * (asc - desc), w: it.width || 0, fs });
+  }
+  // Sorok: közel azonos alapvonal és betűméret, egymás után következő darabok.
+  const lines = [];
+  raw.slice().sort((p, q) => p.base - q.base || p.x - q.x).forEach((r) => {
+    if (!r.str.trim() && !lines.length) return;
+    let ln = null;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const l = lines[i];
+      if (r.base - l.base > l.fs * 0.4) break;
+      if (Math.abs(l.base - r.base) < Math.min(l.fs, r.fs) * 0.35 && Math.max(l.fs, r.fs) / Math.min(l.fs, r.fs) < 1.3
+        && r.x > l.x + l.w - l.fs * 0.4 && r.x - (l.x + l.w) < l.fs * 1.2) { ln = l; break; }
+    }
+    if (!ln) { if (r.str.trim()) lines.push({ ...r }); return; }
+    const gap = r.x - (ln.x + ln.w);
+    if (gap > ln.fs * 0.15 && !/\s$/.test(ln.str) && !/^\s/.test(r.str)) ln.str += " ";
+    ln.str += r.str;
+    ln.w = Math.max(ln.w, r.x + r.w - ln.x);
+    const top = Math.min(ln.top, r.top), bottom = Math.max(ln.top + ln.h, r.top + r.h);
+    ln.top = top; ln.h = bottom - top;
+    if (r.fs > ln.fs) { ln.fs = r.fs; ln.font = r.font; ln.fam = r.fam; }
+  });
+  const nx = (o) => Object.assign(o, { x: o.x / W, w: o.w / W, fs: o.fs / W, top: o.top / H, base: o.base / H, h: o.h / H });
+  return { runs: raw.map(nx), lines: lines.map((l) => ({ ...nx(l), str: l.str.replace(/\s+$/, "") })).filter((l) => l.str) };
+}
+// Átlátszó, kijelölhető szövegréteg. A betűméret CSS-változóból számol, így nagyításkor nem kell újraépíteni.
+// A vízszintes nyújtást a böngészőben mérjük (a vászon mérése más betűt választhat, és elcsúszott a kijelölés).
+function mvSelLayer(sl) {
+  if (!sl.selLayer) { sl.selLayer = document.createElement("div"); sl.selLayer.className = "mv-seltext"; sl.el.insertBefore(sl.selLayer, sl.textLayer); }
+  const L = sl.selLayer;
+  L.style.setProperty("--k", sl.cssW);
+  if (L.childElementCount || !sl.tdata || !sl.tdata.runs.length) return;
+  const runs = sl.tdata.runs;
+  L.innerHTML = runs.map((r) => `<span style="left:${(r.x * 100).toFixed(3)}%;top:${(r.top * 100).toFixed(3)}%;font-size:calc(var(--k) * ${r.fs.toFixed(5)}px);font-family:${r.fam}">${esc(r.str)}</span>`).join(" ");
+  const spans = [...L.children], widths = spans.map((el) => el.offsetWidth); // egyetlen elrendezés, transzformációtól független
+  spans.forEach((el, i) => { const target = runs[i].w * sl.cssW; if (widths[i] > 0 && target > 0) el.style.transform = `scaleX(${(target / widths[i]).toFixed(4)})`; });
+}
+function mvPdfLineAt(s, q) {
+  const d = s.tdata; if (!d) return null;
+  const tx = 8 / s.cssW, ty = 8 / s.cssH;
+  let best = null, bd = Infinity;
+  for (const l of d.lines) {
+    if (q.x < l.x - tx || q.x > l.x + l.w + tx || q.y < l.top - ty || q.y > l.top + l.h + ty) continue;
+    const dd = Math.abs(q.y - (l.top + l.h / 2)); if (dd < bd) { bd = dd; best = l; }
+  }
+  return best;
+}
+function mvCoverAt(s, q) {
+  return (mv.doc.items[s.pg.id] || []).find((it) => it.t === "text" && it.cover && q.x >= it.cover.x && q.x <= it.cover.x + it.cover.w && q.y >= it.cover.y && q.y <= it.cover.y + it.cover.h) || null;
+}
+// A PDF betűkészletének neve alapján a legközelebbi rendszerbetű, vastagság, dőlés.
+function mvPdfFont(s, l) {
+  let name = "", bold = false, italic = false;
+  try { const co = s.page && s.page.commonObjs; if (co && co.has(l.font)) { const f = co.get(l.font); name = String(f.name || "").replace(/^[A-Z]{6}\+/, ""); bold = !!(f.bold || f.black); italic = !!f.italic; } } catch (e) {}
+  if (/bold|black|heavy|semibold|demi/i.test(name)) bold = true;
+  if (/italic|oblique/i.test(name)) italic = true;
+  let f;
+  if (/courier|mono|consol/i.test(name) || l.fam === "monospace") f = `"Courier New", "Liberation Mono", monospace`;
+  else if ((/times|georgia|garamond|cambria|palatino|minion|antiqua|serif/i.test(name) && !/sans/i.test(name)) || (!name && l.fam === "serif")) f = `"Times New Roman", "Liberation Serif", "Noto Serif", Georgia, serif`;
+  else if (/calibri|carlito/i.test(name)) f = `Calibri, Carlito, "Segoe UI", Roboto, Arial, sans-serif`;
+  else if (/segoe/i.test(name)) f = `"Segoe UI", Roboto, Arial, sans-serif`;
+  else f = `Arial, Helvetica, Arimo, Roboto, sans-serif`;
+  return { f, fw: bold ? 700 : 400, fi: italic ? 1 : 0 };
+}
+// Háttér- és betűszín a kirajzolt oldalból: a keret szélének medián színe a háttér, a tőle legtávolabbi a betű.
+function mvSampleColors(s, l) {
+  const out = { bg: "#ffffff", fg: "#1b1d22" }, cv = s.pdfCv;
+  if (!cv || !cv.width) return out;
+  const x = Math.max(0, Math.floor(l.x * cv.width) - 2), y = Math.max(0, Math.floor(l.top * cv.height) - 2);
+  const w = Math.min(cv.width - x, Math.ceil(l.w * cv.width) + 4), h = Math.min(cv.height - y, Math.ceil(l.h * cv.height) + 4);
+  if (w < 3 || h < 3) return out;
+  let d;
+  try { d = cv.getContext("2d").getImageData(x, y, w, h).data; } catch (e) { return out; }
+  const px = (i) => [d[i], d[i + 1], d[i + 2]], edge = [];
+  for (let i = 0; i < w; i++) { edge.push(px(i * 4), px(((h - 1) * w + i) * 4)); }
+  for (let j = 0; j < h; j++) { edge.push(px(j * w * 4), px((j * w + w - 1) * 4)); }
+  const med = [0, 1, 2].map((k) => edge.map((p) => p[k]).sort((p, q) => p - q)[edge.length >> 1]);
+  const dist = (p) => Math.abs(p[0] - med[0]) + Math.abs(p[1] - med[1]) + Math.abs(p[2] - med[2]);
+  let max = 0;
+  for (let i = 0; i < d.length; i += 4) max = Math.max(max, dist(px(i)));
+  const hex = (p) => "#" + p.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+  out.bg = hex(med);
+  if (max > 60) {
+    const acc = [0, 0, 0]; let n = 0;
+    for (let i = 0; i < d.length; i += 4) { const p = px(i); if (dist(p) > max * 0.75) { acc[0] += p[0]; acc[1] += p[1]; acc[2] += p[2]; n++; } }
+    out.fg = hex(acc.map((v) => v / n));
+  } else out.fg = med[0] + med[1] + med[2] > 380 ? "#1b1d22" : "#ffffff";
+  return out;
+}
+function mvTextFromPdf(s, l, q) {
+  const font = mvPdfFont(s, l), col = mvSampleColors(s, l), aspect = s.pg.h / s.pg.w;
+  const ctx = mvMeasureCtx();
+  ctx.font = `${font.fi ? "italic " : ""}${font.fw} 100px ${font.f}`;
+  const m = ctx.measureText(l.str);
+  const A = m.fontBoundingBoxAscent > 0 ? m.fontBoundingBoxAscent / 100 : 0.92, D = m.fontBoundingBoxDescent >= 0 ? m.fontBoundingBoxDescent / 100 : 0.22;
+  // Betűköz, hogy a helyettesítő betűvel is ugyanolyan széles legyen a sor, mint az eredeti.
+  const natural = (m.width / 100) * l.fs;
+  const ls = l.str.length > 1 ? Math.max(-0.08, Math.min(0.08, (l.w - natural) / l.fs / l.str.length)) : 0;
+  // Az alapvonal maradjon ugyanott. CSS-ben a sordoboz tetejétől: (1,25 - (A + D)) / 2 + A betűméretnyi.
+  const y = l.base - (((1.25 - (A + D)) / 2 + A) * l.fs) / aspect;
+  const px = 1.5 / s.cssW;
+  const it = { t: "text", x: l.x, y, ox: l.x, oy: y, s: l.fs, c: col.fg, text: l.str, orig: l.str, f: font.f, fw: font.fw, fi: font.fi, ls: Math.round(ls * 1000) / 1000,
+    cover: { x: l.x - px, y: l.top - px / aspect, w: l.w + 2 * px, h: l.h + (2 * px) / aspect, bg: col.bg } };
+  mvTextEdit(s, it, true);
+  const ta = mv.edit && mv.edit.ta;
+  if (ta && q) { const ix = Math.max(0, Math.min(l.str.length, Math.round(((q.x - l.x) / l.w) * l.str.length))); ta.setSelectionRange(ix, ix); }
+}
+
+// ---- Kijelölés sáv (olvasó módban) ----
+function mvSelRange() {
+  const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const r = sel.getRangeAt(0), n = r.commonAncestorContainer, el = n.nodeType === 1 ? n : n.parentElement;
+  return el && el.closest && el.closest("#mv-pages") ? r : null;
+}
+function mvSelBar() {
+  let bar = $("mv-selbar");
+  const r = mv && mv.tool === "pan" && !mv.pinch && mvSelRange();
+  if (!r) { if (bar) bar.remove(); return; }
+  const scr = $("tab-mat-view"); if (!scr) return;
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "mv-selbar"; bar.className = "mv-tctx mv-selbar";
+    const b = (a, label) => `<button type="button" data-sa="${a}">${label}</button>`;
+    bar.innerHTML = b("copy", "Másolás") + b("hl", "Kiemelés") + b("ul", "Aláhúzás") + b("st", "Áthúzás");
+    bar.addEventListener("pointerdown", (ev) => ev.preventDefault()); // a kijelölés maradjon meg
+    bar.querySelectorAll("[data-sa]").forEach((x) => x.onclick = () => mvSelAction(x.dataset.sa));
+    scr.appendChild(bar);
+  }
+  const rect = r.getBoundingClientRect(), sr = scr.getBoundingClientRect();
+  // Alá tesszük: fölötte az Android saját kijelölés-menüje jelenik meg.
+  let top = rect.bottom - sr.top + 34;
+  if (top + bar.offsetHeight > sr.height - 90) top = rect.top - sr.top - bar.offsetHeight - 56;
+  bar.style.top = Math.max(70, top) + "px";
+  bar.style.left = Math.max(8, Math.min(rect.left - sr.left, sr.width - bar.offsetWidth - 8)) + "px";
+}
+// Egy sorba eső téglalapok összevonása (a szövegdarabok külön téglalapot adnak).
+function mvMergeRects(list) {
+  const out = [];
+  list.sort((p, q) => p[1] - q[1] || p[0] - q[0]).forEach((r) => {
+    const o = out.find((m) => Math.min(m[1] + m[3], r[1] + r[3]) - Math.max(m[1], r[1]) > Math.min(m[3], r[3]) * 0.5 && r[0] - (m[0] + m[2]) < r[3] * 0.8 && m[0] - (r[0] + r[2]) < r[3] * 0.8);
+    if (!o) { out.push(r.slice()); return; }
+    const x0 = Math.min(o[0], r[0]), y0 = Math.min(o[1], r[1]), x1 = Math.max(o[0] + o[2], r[0] + r[2]), y1 = Math.max(o[1] + o[3], r[1] + r[3]);
+    o[0] = x0; o[1] = y0; o[2] = x1 - x0; o[3] = y1 - y0;
+  });
+  return out;
+}
+async function mvSelAction(a) {
+  const r = mvSelRange(); if (!r) return;
+  const sel = window.getSelection();
+  if (a === "copy") {
+    const t = sel.toString().replace(/[ \t]+/g, " ").trim();
+    try { await navigator.clipboard.writeText(t); } catch (e) { try { document.execCommand("copy"); } catch (e2) {} }
+    toast("Kimásolva.");
+  } else {
+    const byPage = new Map();
+    for (const q of r.getClientRects()) {
+      if (q.width < 1 || q.height < 1) continue;
+      const cx = q.left + q.width / 2, cy = q.top + q.height / 2;
+      const sl = mv.slots.find((x) => { const b = x.el.getBoundingClientRect(); return cx >= b.left && cx <= b.right && cy >= b.top && cy <= b.bottom; });
+      if (!sl) continue;
+      const b = sl.el.getBoundingClientRect();
+      if (!byPage.has(sl)) byPage.set(sl, []);
+      byPage.get(sl).push([(q.left - b.left) / b.width, (q.top - b.top) / b.height, q.width / b.width, q.height / b.height]);
+    }
+    const hp = mvPrefs().hl;
+    for (const [sl, list] of byPage) {
+      const item = { t: "mark", k: a, c: a === "hl" ? hp.c : "#c62f2f", a: a === "hl" ? Math.min(0.5, hp.a) : 1,
+        rects: mvMergeRects(list).map((v) => v.map((x) => Math.round(x * 10000) / 10000)) };
+      const arr = (mv.doc.items[sl.pg.id] = mv.doc.items[sl.pg.id] || []);
+      arr.push(item); mvPush({ type: "add", page: sl.pg.id, item }); mvDrawInk(sl);
+    }
+    if (byPage.size) mvSave();
+  }
+  sel.removeAllRanges();
+  mvSelBar();
 }
 
 // ---- Eszköztár és beállítások ----
@@ -766,7 +1035,12 @@ function mvAction(a) {
   if (["pan", "pen", "hl", "eraser", "text"].includes(a)) {
     // Az aktív rajzeszközre újra koppintva nyílik/csukódik a beállító panel.
     if (a === mv.tool && ["pen", "hl", "text"].includes(a)) mv.popOpen = !mv.popOpen;
-    else { mv.popOpen = false; if (mv.tool === "text" && a !== "text") mvTextFinish(); }
+    else {
+      mv.popOpen = false; if (mv.tool === "text" && a !== "text") mvTextFinish();
+      if (a !== "pan") { try { window.getSelection().removeAllRanges(); } catch (e) {} }
+      const pr = mvPrefs();
+      if (a === "text" && !pr.hintText) { pr.hintText = 1; saveState(); toast("Koppints a PDF szövegére az átíráshoz, vagy üres helyre új szöveghez."); }
+    }
     mv.tool = a; mvApplyToolClass();
     mvRenderBar(); mvRenderPop(); mvRenderTextCtx(); return;
   }

@@ -1207,6 +1207,13 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .mv-scroll { touch-action: pan-x pan-y; }
 .mv-page canvas.mv-detail { inset: auto; }
 .mv-page canvas.mv-live { pointer-events: none; }
+/* A PDF saját szövege: átlátszó, kijelölhető réteg (olvasó módban), és az átírt sorok takarása */
+.mv-seltext { position: absolute; inset: 0; pointer-events: none; line-height: 1; overflow: hidden; }
+.mv-panmode .mv-seltext { pointer-events: auto; }
+.mv-seltext span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text; user-select: text; -webkit-user-select: text; }
+.mv-seltext span::selection { background: rgba(36, 87, 197, .3); color: transparent; }
+.mv-tcover { position: absolute; pointer-events: none; }
+.mv-selbar { z-index: 6; }
 /* Gyorsválasztó az eszköztár fölött: 4 szín és 3 méret */
 .mv-quick { position: absolute; left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 3; display: flex; align-items: center; justify-content: space-between;
   gap: 2px; padding: 3px 5px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow); }
