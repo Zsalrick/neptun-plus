@@ -364,7 +364,7 @@ function mvLiveStart(d) {
   cv.width = s.inkW || Math.round(s.cssW * mvScale(s)); cv.height = s.inkH || Math.round(s.cssH * mvScale(s));
   s.el.insertBefore(cv, s.textLayer);
   d.live = cv;
-  d.liveCtx = cv.getContext("2d", { desynchronized: true }) || cv.getContext("2d"); // alacsony késleltetés Androidon
+  d.liveCtx = cv.getContext("2d");
 }
 function mvLiveDraw(d) {
   if (!d.live) return;
@@ -452,19 +452,31 @@ function mvWireInput() {
     if (mv.tool === "text") return mvTextPointerDown(ev);
     if (mv.tool === "pan") { mv.tapDown = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, t: ev.timeStamp }; return; }
     if (ev.pointerType === "pen") mv.penSeen = true;
+    const cur = mv.draw;
+    if (cur) {
+      // Egyszerre egy mozdulat: a második ujj vagy a tenyér nem szakítja meg a vonást.
+      // De ha ELSŐDLEGES érintés jön (minden korábbi ujj fent van) vagy ugyanaz a mutató, az előző
+      // felengedése elveszett: lezárjuk (a vonás megmarad), különben minden további érintés elakadna.
+      if (!ev.isPrimary && ev.pointerId !== cur.id) return;
+      if (ev.pointerType === "touch" && cur.pt === "pen" && ev.pointerId !== cur.id) return; // tenyér tollal írás közben
+      finish(cur, null);
+    }
     // Tenyér-elutasítás: ha egyszer tollat láttunk, az ujj már csak görget.
-    if (ev.pointerType === "touch" && mv.penSeen) { mv.draw = { pan: true, id: ev.pointerId, y: ev.clientY, x: ev.clientX }; return; }
-    if (mv.draw) return; // egyszerre egy mozdulat
+    if (ev.pointerType === "touch" && mv.penSeen) {
+      mv.draw = { pan: true, id: ev.pointerId, y: ev.clientY, x: ev.clientX };
+      if (!mv.penHint) { mv.penHint = 1; toast("Tollat érzékeltem: tollal rajzolsz, ujjal görgetsz."); }
+      return;
+    }
     const s = mvSlotAt(ev); if (!s) return;
     ev.preventDefault();
     try { scroll.setPointerCapture(ev.pointerId); } catch (e) {}
     const q = mvNorm(s, ev), pr = ev.pressure > 0 && ev.pointerType !== "mouse" ? ev.pressure : 0.5;
     if (mv.tool === "pen" || mv.tool === "hl") {
       const p = mvPrefs()[mv.tool];
-      mv.draw = { id: ev.pointerId, s, item: { t: "ink", tool: mv.tool, c: p.c, w: p.w, a: p.a, pts: [q.x, q.y, pr] } };
+      mv.draw = { id: ev.pointerId, pt: ev.pointerType, t0: ev.timeStamp, len: 0, lx: ev.clientX, ly: ev.clientY, s, item: { t: "ink", tool: mv.tool, c: p.c, w: p.w, a: p.a, pts: [q.x, q.y, pr] } };
       mvLiveStart(mv.draw); mvLiveDraw(mv.draw);
     } else if (mv.tool === "eraser") {
-      mv.draw = { id: ev.pointerId, s, removed: [] }; mvErase(s, q, ev);
+      mv.draw = { id: ev.pointerId, pt: ev.pointerType, t0: ev.timeStamp, len: 0, lx: ev.clientX, ly: ev.clientY, s, removed: [] }; mvErase(s, q, ev);
     }
   });
   scroll.addEventListener("pointermove", (ev) => {
@@ -472,6 +484,7 @@ function mvWireInput() {
     if (d.pan) { scroll.scrollTop -= ev.clientY - d.y; scroll.scrollLeft -= ev.clientX - d.x; d.y = ev.clientY; d.x = ev.clientX; return; }
     if (d.mode) return mvTextPointerMove(ev, d);
     ev.preventDefault();
+    if (d.lx != null) { d.len += Math.hypot(ev.clientX - d.lx, ev.clientY - d.ly); d.lx = ev.clientX; d.ly = ev.clientY; }
     const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
     if (d.item) {
       for (const e2 of (evs.length ? evs : [ev])) {
@@ -483,12 +496,10 @@ function mvWireInput() {
       if (!d.raf) d.raf = requestAnimationFrame(() => { d.raf = 0; if (mv && mv.draw === d) mvLiveDraw(d); });
     } else if (d.removed) mvErase(d.s, mvNorm(d.s, ev), ev);
   });
-  const end = (ev) => {
-    if (mv && mv.tool === "pan" && ev.type === "pointerup") mvTapCheck(ev);
-    const d = mv && mv.draw; if (!d || d.id !== ev.pointerId) return;
+  function finish(d, ev) {
     mv.draw = null;
     if (d.pan) return;
-    if (d.mode) return mvTextPointerEnd(ev, d);
+    if (d.mode) { if (ev) mvTextPointerEnd(ev, d); return; }
     const pageId = d.s.pg.id, arr = (mv.doc.items[pageId] = mv.doc.items[pageId] || []);
     if (d.item) {
       if (d.raf) cancelAnimationFrame(d.raf);
@@ -497,6 +508,11 @@ function mvWireInput() {
     } else if (d.removed) {
       if (d.removed.length) { mvPush({ type: "remove", page: pageId, removed: d.removed }); mvSave(); }
     }
+  }
+  const end = (ev) => {
+    if (mv && mv.tool === "pan" && ev.type === "pointerup") mvTapCheck(ev);
+    const d = mv && mv.draw; if (!d || d.id !== ev.pointerId) return;
+    finish(d, ev);
   };
   scroll.addEventListener("pointerup", end);
   scroll.addEventListener("pointercancel", end);
@@ -1254,8 +1270,13 @@ function mvWirePinch(scroll) {
   const midpt = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
   const reset = () => { pages.style.transform = ""; pages.style.transformOrigin = ""; pages.style.willChange = ""; };
   scroll.addEventListener("touchstart", (ev) => {
-    if (!mv || !mv.doc || ev.touches.length !== 2 || mv.edit) return;
-    const d = mv.draw; mv.draw = null; mv.tapDown = null;
+    if (!mv || !mv.doc || mv.edit) return;
+    const fingers = [...ev.touches].filter((t) => t.touchType !== "stylus"); // az S Pen is küld érintést
+    if (fingers.length !== 2 || fingers.length !== ev.touches.length) return;
+    const d = mv.draw;
+    // Ha a vonás már elindult (több mint 250 ms vagy 16 px), a második érintés tenyér vagy véletlen: rajzolunk tovább.
+    if (d && (d.item || d.removed) && (d.pt === "pen" || ev.timeStamp - d.t0 > 250 || d.len > 16)) return;
+    mv.draw = null; mv.tapDown = null;
     if (d && d.item) mvLiveEnd(d); // félbehagyott vonás eldobása
     const m = midpt(ev.touches), pr = pages.getBoundingClientRect();
     mv.pinch = { d0: dist(ev.touches), k: 1, m0: m, m, pt: mvPointAt(m.x, m.y) };

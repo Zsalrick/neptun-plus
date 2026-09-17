@@ -129,6 +129,17 @@ első megnyitásakor töltődnek be, az app indulását nem lassítják.
   bekezdések): mind helyes blokk, a szerkesztőben ugyanannyi sor, mint az eredetiben. Windowsos Chrome
   emulációban a DOM kis betűméretnél hintelt szélességgel (17%-kal szélesebben) tördel; Androidon ez nincs.
 
+**v0.296: rajzolás megbízhatósága (telefonon „ritkán érzékelte”)**
+- Valódi érintés-bemenettel tesztelve (`scripts/viewer-touch-test.mjs`: Chrome + CDP `Input.dispatchTouchEvent`,
+  így a `touch-action` és a böngésző gesztusai is élnek). Az előző verzió két esetben hibázott:
+  - **Tenyér / második ujj** a vonás közben: csípésnek vette, eldobta a vonást és nagyított. Most ha a vonás már
+    elindult (250 ms vagy 16 px), a második érintést figyelmen kívül hagyja. S Pen érintése (`touchType: stylus`)
+    sosem indít csípést, és tollal írás közben a tenyér nem írja felül a vonást.
+  - **Elveszett felengedés** után minden további érintés elakadt (`mv.draw` bent ragadt). Most az új elsődleges
+    érintés lezárja az előzőt (a vonás megmarad).
+- Az alacsony késleltetésű (`desynchronized`) vászon kivéve: egyes Android GPU-kon nem jelenik meg a tartalma.
+- Tipp, ha tollat érzékelt: tollal rajzolsz, ujjal görgetsz.
+
 ### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
 Amit a diákok tényleg használnak, prioritás szerint:
 1. ~~Szöveg kijelölése a PDF-ben~~ (v0.294, KÉSZ)
