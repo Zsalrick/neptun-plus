@@ -1214,6 +1214,15 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .mv-seltext span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0; cursor: text; user-select: text; -webkit-user-select: text; }
 .mv-seltext span::selection { background: rgba(36, 87, 197, .3); color: transparent; }
 .mv-tcover { position: absolute; pointer-events: none; }
+/* Keresés a PDF-ben: sáv a fejléc alatt, találatok a betűkre illesztve */
+.mv-searchbar { display: flex; align-items: center; gap: 2px; padding: 6px 8px 8px 12px; border-bottom: 1px solid var(--line-2); background: var(--bg); }
+.mv-searchbar input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; }
+.mv-searchbar input:focus { outline: none; border-color: var(--ink-3); }
+.mv-searchbar .iconbtn:disabled { opacity: .35; }
+.mv-scount { flex: none; min-width: 58px; padding: 0 4px; text-align: center; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mv-hits { position: absolute; inset: 0; pointer-events: none; }
+.mv-hits i { position: absolute; border-radius: 2px; background: rgba(242, 211, 60, .42); }
+.mv-hits i.on { background: rgba(240, 138, 36, .55); box-shadow: 0 0 0 1.5px #f08a24; }
 .mv-selbar { z-index: 6; }
 /* Gyorsválasztó az eszköztár fölött: 4 szín és 3 méret */
 .mv-quick { position: absolute; left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 3; display: flex; align-items: center; justify-content: space-between;

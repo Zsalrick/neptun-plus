@@ -36,7 +36,7 @@ function mvPrefs() {
 async function openMaterial(id) {
   const m = matById(id); if (!m) { toast("Ez az anyag már nincs meg."); return; }
   mvClose();
-  mv = { id, m, doc: null, pdf: null, z: 1, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], tcache: {}, io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
+  mv = { id, m, doc: null, pdf: null, z: 1, mode: "read", search: null, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], tcache: {}, io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
   pushScreen("tab-mat-view");
 }
 function renderMatView() {
@@ -46,6 +46,7 @@ function renderMatView() {
   mvWireInput();
   if (!mv) { pages.innerHTML = `<div class="dash-empty" style="padding:24px">Nincs megnyitott anyag.</div>`; return; }
   if (ttl) ttl.textContent = mv.m.title;
+  mvRenderHeader();
   mvRenderPop();
   if (mv.doc) { mvLayout(); mvRenderBar(); return; } // már betöltve (pl. visszatérés)
   pages.innerHTML = `<div class="dash-empty" style="padding:24px">Betöltés…</div>`;
@@ -70,10 +71,11 @@ async function mvLoad(cur) {
   cur.doc = doc; doc.items = doc.items || {};
   mvLayout();
   const pr = mvPrefs();
-  if (cur.pdf && !pr.hintSel) { pr.hintSel = 1; saveState(); toast("Tartsd nyomva a PDF szövegét a kijelöléshez. Átírni a T eszközzel lehet."); }
+  if (!pr.hintRead) { pr.hintRead = 1; saveState(); toast("Olvasó mód. Jegyzeteléshez koppints a ceruzára jobb fent."); }
 }
 function mvClose() {
   const sb = $("mv-selbar"); if (sb) sb.remove();
+  const sr = $("mv-searchbar"); if (sr) sr.remove();
   if (!mv) return;
   mvTextCommit();
   try { mv.io && mv.io.disconnect(); } catch (e) {}
@@ -213,6 +215,7 @@ function mvReleaseSlot(sl) {
   sl.task = null; sl.rendered = false; sl.stale = false;
   for (const cv of [sl.pdfCv, sl.inkCv]) { cv.width = 0; cv.height = 0; }
   if (sl.selLayer) sl.selLayer.innerHTML = "";
+  if (sl.hitLayer) sl.hitLayer.innerHTML = "";
   mvDetailDrop(sl);
 }
 
@@ -807,8 +810,7 @@ function mvMeasureCtx() { return (mvMeasureCv = mvMeasureCv || document.createEl
 function mvMul(a, b) { return [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]]; }
 async function mvTextLoad(sl, page) {
   const cur = mv, n = sl.pg.n;
-  if (!cur.tcache[n]) cur.tcache[n] = page.getTextContent().then((tc) => mvTextParse(tc, page.getViewport({ scale: 1 }))).catch(() => ({ runs: [], lines: [] }));
-  const data = await cur.tcache[n];
+  const data = await mvTextFor(n, page);
   if (mv !== cur || !sl.rendered) return;
   sl.tdata = data;
   mvSelLayer(sl);
@@ -916,11 +918,12 @@ function mvSelLayer(sl) {
   if (!sl.selLayer) { sl.selLayer = document.createElement("div"); sl.selLayer.className = "mv-seltext"; sl.el.insertBefore(sl.selLayer, sl.textLayer); }
   const L = sl.selLayer;
   L.style.setProperty("--k", sl.cssW);
-  if (L.childElementCount || !sl.tdata || !sl.tdata.runs.length) return;
+  if (L.childElementCount || !sl.tdata || !sl.tdata.runs.length) { mvSearchPaint(sl); return; }
   const runs = sl.tdata.runs;
   L.innerHTML = runs.map((r) => `<span style="left:${(r.x * 100).toFixed(3)}%;top:${(r.top * 100).toFixed(3)}%;font-size:calc(var(--k) * ${r.fs.toFixed(5)}px);font-family:${r.fam}">${esc(r.str)}</span>`).join(" ");
   const spans = [...L.children], widths = spans.map((el) => el.offsetWidth); // egyetlen elrendezés, transzformációtól független
   spans.forEach((el, i) => { const target = runs[i].w * sl.cssW; if (widths[i] > 0 && target > 0) el.style.transform = `scaleX(${(target / widths[i]).toFixed(4)})`; });
+  mvSearchPaint(sl);
 }
 function mvPdfBlockAt(s, q) {
   const d = s.tdata; if (!d) return null;
@@ -1083,10 +1086,158 @@ async function mvSelAction(a) {
   mvSelBar();
 }
 
+// ---- Olvasó és szerkesztő mód ----
+// Megnyitáskor olvasó mód (nincs eszköztár, nem lehet véletlenül beleírni). Jobb fent: ceruza = szerkesztés,
+// szem = vissza olvasásra. Olvasó módban: kereső, megosztás; szerkesztőben: új oldal, megosztás.
+function mvRenderHeader() {
+  const share = $("mv-share"), add = $("mv-addpage"); if (!share || !mv) return;
+  const mk = (id, after) => {
+    let b = $(id);
+    if (!b) { b = document.createElement("button"); b.id = id; b.type = "button"; b.className = "iconbtn plain"; after.insertAdjacentElement("afterend", b); }
+    return b;
+  };
+  const find = mk("mv-find", add), mode = mk("mv-mode", share); // sorrend: új oldal, keresés, megosztás, mód
+  const read = mv.mode === "read";
+  find.innerHTML = icon("search"); find.title = "Keresés a PDF-ben"; find.setAttribute("aria-label", "Keresés a PDF-ben");
+  find.style.display = read && mv.m.kind === "pdf" ? "" : "none";
+  add.style.display = read ? "none" : "";
+  mode.innerHTML = icon(read ? "pencil" : "eye");
+  mode.title = read ? "Szerkesztés" : "Olvasó mód"; mode.setAttribute("aria-label", mode.title);
+  find.onclick = () => mvSearchOpen();
+  mode.onclick = () => mvSetMode(read ? "edit" : "read");
+}
+function mvSetMode(m) {
+  if (!mv) return;
+  mvTextFinish();
+  mv.mode = m;
+  if (m === "read") { if (mv.tool !== "pan") mv.lastTool = mv.tool; mv.tool = "pan"; mv.popOpen = false; }
+  else {
+    mvSearchClose();
+    try { window.getSelection().removeAllRanges(); } catch (e) {}
+    mv.tool = mv.lastTool || "pen";
+  }
+  mvApplyToolClass(); mvRenderHeader(); mvRenderBar(); mvRenderPop(); mvRenderTextCtx(); mvSelBar();
+}
+
+// ---- Keresés a PDF szövegében ----
+// Kis- és nagybetű, valamint ékezet nélkül is talál ("statisztika" = "Statisztika", "fuggveny" = "függvény").
+// A találatok a kijelölő réteg betűire illesztve jelennek meg, az aktuális erősebben.
+function mvTextFor(n, page) {
+  const cur = mv;
+  if (!cur.tcache[n]) cur.tcache[n] = (page ? Promise.resolve(page) : cur.pdf.getPage(n))
+    .then((p) => p.getTextContent().then((tc) => mvTextParse(tc, p.getViewport({ scale: 1 }))))
+    .catch(() => ({ runs: [], blocks: [] }));
+  return cur.tcache[n];
+}
+function mvFold(c) { return c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase(); }
+// Oldalszöveg a kereséshez: összefűzött, egyszerűsített szöveg, és minden karakteréhez a [darab, karakter] helye.
+function mvSearchIndex(data) {
+  if (data.idx) return data.idx;
+  let str = ""; const map = [];
+  data.runs.forEach((r, ri) => {
+    const prev = data.runs[ri - 1];
+    if (prev && Math.abs(prev.base - r.base) > 0.002 && str && !str.endsWith(" ")) { str += " "; map.push(null); } // sorváltás = szóköz
+    for (let ci = 0; ci < r.str.length; ci++) {
+      const c = r.str[ci];
+      if (/\s/.test(c)) { if (str && !str.endsWith(" ")) { str += " "; map.push([ri, ci]); } continue; }
+      for (const f of mvFold(c)) { str += f; map.push([ri, ci]); }
+    }
+  });
+  return (data.idx = { str, map });
+}
+function mvSearchOpen() {
+  if (!mv || !mv.pdf) return;
+  let bar = $("mv-searchbar");
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "mv-searchbar"; bar.className = "mv-searchbar";
+    bar.innerHTML = `<input type="search" id="mv-q" placeholder="Keresés a PDF-ben" enterkeyhint="search" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Keresés a PDF-ben">`
+      + `<span class="mv-scount" id="mv-scount" aria-live="polite"></span>`
+      + `<button class="iconbtn plain" type="button" data-sq="prev" aria-label="Előző találat" title="Előző">${icon("up")}</button>`
+      + `<button class="iconbtn plain" type="button" data-sq="next" aria-label="Következő találat" title="Következő">${icon("down")}</button>`
+      + `<button class="iconbtn plain" type="button" data-sq="close" aria-label="Keresés bezárása" title="Bezárás">${icon("x")}</button>`;
+    const sc = $("mv-scroll"); sc.parentNode.insertBefore(bar, sc);
+    const inp = $("mv-q");
+    inp.addEventListener("input", () => { clearTimeout(mv.searchT); mv.searchT = setTimeout(() => mvSearchRun(inp.value), 220); });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const S = mv.search; if (S && S.q === inp.value) mvSearchGo(S.cur + (e.shiftKey ? -1 : 1)); else mvSearchRun(inp.value); } });
+    bar.querySelectorAll("[data-sq]").forEach((b) => b.onclick = () => {
+      const S = mv && mv.search, a = b.dataset.sq;
+      if (a === "close") return mvSearchClose();
+      if (S && S.hits.length) mvSearchGo(S.cur + (a === "next" ? 1 : -1));
+    });
+  }
+  mv.search = mv.search || { q: "", hits: [], cur: -1, done: true };
+  mvSearchStatus();
+  const inp = $("mv-q"); try { inp.focus(); inp.select(); } catch (e) {}
+}
+function mvSearchClose() {
+  const bar = $("mv-searchbar"); if (bar) bar.remove();
+  if (!mv) return;
+  mv.search = null;
+  mv.slots.forEach((sl) => mvSearchPaint(sl));
+}
+async function mvSearchRun(q) {
+  const cur = mv; if (!cur || !cur.search) return;
+  const S = cur.search, token = {};
+  const qq = [...q.trim()].map((c) => (/\s/.test(c) ? " " : mvFold(c))).join("").replace(/ +/g, " ");
+  Object.assign(S, { q, token, hits: [], cur: -1, done: !qq });
+  cur.slots.forEach((sl) => mvSearchPaint(sl));
+  mvSearchStatus();
+  if (!qq) return;
+  for (let i = 0; i < cur.doc.pages.length; i++) {
+    const pg = cur.doc.pages[i]; if (pg.kind !== "pdf") continue;
+    const data = await mvTextFor(pg.n);
+    if (mv !== cur || cur.search !== S || S.token !== token) return;
+    const { str, map } = mvSearchIndex(data);
+    for (let at = str.indexOf(qq); at >= 0; at = str.indexOf(qq, at + qq.length)) {
+      const parts = new Map();
+      for (let k = at; k < at + qq.length; k++) { const m = map[k]; if (!m) continue; const p = parts.get(m[0]); if (!p) parts.set(m[0], [m[1], m[1] + 1]); else p[1] = m[1] + 1; }
+      const list = [...parts].map(([ri, [a, b]]) => ({ ri, a, b })), r = data.runs[list[0].ri];
+      S.hits.push({ i, parts: list, x: r.x + (r.w * list[0].a) / Math.max(1, r.str.length), y: r.top });
+    }
+    if (S.cur < 0 && S.hits.length) mvSearchGo(0); // az első találatra rögtön odaugrik
+    else { mvSearchStatus(); const sl = cur.slots[i]; if (sl) mvSearchPaint(sl); }
+  }
+  S.done = true; mvSearchStatus();
+}
+function mvSearchGo(k) {
+  const S = mv && mv.search; if (!S || !S.hits.length) return;
+  S.cur = (k + S.hits.length) % S.hits.length;
+  const h = S.hits[S.cur], sl = mv.slots[h.i]; if (!sl) return;
+  const sc = $("mv-scroll"), b = sl.el.getBoundingClientRect(), R = sc.getBoundingClientRect();
+  sc.scrollTop += b.top + h.y * b.height - (R.top + R.height * 0.35);
+  if (mv.z > 1.001) sc.scrollLeft += b.left + h.x * b.width - (R.left + R.width * 0.3);
+  mvSearchStatus();
+  mv.slots.forEach((x) => mvSearchPaint(x));
+}
+function mvSearchStatus() {
+  const el = $("mv-scount"), S = mv && mv.search; if (!el || !S) return;
+  const n = S.hits.length;
+  el.textContent = !S.q.trim() ? "" : n ? `${S.cur + 1} / ${n}${S.done ? "" : "…"}` : S.done ? "Nincs találat" : "Keresés…";
+  document.querySelectorAll("#mv-searchbar [data-sq=prev], #mv-searchbar [data-sq=next]").forEach((b) => { b.disabled = !n; });
+}
+// Kiemelések egy oldalon: a kijelölő réteg betűiből mérve (pontos), ezért csak kirajzolt oldalon.
+function mvSearchPaint(sl) {
+  const S = mv && mv.search, ix = +sl.el.dataset.ix;
+  const hits = S ? S.hits.filter((h) => h.i === ix) : [];
+  if (!hits.length || !sl.selLayer || !sl.selLayer.childElementCount) { if (sl.hitLayer) sl.hitLayer.innerHTML = ""; return; }
+  if (!sl.hitLayer) { sl.hitLayer = document.createElement("div"); sl.hitLayer.className = "mv-hits"; sl.el.insertBefore(sl.hitLayer, sl.textLayer); }
+  const b = sl.el.getBoundingClientRect(), spans = sl.selLayer.children, pc = (v) => (v * 100).toFixed(3) + "%";
+  let html = "";
+  for (const h of hits) {
+    const on = S.hits[S.cur] === h ? ' class="on"' : "";
+    for (const p of h.parts) {
+      const t = spans[p.ri] && spans[p.ri].firstChild; if (!t) continue;
+      const rg = document.createRange(); rg.setStart(t, Math.min(p.a, t.length)); rg.setEnd(t, Math.min(p.b, t.length));
+      for (const q of rg.getClientRects()) html += `<i${on} style="left:${pc((q.left - b.left) / b.width)};top:${pc((q.top - b.top) / b.height)};width:${pc(q.width / b.width)};height:${pc(q.height / b.height)}"></i>`;
+    }
+  }
+  sl.hitLayer.innerHTML = html;
+}
+
 // ---- Eszköztár és beállítások ----
 function mvRenderBar() {
   const bar = $("mv-bar"); if (!bar) return;
-  if (!mv) { bar.innerHTML = ""; mvRenderQuick(); return; }
+  if (!mv || mv.mode === "read") { bar.innerHTML = ""; mvRenderQuick(); return; } // olvasó módban nincs eszköztár
   const t = mv.tool;
   const btn = (id, ic, label, on, dis, cls) => `<button class="mv-tool${on ? " on" : ""}${cls || ""}" data-mv="${id}" type="button" aria-label="${label}" title="${label}"${dis ? " disabled" : ""}>${icon(ic)}</button>`;
   bar.innerHTML = btn("pan", "hand", "Olvasás és görgetés", t === "pan") + btn("pen", "pencil", "Toll", t === "pen") + btn("hl", "marker", "Kiemelő", t === "hl")

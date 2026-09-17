@@ -144,12 +144,21 @@ első megnyitásakor töltődnek be, az app indulását nem lassítják.
 - A tinta- és élő vonás-vászon `z-index: 3`, `pointer-events: none`: az átírt PDF-szöveg takarása és a szövegdobozok
   fölött is látszik, és a T eszköz koppintásait nem fogja meg. A megosztott PDF-ben is előbb a szöveg, utána a rajz.
 
+**v0.298: olvasó mód és keresés**
+- Megnyitáskor **olvasó mód**: nincs eszköztár, csak görgetés, nagyítás, kijelölés (hosszan nyomva). Jobb fent a
+  ceruza szerkesztő módba vált (az utoljára használt eszközzel, először toll), ott a szem vissza. Fejléc olvasáskor:
+  keresés, megosztás, ceruza; szerkesztéskor: új oldal, megosztás, szem.
+- **Keresés** a PDF szövegében: kis- és nagybetű, ékezet nélkül is talál. Sáv a fejléc alatt: találatszám (3 / 12),
+  előző, következő, bezárás; Enter a következő. Az első találatra rögtön odaugrik. A kiemelések a kijelölő réteg
+  betűiből mérve (pontosak), az aktuális narancs keretes. Az oldalak szövege sorban töltődik, a számláló közben
+  „…”-t mutat. Teszt: 40 találat a 3. oldalon, lépegetés, az aktuális látható helyen.
+
 ### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
 Amit a diákok tényleg használnak, prioritás szerint:
 1. ~~Szöveg kijelölése a PDF-ben~~ (v0.294, KÉSZ)
 2. **Oldal-bélyegképek** oldalsávban (ugrás, átrendezés, törlés, beszúrás).
 3. **Lasszó**: jegyzetek kijelölése, mozgatása, átméretezése, színezése.
-4. **Keresés a PDF szövegében.**
+4. ~~Keresés a PDF szövegében~~ (v0.298, KÉSZ)
 5. **Alakzat-felismerés** (egyenes, nyíl, kör, téglalap tartásra kiegyenesedik).
 6. Nagyításhoz igazodó tollvastagság; sablonos üres oldalak (vonalas, négyzethálós, pontozott).
 7. ~~Kitakarás + átírás~~ (v0.294, KÉSZ: a PDF-sor átírása)

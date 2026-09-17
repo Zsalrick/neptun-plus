@@ -32,7 +32,7 @@ console.log("setup", await ev(`
     for (let i = 0; i < 40; i++) pg.drawText("Line " + i + " of page " + (p + 1) + " with some statistics text to fill the page nicely.", { x: 50, y: 800 - i * 19, size: 12, font: f }); }
   await matImportPdf(new File([await doc.save()], "Rajz teszt.pdf", { type: "application/pdf" }), currentSemesterKey(), { key: "teszt", name: "Teszt", code: "" });
   openMaterial(mats()[mats().length - 1].id); await new Promise(r => setTimeout(r, 3000));
-  mvAction("${process.argv[2] || "pen"}"); return { tool: mv.tool, slots: mv.slots.length, cls: document.getElementById("mv-scroll").className };`));
+  mvSetMode("edit"); mvAction("${process.argv[2] || "pen"}"); return { tool: mv.tool, slots: mv.slots.length, cls: document.getElementById("mv-scroll").className };`));
 
 const touch = (type, pts) => send("Input.dispatchTouchEvent", { type, touchPoints: pts.map(([x, y], i) => ({ x, y, id: i, radiusX: 4, radiusY: 4, force: 0.5 })) });
 async function stroke(x0, y0, dx, dy, steps = 16, dt = 16) {
