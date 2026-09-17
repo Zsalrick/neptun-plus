@@ -3,12 +3,14 @@
 "use strict";
 
 // generic confirm dialog -> Promise<bool>
-function ask({ title, body, okText = "Igen", cancelText = "Mégse" }) {
+// danger: a megerősítő gomb piros (törlés és más visszafordíthatatlan művelet).
+function ask({ title, body, okText = "Igen", cancelText = "Mégse", danger = false }) {
   return new Promise((res) => {
     $("ask-title").textContent = title; $("ask-body").innerHTML = body; $("ask-ok").textContent = okText; $("ask-cancel").textContent = cancelText;
     $("ask-ok").disabled = false;
+    $("ask-ok").classList.toggle("danger", danger); $("ask-ok").classList.toggle("primary", !danger);
     $("ask-dialog").classList.remove("hidden");
-    const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").onclick = null; $("ask-cancel").onclick = null; res(v); };
+    const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").onclick = null; $("ask-cancel").onclick = null; $("ask-ok").classList.remove("danger"); $("ask-ok").classList.add("primary"); res(v); };
     $("ask-ok").onclick = () => done(true); $("ask-cancel").onclick = () => done(false);
   });
 }
@@ -28,17 +30,21 @@ function askText({ title, body = "", value = "", placeholder = "", okText = "Men
   });
 }
 // Like ask(), but offers a list of choices. Resolves to the chosen value, or null on cancel.
+// Opciónként: icon (ikonnév), danger (piros, külön csoportban a lista alján), disabled (nem választható, a sub mondja meg, miért).
 function askPick({ title, body = "", options = [], cancelText = "Mégse" }) {
   return new Promise((res) => {
     $("ask-title").textContent = title;
-    $("ask-body").innerHTML = body + `<div class="card" style="margin-top:12px">` + options.map((o, ix) =>
-      `<div class="row ask-pick" data-ix="${ix}" style="cursor:pointer"><span class="row-main"><span class="row-title">${esc(o.label)}</span>`
-      + (o.sub ? `<span class="row-sub">${esc(o.sub)}</span>` : "") + `</span></div>`).join("") + `</div>`;
+    const row = (o) => { const ix = options.indexOf(o); return `<div class="row ask-pick${o.danger ? " danger" : ""}${o.disabled ? " off" : ""}" data-ix="${ix}" style="cursor:pointer"${o.disabled ? ' aria-disabled="true"' : ""}>`
+      + (o.icon ? `<span class="row-ic${o.danger ? " danger" : ""}">${icon(o.icon)}</span>` : "")
+      + `<span class="row-main"><span class="row-title">${esc(o.label)}</span>`
+      + (o.sub ? `<span class="row-sub">${esc(o.sub)}</span>` : "") + `</span></div>`; };
+    const card = (list) => list.length ? `<div class="card" style="margin-top:12px">${list.map(row).join("")}</div>` : "";
+    $("ask-body").innerHTML = body + card(options.filter((o) => !o.danger)) + card(options.filter((o) => o.danger));
     $("ask-ok").textContent = ""; $("ask-ok").style.display = "none";
     $("ask-cancel").textContent = cancelText;
     $("ask-dialog").classList.remove("hidden");
     const done = (v) => { $("ask-dialog").classList.add("hidden"); $("ask-ok").style.display = ""; $("ask-cancel").onclick = null; res(v); };
-    $("ask-body").querySelectorAll(".ask-pick").forEach((b) => b.onclick = () => done(options[+b.dataset.ix].value));
+    $("ask-body").querySelectorAll(".ask-pick:not(.off)").forEach((b) => b.onclick = () => done(options[+b.dataset.ix].value));
     $("ask-cancel").onclick = () => done(null);
   });
 }

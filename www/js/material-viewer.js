@@ -808,7 +808,7 @@ async function mvDeletePage(ix) {
   const warn = pg.kind === "pdf"
     ? "Ez az eredeti PDF egyik oldala. Maga a fájl nem változik, később a menüből vissza is hozható."
     : (items && items.length ? "A rajta lévő jegyzetek is törlődnek." : "Üres oldal.");
-  const ok = await ask({ title: `A(z) ${ix + 1}. oldal törlése`, okText: "Törlés", cancelText: "Mégse", body: `${warn}<br><br>Amíg nyitva van az anyag, a Visszavonás gombbal visszahozható.` });
+  const ok = await ask({ title: `A(z) ${ix + 1}. oldal törlése`, okText: "Törlés", cancelText: "Mégse", danger: true, body: `${warn}<br><br>Amíg nyitva van az anyag, a Visszavonás gombbal visszahozható.` });
   if (!ok || !mv) return;
   if (mv.sel && mv.sel.s.pg.id === pg.id) mv.sel = null;
   pages.splice(ix, 1); delete mv.doc.items[pg.id];
@@ -838,12 +838,14 @@ async function mvRestorePdfPages() {
 async function mvPageMenu(ix) {
   if (!mv || !mv.doc) return;
   mvTextFinish();
-  const miss = mvMissingPdfPages();
-  const opts = [
-    { label: "Új üres oldal ez után", value: "add" },
-    { label: "Oldal törlése", sub: mv.doc.pages.length <= 1 ? "Az utolsó oldal nem törölhető" : "", value: "del" }];
-  if (miss.length) opts.push({ label: "Törölt eredeti oldalak visszaállítása", sub: miss.length + " oldal: " + miss.slice(0, 6).join(", ") + (miss.length > 6 ? "…" : ""), value: "restore" });
-  const act = await askPick({ title: (ix + 1) + ". oldal", options: opts });
+  const miss = mvMissingPdfPages(), pg = mv.doc.pages[ix], only = mv.doc.pages.length <= 1;
+  const list = miss.slice(0, 6).join(", ") + (miss.length > 6 ? "…" : "");
+  const opts = [{ icon: "plus", label: "Új üres oldal ez után", sub: "Ugyanakkora, mint ez az oldal", value: "add" }];
+  if (miss.length) opts.push({ icon: "refresh", label: miss.length === 1 ? "Törölt eredeti oldal visszaállítása" : "Törölt eredeti oldalak visszaállítása",
+    sub: (miss.length === 1 ? "Az eredeti PDF " : "Az eredeti PDF oldalai: ") + list + (miss.length === 1 ? ". oldala" : ""), value: "restore" });
+  opts.push({ icon: "trash", label: "Oldal törlése", danger: true, disabled: only, sub: only ? "Az egyetlen oldal nem törölhető" : "Visszavonással visszahozható", value: "del" });
+  const kind = pg && pg.kind === "blank" ? "Üres oldal" : "PDF-oldal";
+  const act = await askPick({ title: (ix + 1) + ". oldal", body: `<div class="hint">${kind} · ${mv.doc.pages.length} oldalból</div>`, options: opts });
   if (!mv) return;
   if (act === "add") mvAddPage(ix);
   else if (act === "del") mvDeletePage(ix);

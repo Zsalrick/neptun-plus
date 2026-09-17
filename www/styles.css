@@ -149,6 +149,7 @@ button.row:active { background: var(--surface-2); }
 .row-val { font-size: 12px; color: var(--ink-2); font-weight: 600; }
 .row-chev { color: var(--ink-3); display: flex; }
 .row.danger .row-title { color: var(--danger); }
+.ask-pick.off { opacity: .45; cursor: default !important; }
 
 /* ---------- Fields ---------- */
 .field { margin-bottom: 14px; }
