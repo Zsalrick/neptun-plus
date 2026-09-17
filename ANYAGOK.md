@@ -114,6 +114,21 @@ első megnyitásakor töltődnek be, az app indulását nem lassítják.
   a betű nagyon hasonló, de nem mindig azonos. A megosztott PDF-ben az eredeti szöveg a takarás alatt megmarad
   (keresésnél, másolásnál az jön elő). Elforgatott, függőleges szöveg kimarad.
 
+**v0.295: bekezdések felismerése az átíráshoz**
+- A T eszközzel a koppintás egy egész BEKEZDÉST nyit meg, ha a sorok összetartoznak (`mvTextBlocks`): egymás alatti
+  sorok azonos betűmérettel és -családdal, egyenletes sortávval, átfedő szélességgel, stimmelő bal széllel (vagy
+  középpel). A szerkesztő tördelt doboz az eredeti szélességgel, sortávval, igazítással (balra, középre, sorkizárt)
+  és behúzással (első sor behúzása, függő behúzás), így gépeléskor ugyanúgy tördel, mint a PDF.
+- Kemény sortörés megmarad (felsorolás, bekezdés vége): ha a következő sor első szava még kifért volna a sor végére.
+  Sor végi elválasztójel + kisbetűs folytatás: összevonva.
+- Listajel (•, -, 1.) külön darabként a PDF-ben marad, csak a mellette lévő szöveg szerkeszthető; listajellel
+  kezdődő sor mindig új blokk. Behúzott új bekezdés szintén új blokk.
+- A bekezdés takarása nem nő lefelé (észrevétlenül eltakarná a következő sorokat); az egysoros átírásé vízszintesen igen.
+- Kéz módban hosszan nyomva csak kijelölés és jelölés van, beírni nem lehet (első megnyitáskor tipp).
+- Teszt: generált PDF (balra zárt, sorkizárt, felsorolás függő behúzással, középre zárt felirat, behúzott
+  bekezdések): mind helyes blokk, a szerkesztőben ugyanannyi sor, mint az eredetiben. Windowsos Chrome
+  emulációban a DOM kis betűméretnél hintelt szélességgel (17%-kal szélesebben) tördel; Androidon ez nincs.
+
 ### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
 Amit a diákok tényleg használnak, prioritás szerint:
 1. ~~Szöveg kijelölése a PDF-ben~~ (v0.294, KÉSZ)
