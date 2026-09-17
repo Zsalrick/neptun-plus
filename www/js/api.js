@@ -84,17 +84,58 @@ async function getApiSession(force) {
     try { res = await apiAuthenticate(); } catch (e) { res = null; }
     if (!(res && res.token)) { try { res = await neptunGetSession(); } catch (e) { return null; } }
     if (res && res.token) {
-      apiSession = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
-      const nc = (res.code && /^[A-Za-z0-9]{6}$/.test(res.code)) ? res.code.toUpperCase() : tokenNeptunCode(res.token);
-      if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
-      const mn = tokenUserName(res.token); // a saját nevünk, hogy felismerjük magunkat a névsorokban
-      if (mn && mn !== state.myName) { state.myName = mn; saveState(); }
+      const sess = { base: res.base || "", token: res.token, at: Date.now(), exp: tokenExp(res.token) };
+      if (!(await apiCheckIdentity(sess))) { apiSession = null; identityBlockedToast(); return null; }
+      apiSession = sess;
+      if (!state.identity) { // régi módszer, amíg a Neptun nem adott UserInfo-t (becslés a tokenből)
+        const nc = (res.code && /^[A-Za-z0-9]{6}$/.test(res.code)) ? res.code.toUpperCase() : tokenNeptunCode(res.token);
+        if (nc && nc !== state.neptunCode) { state.neptunCode = nc; saveState(); }
+        const mn = tokenUserName(res.token); // a saját nevünk, hogy felismerjük magunkat a névsorokban
+        if (mn && mn !== state.myName) { state.myName = mn; saveState(); }
+      }
       onSessionChanged(); return apiSession;
     }
     return null;
   })();
   try { return await sessionInFlight; } finally { sessionInFlight = null; }
 }
+// ---------- saját Neptun-fiók (egy app = egy ember) ----------
+// A név és a Neptun-kód az api/UserInfo-ból jön (ugyanonnan, ahonnan a Neptun fejléce). Az első sikeres
+// belépéskor rögzítjük. A bejelentkezési azonosító átírható, de ha utána MÁSIK Neptun-kód lép be vele,
+// a munkamenetet elutasítjuk. Profilonként és azonosítónként futásonként egyszer kérdezzük le.
+let identityCheckedFor = "", identityToastAt = 0;
+function identityKey() { return (state.activeProfileId || "") + "|" + (state.username || ""); }
+async function apiCheckIdentity(sess) {
+  if (identityCheckedFor === identityKey()) return true;
+  let u = null;
+  try { const r = await apiGet(sess, "UserInfo"); if (r && r.status === 200 && r.data) u = r.data.data || r.data; } catch (e) { u = null; }
+  const code = u && /^[A-Za-z0-9]{6}$/.test(String(u.neptunCode || "")) ? String(u.neptunCode).toUpperCase() : "";
+  if (!code) return true; // ponytail: nem elérhető (hálózat, más Neptun-verzió) → nem blokkolunk, a következő munkamenetnél újra
+  const id = state.identity;
+  if (id && id.code && id.code !== code) { state.identityMismatch = code; saveState(); return false; }
+  identityCheckedFor = identityKey();
+  const name = String(u.name || "").trim();
+  state.identity = { code, name: name || (id && id.name) || "", at: new Date().toISOString() };
+  state.identityMismatch = "";
+  state.neptunCode = code;
+  if (name) state.myName = name;
+  saveState();
+  return true;
+}
+function identityBlockedToast(force) {
+  if (!state.identityMismatch || !state.identity) return;
+  if (!force && Date.now() - identityToastAt < 20000) return;
+  identityToastAt = Date.now();
+  toast(`Ez a belépés egy másik Neptun-fiókhoz tartozik (${state.identityMismatch}). Ebben a profilban csak a(z) ${state.identity.code} fiók használható.`, 6000);
+}
+// Belépés előtt: a mostani azonosító a saját fiókunkhoz tartozik-e (ha még nem ellenőriztük).
+async function identityOk() {
+  if (!isNative || !state.identity || !state.identity.code) return true;
+  if (identityCheckedFor === identityKey()) return !state.identityMismatch;
+  const s = await getApiSession(true);
+  return !(!s && state.identityMismatch);
+}
+
 // ---------- keep a warm Neptun session (no manual re-login) ----------
 // We hold the credentials + TOTP secret, so instead of fighting the OS to keep a token alive in the
 // background, we silently (re-)authenticate on demand: at app start, on resume, and on profile switch.

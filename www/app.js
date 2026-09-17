@@ -3,7 +3,7 @@
 "use strict";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.300";
+const APP_VERSION = "v0.301";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -68,7 +68,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining", "plans", "materials"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining", "plans", "materials", "identity", "identityMismatch"];
 function defaultState() {
   return {
     setupComplete: false,
@@ -80,6 +80,8 @@ function defaultState() {
     activeServerId: "u0",
     username: "", password: "",
     neptunCode: "", // immutable Neptun code (read-only); the login name (username) can differ / be custom
+    identity: null, // { code, name, at }: a Neptun api/UserInfo szerinti saját fiók, az első sikeres belépéskor rögzítve
+    identityMismatch: "", // ha a mentett azonosítóval MÁSIK Neptun-kód lép be, annak kódja (a munkamenetet elutasítjuk)
     finance: null, // { fetchedAt, accounts, toPay, impositions, transactions, invoices, scholarships } — see FRONTEND-penzugyek.md
     no2fa: false,
     totp: null,

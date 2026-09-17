@@ -29,7 +29,7 @@ async function promptSaveAccount() {
   if (u !== (state.username || "")) rows.push(esc(state.username || "—") + " → " + esc(u || "—"));
   if ($("in-password").value !== (state.password || "")) rows.push("jelszó módosítva");
   const ok = await ask({ title: "Mented a változásokat?", okText: "Mentés", cancelText: "Elvetés", body: rows.join("<br>") });
-  if (ok) { if (!saveAccount()) return; } // save failed (empty) → stay
+  if (ok) { if (!(await saveAccount())) return; } // save failed (empty / másik Neptun-fiók) → stay
   else { $("in-username").value = state.username || ""; $("in-password").value = state.password || ""; $("in-username-err").hidden = true; }
   refreshAccountBar();
   const prev = navStack.pop() || lastMainTab; showTab(prev, -1);

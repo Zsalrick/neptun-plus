@@ -234,6 +234,13 @@ function initOnboarding() {
       catch (e) { ok = false; }
       finally { hideBusy(); }
       if (!ok) { toast("A belépés nem sikerült. Ellenőrizd az azonosítót, a jelszót és a 2FA kódot."); return; }
+      // Ugyanaz a Neptun-fiók nem lehet két profilban (a belépés már rögzítette a Neptun-kódot).
+      const code = state.identity && state.identity.code;
+      if (obMode === "add" && code && otherProfiles().some((p) => (p.identity && p.identity.code) === code)) {
+        state.identity = null; state.neptunCode = ""; identityCheckedFor = ""; apiSession = null; saveState();
+        toast(`Ez a Neptun-fiók (${code}) már szerepel egy másik profilodban.`, 5000);
+        return;
+      }
     }
     if (obStep === 1) commitObStep1();
     if (obPos === obSeq.length - 1) return finishOnboarding();

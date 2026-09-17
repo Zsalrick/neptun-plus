@@ -9,7 +9,7 @@ function syncSettings() {
   $("in-username").value = state.username || "";
   syncLockedFields();
   $("in-username-err").hidden = !!state.username;
-  { const cf = $("in-code-field"), ci = $("in-code"); if (cf && ci) { if (state.neptunCode) { ci.value = state.neptunCode; cf.hidden = false; } else cf.hidden = true; } }
+  syncIdentityFields();
   refreshAccountBar();
   updateIcsStatus();
   $("in-password").value = state.password || "";
@@ -207,15 +207,39 @@ $("btn-check-update").onclick = async () => {
 function accountDirty() {
   const u = $("in-username"), p = $("in-password");
   if (!u || !p) return false;
-  return (!profileLocked() && u.value !== (state.username || "")) || p.value !== (state.password || "");
+  return u.value !== (state.username || "") || p.value !== (state.password || "");
 }
-// Létrehozott profilnál az azonosító és az egyetem csak látható (lásd profileLocked). A jelszó változhat.
+// Név és Neptun-kód: a Neptunból, csak látható és másolható. Az azonosító átírható (de csak a saját fiókra).
+function syncIdentityFields() {
+  const cf = $("in-code-field"), ci = $("in-code"); if (!cf || !ci) return;
+  const id = state.identity, code = (id && id.code) || state.neptunCode || "";
+  cf.hidden = false;
+  ci.value = code; ci.placeholder = "Az első sikeres belépés után jelenik meg";
+  if (!$("btn-copy-code")) {
+    const g = document.createElement("div"); g.className = "input-group";
+    ci.parentNode.insertBefore(g, ci); g.appendChild(ci);
+    const b = document.createElement("button"); b.className = "iconbtn"; b.id = "btn-copy-code"; b.type = "button";
+    b.title = "Neptun kód másolása"; b.setAttribute("aria-label", "Neptun kód másolása"); b.innerHTML = icon("copy");
+    b.onclick = async () => {
+      const v = $("in-code").value; if (!v) return;
+      try { await navigator.clipboard.writeText(v); } catch (e) { const t = $("in-code"); t.select(); try { document.execCommand("copy"); } catch (e2) {} }
+      toast("Neptun kód kimásolva.");
+    };
+    g.appendChild(b);
+  }
+  const hint = cf.querySelector(".hint"); if (hint) hint.textContent = "A Neptunból, belépéskor. Nem módosítható, csak másolható.";
+  $("btn-copy-code").disabled = !code;
+  let nf = $("in-myname-field");
+  if (!nf) {
+    nf = document.createElement("div"); nf.className = "field"; nf.id = "in-myname-field";
+    nf.innerHTML = `<label>Név</label><input class="input" id="in-myname" readonly />`;
+    cf.parentNode.insertBefore(nf, cf);
+  }
+  nf.hidden = !(id && id.name);
+  $("in-myname").value = (id && id.name) || "";
+}
+// Létrehozott profilnál az egyetem csak látható (lásd uniLocked).
 function syncLockedFields() {
-  const locked = profileLocked(), u = $("in-username");
-  if (u) { u.readOnly = locked; u.classList.toggle("mono", locked); }
-  let h = $("in-username-lock");
-  if (!h && u) { h = document.createElement("div"); h.id = "in-username-lock"; h.className = "hint"; u.insertAdjacentElement("afterend", h); }
-  if (h) { h.hidden = !locked; h.textContent = "A profil létrehozása után nem módosítható. Másik egyetemhez új profilt adhatsz hozzá."; }
   const b = $("btn-change-uni"), ulock = uniLocked();
   if (b) {
     const sub = b.querySelector(".row-sub"), chev = b.querySelector(".row-chev");
@@ -224,11 +248,27 @@ function syncLockedFields() {
   }
 }
 function refreshAccountBar() { const b = $("account-savebar"); if (b) b.hidden = !accountDirty(); }
-function saveAccount() {
-  const u = profileLocked() ? (state.username || "") : $("in-username").value.slice(0, 255);
+async function saveAccount() {
+  const u = $("in-username").value.slice(0, 255);
   if (!u) { toast("Az azonosító nem lehet üres."); return false; }
-  const old = state.username || "";
-  state.username = u; state.password = $("in-password").value; saveState();
+  const old = state.username || "", oldPass = state.password || "";
+  state.username = u; state.password = $("in-password").value;
+  // Ha már tudjuk, kié a profil, az új adatokkal rögtön belépünk és ellenőrizzük: másik ember fiókja nem menthető.
+  if (isNative && state.identity && state.identity.code && (u !== old || state.password !== oldPass)) {
+    identityCheckedFor = ""; state.identityMismatch = ""; apiSession = null;
+    showBusy("Fiók ellenőrzése…", true);
+    let other = false;
+    try { await totpTick(); const s = await getApiSession(true); other = !s && !!state.identityMismatch; } catch (e) { other = false; }
+    finally { hideBusy(); }
+    if (other) {
+      const code = state.identityMismatch;
+      state.username = old; state.password = oldPass; state.identityMismatch = ""; identityCheckedFor = ""; saveState();
+      $("in-username").value = old; $("in-password").value = oldPass; refreshAccountBar();
+      toast(`Nem mentettem: ez a(z) ${code} Neptun-fiók, nem a tiéd (${state.identity.code}).`, 6000);
+      return false;
+    }
+  }
+  saveState();
   renderHome(); refreshAccountBar();
   toast(old && old !== u ? "Azonosító mentve: " + old + " → " + u : "Mentve.");
   return true;

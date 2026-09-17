@@ -8,6 +8,7 @@
 $("btn-login").onclick = async () => {
   if (!state.username || !state.password) return toast("Hiányoznak a belépési adatok.");
   await totpTick();
+  if (!(await identityOk())) return identityBlockedToast(true); // másik ember fiókjába nem léptetünk be
   const srv = activeServer();
   if (isNative) return nativeLogin(srv, apiSessionValid(60000) ? apiSession.token : "");
   return browserPreviewLogin(srv);
