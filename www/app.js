@@ -3,7 +3,7 @@
 "use strict";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.301";
+const APP_VERSION = "v0.302";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------

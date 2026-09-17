@@ -283,6 +283,38 @@ $("in-password").addEventListener("input", refreshAccountBar);
 { const c = $("account-cancel"); if (c) c.onclick = () => { $("in-username").value = state.username || ""; $("in-password").value = state.password || ""; $("in-username-err").hidden = true; refreshAccountBar(); }; }
 $("btn-show-pass").onclick = async () => { const el = $("in-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuthFor("sensitive"))) return; el.type = "text"; };
 
+// ---------- Hírlevél ----------
+// Az app NEM gyűjt e-mail-címet (lásd az adatkezelési tájékoztatót): a feliratkozás és a leiratkozás
+// a kreditplus.hu oldalon történik, a telefon böngészőjében.
+const NEWS_URL = "https://kreditplus.hu/#ertesites", NEWS_OFF_URL = "https://kreditplus.hu/leiratkozas/";
+function openWeb(url) {
+  const iab = window.cordova && window.cordova.InAppBrowser;
+  if (iab) { try { iab.open(url, "_system"); return; } catch (e) {} } // a telefon saját böngészője
+  window.open(url, "_blank", "noopener");
+}
+async function newsletterMenu() {
+  const v = await askPick({
+    title: "Hírlevél",
+    body: `<div class="hint">Értesítés az újdonságokról és a nagyobb változásokról. Az app nem tárol e-mail-címet, a megadás a kreditplus.hu oldalon történik.</div>`,
+    options: [
+      { icon: "mail", label: "Feliratkozás", sub: "Megnyitja a kreditplus.hu oldalt", value: "on" },
+      { icon: "x", label: "Leiratkozás", sub: "A hírlevél lemondása", value: "off" }],
+  });
+  if (!v) return;
+  openWeb(v === "on" ? NEWS_URL : NEWS_OFF_URL);
+}
+(function addNewsletterRow() {
+  const anchor = document.querySelector('#tab-settings [data-setpage="tab-set-docs"]');
+  if (!anchor || $("hub-news")) return;
+  const b = document.createElement("button");
+  b.className = "row"; b.id = "hub-news"; b.type = "button";
+  b.innerHTML = `<span class="row-ic">${icon("mail")}</span>`
+    + `<span class="row-main"><span class="row-title">Hírlevél</span><span class="row-sub">Feliratkozás és leiratkozás a weboldalon</span></span>`
+    + `<span class="row-chev">${icon("chev")}</span>`;
+  anchor.insertAdjacentElement("beforebegin", b);
+  b.onclick = newsletterMenu;
+})();
+
 function renderServersSettings() {
   const list = $("server-list"); list.innerHTML = "";
   state.servers.forEach((s) => {
