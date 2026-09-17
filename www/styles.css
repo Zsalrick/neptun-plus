@@ -213,8 +213,9 @@ button.row:active { background: var(--surface-2); }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: transparent;
   color: var(--ink-2); padding: 0 12px; min-height: var(--ctl-sm); border-radius: 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 
-.totp-tile { display: flex; align-items: center; gap: 15px; padding: 15px; margin-top: 14px;
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
+/* 2FA band: part of the login card, split off by a hairline (no card-in-card box). */
+.totp-tile { display: flex; align-items: center; gap: 15px; padding: 14px 0 0; margin-top: 14px;
+  background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 .ring-wrap { position: relative; width: 48px; height: 48px; flex: none; }
 .ring { width: 48px; height: 48px; transform: rotate(-90deg); }
 .ring .bg { fill: none; stroke: var(--surface-3); stroke-width: 3; }
@@ -426,21 +427,37 @@ button.grade-row:active { background: var(--surface-2); }
 .next-card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface);
   border-radius: 14px; padding: 13px 15px; margin-top: 10px; cursor: pointer; color: inherit; font: inherit; box-shadow: var(--shadow-sm); }
 .next-card:active { background: var(--surface-2); }
-/* Currently-running class: brighter, gently pulsing so it stands out. */
-.next-card.nc-now { border-color: var(--ink-2); background: var(--surface-2); animation: nc-pulse 2s ease-in-out infinite; }
-.next-card.nc-now .nc-head { color: var(--accent); }
-.next-card.nc-now .nc-time { font-size: 16px; } /* range fits (HH:MM–HH:MM) */
-@keyframes nc-pulse { 0%, 100% { border-color: var(--line-2); } 50% { border-color: var(--ink); } }
-@media (prefers-reduced-motion: reduce) { .next-card.nc-now { animation: none; } }
-.nc-head { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
-.nc-head svg.ic { width: 14px; height: 14px; }
-.nc-row { display: flex; align-items: center; gap: 14px; margin-top: 7px; }
-.nc-time { font-family: var(--font-mono); font-size: 22px; font-weight: 600; letter-spacing: -.02em; flex: none; }
+/* Currently-running class: a quietly highlighted row (no pulsing, see DESIGN.md). */
+.next-card.nc-now { background: var(--surface-2); }
+.next-card.nc-now .nc-head { color: var(--ink); }
+.next-card.nc-now .nc-time { font-size: 15px; } /* range fits (HH:MM-HH:MM) */
+/* Row: time (or icon) column · label, title, meta · chevron */
+.nc-row { display: flex; align-items: center; gap: 13px; }
+.nc-time { font-family: var(--font-mono); font-size: 21px; font-weight: 600; letter-spacing: -.02em; flex: none; min-width: 64px; }
+.nc-ic { display: flex; align-items: center; color: var(--ink-2); padding-left: 4px; }
+.nc-ic svg.ic { width: 21px; height: 21px; }
 .nc-body { flex: 1; min-width: 0; }
-.nc-title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nc-head { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nc-chev { flex: none; display: flex; color: var(--ink-3); }
+.nc-chev svg.ic { width: 17px; height: 17px; }
+.nc-title { font-size: 15px; font-weight: 600; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nc-meta { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nc-loc { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
 .nc-loc svg.ic { width: 14px; height: 14px; }
+
+/* Home list group: consecutive list-type widgets share one faint, borderless surface with inset hairlines.
+   Only the login card keeps a border + stronger surface, so it stays the focal point. */
+.hub-group { margin-top: 14px; border-radius: 14px; overflow: hidden;
+  background: var(--surface); /* tartalék régi WebView-ra, ahol nincs color-mix() */
+  background: color-mix(in srgb, var(--surface) 60%, var(--bg)); }
+.hub-group > .next-card, .hub-group > .hub-stat, .hub-group > .hub-shortcut { position: relative; display: flex; width: 100%; margin: 0; padding: 13px 14px; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.hub-group > .next-card { display: block; }
+.hub-group > * + *::before { content: ""; position: absolute; top: 0; left: 14px; right: 14px; height: 1px; background: var(--line); }
+.hub-group > .next-card:active, .hub-group > .hub-stat:active, .hub-group > .hub-shortcut:active { background: var(--surface-2); }
+.hub-group > .next-card.nc-now, .hub-group > .next-card.sync-cta { background: var(--surface-2); }
+.hub-group .hs-ic, .hub-group .hub-shortcut .row-ic { width: 64px; height: auto; background: none; border: 0; place-items: center start; padding-left: 4px; }
 
 /* ---------- Customizable hub widgets + editor ---------- */
 .hub-stat, .hub-shortcut { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; color: inherit; font: inherit;
