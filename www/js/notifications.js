@@ -75,7 +75,8 @@ async function rescheduleNotifications() {
         body,
         schedule: { at: new Date(at), allowWhileIdle: true }, smallIcon: "ic_stat_neptun",
         extra: { kind, head: title, lead, summary: e.summary || "", location: e.location || "", s: e.S.toISOString(), e: e.E ? e.E.toISOString() : "",
-          logOnTap: { kind: (kind === "class" ? "timetable" : "vizsga"), title, body, detail, target }, key: "rem-" + kind + "-" + e.S.getTime() + "-" + lead },
+          logOnTap: { kind: (kind === "class" ? "timetable" : "vizsga"), title, body, detail, target,
+            data: { what: "reminder", ev: kind, lead, sum: e.summary || "", loc: e.location || "", s: e.S.getTime(), e: e.E ? e.E.getTime() : 0 } }, key: "rem-" + kind + "-" + e.S.getTime() + "-" + lead },
       });
     }));
   };
@@ -145,14 +146,15 @@ async function notifyChanges() {
     const ix = (state.grades && state.grades.averages && state.grades.averages.indices) || {};
     const idxV = ix.korrigalt != null ? ix.korrigalt : ix.kreditIndex;
     if (idxV != null) detail += "\n\nKreditindexed most: " + idxV; // a jegy hatása az indexre
-    news.push({ kind: "grades", title: "Új jegy", body, detail, target: { tab: "tab-grades" } });
+    news.push({ kind: "grades", title: "Új jegy", body, detail, target: { tab: "tab-grades" },
+        data: { what: "grades", items: hits.map((s2) => ({ subject: s2.subject || "", code: s2.code || "", result: s2.result || s2.value || "", credits: s2.credits || "", term: s2.term || "" })), index: idxV } });
   }
   // Megajánlott jegy
   const po = setOf(prev.offered), no = cur.offered.filter((k) => !po.has(k));
   if (no.length && no.length <= CAP) news.push({ kind: "grades", title: "Megajánlott jegy", body: no.length === 1 ? "1 új megajánlott jegy vár rád" : no.length + " új megajánlott jegy", detail: "Megajánlott jegyed érkezett, amit a Jegyek oldalon elfogadhatsz vagy elutasíthatsz.", target: { tab: "tab-grades" } });
   // Új üzenet
   const pm = setOf(prev.msgs), nm = ((state.messages && state.messages.received) || []).filter((x) => x.id && !pm.has(x.id));
-  if (nm.length && had(prev.msgs) && nm.length <= CAP) news.push({ kind: "messages", title: "Új üzenet", body: nm.length === 1 ? [nm[0].from, nm[0].subject].filter(Boolean).join(" · ") : nm.length + " új üzenet", detail: nm.length === 1 ? ("Új üzeneted érkezett.\nFeladó: " + (nm[0].from || "?") + "\nTárgy: " + (nm[0].subject || "(nincs tárgy)")) : (nm.length + " új üzeneted érkezett a Neptunban."), target: { tab: "tab-messages" } });
+  if (nm.length && had(prev.msgs) && nm.length <= CAP) news.push({ data: { what: "messages", items: nm.slice(0, 6).map((x) => ({ from: x.from || "", subject: x.subject || "", date: x.date || x.lastPostDate || "" })) }, kind: "messages", title: "Új üzenet", body: nm.length === 1 ? [nm[0].from, nm[0].subject].filter(Boolean).join(" · ") : nm.length + " új üzenet", detail: nm.length === 1 ? ("Új üzeneted érkezett.\nFeladó: " + (nm[0].from || "?") + "\nTárgy: " + (nm[0].subject || "(nincs tárgy)")) : (nm.length + " új üzeneted érkezett a Neptunban."), target: { tab: "tab-messages" } });
   // Új befizetendő
   const pp = setOf(prev.toPay), np = ((state.finance && state.finance.toPay) || []).filter((x) => x.id && !pp.has(x.id));
   if (np.length && np.length <= CAP) {
@@ -161,7 +163,7 @@ async function notifyChanges() {
       const it = np[0]; const dueLine = it.dueDate ? ("\nHatáridő: " + exFmtDate(it.dueDate) + dueDaysSuffix(it.dueDate)) : "";
       fdetail = "Új befizetendő tétel:\n" + (it.name || "Tétel") + " · " + ftFt(it.value, it.currency) + dueLine;
     } else fdetail = np.length + " új befizetendő tételed van.";
-    news.push({ kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel", detail: fdetail, target: { tab: "tab-fin-topay" } });
+    news.push({ data: { what: "finance", items: np.slice(0, 6).map((x) => ({ name: x.name || "", value: x.value, currency: x.currency || "HUF", dueDate: x.dueDate || "", term: x.term || "", subject: x.subjectName || "" })) }, kind: "finance", title: "Új befizetendő", body: np.length === 1 ? (np[0].name || "Tétel") + " · " + ftFt(np[0].value, np[0].currency) : np.length + " új befizetendő tétel", detail: fdetail, target: { tab: "tab-fin-topay" } });
   }
   // Ösztöndíj jóváírva (pénz-pozitív)
   const ps = setOf(prev.schols), nsc = ((state.finance && state.finance.scholarships) || []).filter((x) => !ps.has(scholKey(x)));
@@ -169,7 +171,8 @@ async function notifyChanges() {
     const sum = nsc.reduce((a, x) => a + (+x.amount || 0), 0);
     const body = nsc.length === 1 ? (nsc[0].name || "Ösztöndíj") + " · " + ftFt(nsc[0].amount, nsc[0].currency) : nsc.length + " új kifizetés · " + ftFt(sum, "HUF");
     const detail = "Jóváírás érkezett:\n" + nsc.map((x) => "· " + (x.name || "Ösztöndíj") + ": " + ftFt(x.amount, x.currency) + (x.date ? " (" + exFmtDate(x.date) + ")" : "")).join("\n");
-    news.push({ kind: "finance", title: "Ösztöndíj jóváírva", body, detail, target: { tab: "tab-fin-scholar" } });
+    news.push({ kind: "finance", title: "Ösztöndíj jóváírva", body, detail, target: { tab: "tab-fin-scholar" },
+      data: { what: "schol", items: nsc.slice(0, 6).map((x) => ({ name: x.name || "", value: x.amount, currency: x.currency || "HUF", date: x.date || "", term: x.term || "" })) } });
   }
   // Órarend változott (következő 7 nap): új / elmaradó óra + IDŐPONT- és TEREMVÁLTOZÁS (miből → mire).
   // Az órát a kurzus+nap (sk) köti össze, így az időpont-változás nem új+elmaradó óraként jelenik meg.
@@ -199,13 +202,15 @@ async function notifyChanges() {
         : (timeL.length === 1 && !addedL.length && !roomL.length && !removedL.length) ? timeL[0].c
         : (roomL.length === 1 && !addedL.length && !timeL.length && !removedL.length) ? roomL[0].c : null;
       if (only) target = { openClass: { k: only.k, sum: only.sum, s: only.t } };
-      news.push({ kind: "timetable", title: "Órarend változott", body, detail, target });
+      const pack = (c, from) => ({ sum: c.sum || "", loc: c.loc || "", s: c.t, e: c.te || 0, from });
+      news.push({ kind: "timetable", title: "Órarend változott", body, detail, target,
+        data: { what: "ttchange", added: addedL.map((c) => pack(c)), time: timeL.map((mv) => pack(mv.c, mv.from)), room: roomL.map((mv) => pack(mv.c, mv.from)), removed: removedL.map((c) => pack(c)) } });
     }
   }
   if (!news.length) return;
   // 1) In-app értesítési központ — mindig, akkor is, ha az OS push tiltva van. Megjegyezzük az id-t,
   //    hogy a push megnyomásakor pont ezt a bejegyzést tudjuk megnyitni.
-  const logged = news.slice(0, 6).map((n) => ({ n, id: logNotif({ kind: n.kind, title: n.title, body: n.body, detail: n.detail, target: n.target }) }));
+  const logged = news.slice(0, 6).map((n) => ({ n, id: logNotif({ kind: n.kind, title: n.title, body: n.body, detail: n.detail, target: n.target, data: n.data }) }));
   // 2) OS push — csak ha van engedély. A push a saját napló-bejegyzését nyitja meg (extra.notifId).
   const ln = LN(); if (!ln) return;
   try { const p = await ln.checkPermissions(); if (p.display !== "granted") return; } catch (e) { return; }
@@ -218,9 +223,9 @@ function logNotif(o) {
   if (!o) return null;
   state.notifLog = state.notifLog || [];
   const at = o.at || Date.now();
-  if (o.key) { const ex = state.notifLog.find((n) => n.key === o.key); if (ex) { ex.at = at; ex.read = false; if (o.kind) ex.kind = o.kind; if (o.title) ex.title = o.title; if (o.body != null) ex.body = o.body; if (o.detail != null) ex.detail = o.detail; if (o.target) ex.target = o.target; pruneNotifLog(); saveState(); updateNotifBell(); return ex.id; } }
+  if (o.key) { const ex = state.notifLog.find((n) => n.key === o.key); if (ex) { ex.at = at; ex.read = false; if (o.kind) ex.kind = o.kind; if (o.title) ex.title = o.title; if (o.body != null) ex.body = o.body; if (o.detail != null) ex.detail = o.detail; if (o.target) ex.target = o.target; if (o.data) ex.data = o.data; pruneNotifLog(); saveState(); updateNotifBell(); return ex.id; } }
   const id = uid();
-  state.notifLog.unshift({ id, key: o.key || null, at, read: false, kind: o.kind || "", title: o.title || "", body: o.body || "", detail: o.detail || "", target: o.target || null });
+  state.notifLog.unshift({ id, key: o.key || null, at, read: false, kind: o.kind || "", title: o.title || "", body: o.body || "", detail: o.detail || "", target: o.target || null, data: o.data || null });
   pruneNotifLog(); saveState(); updateNotifBell(); return id;
 }
 function logHas(id) { return (state.notifLog || []).some((n) => n.id === id); }
@@ -277,18 +282,112 @@ function renderNotifs() {
   let changed = false; (state.notifLog || []).forEach((n) => { if (!n.read && n.at <= now) { n.read = true; changed = true; } });
   if (changed) { saveState(); updateNotifBell(); }
 }
+// Egy óra/vizsga minden ismert adata: a mentett összefoglalóból kibontva, és az élő órarendből kiegészítve
+// (terem, oktató változhatott azóta). Visszaad: { rows: [[kulcs, érték]], ev } .
+function notifEventInfo(d) {
+  const rows = [], p = parseClassSummary(d.sum || "") || {};
+  let ev = null;
+  try {
+    const list = (d.ev === "class" ? visibleClassEvents() : examEvents()) || [];
+    ev = list.find((x) => x.S && Math.abs(x.S.getTime() - d.s) < 60000 && (x.summary || "") === (d.sum || ""))
+      || list.find((x) => x.S && Math.abs(x.S.getTime() - d.s) < 60000);
+  } catch (e) {}
+  const pe = ev && !ev.manual ? (parseClassSummary(ev.summary) || {}) : {};
+  const name = pe.name || p.name || (ev && ev.summary) || d.sum || "Óra";
+  const S = new Date(d.s), E = d.e ? new Date(d.e) : (ev && ev.E) || null;
+  rows.push(["Tárgy", name]);
+  if (pe.code || p.code) rows.push(["Kurzus kódja", pe.code || p.code]);
+  if (pe.type || p.type) rows.push(["Típus", pe.type || p.type]);
+  if (pe.teacher || p.teacher) rows.push(["Oktató", pe.teacher || p.teacher]);
+  rows.push(["Mikor", dayHeading(S) + " · " + hm(S) + (E ? "–" + hm(E) : "")]);
+  if (E) { const min = Math.round((E - S) / 60000); rows.push(["Hossz", min >= 60 ? Math.floor(min / 60) + " óra" + (min % 60 ? " " + (min % 60) + " perc" : "") : min + " perc"]); }
+  const loc = (ev && ev.location) || d.loc;
+  if (loc) rows.push(["Terem", loc]);
+  if (ev && ev.location && d.loc && ev.location !== d.loc) rows.push(["Terem az értesítéskor", d.loc]);
+  rows.push(["Félév", semObj(S).key]);
+  if (d.lead) rows.push(["Emlékeztető", "Kezdés előtt " + fmtLead(d.lead)]);
+  const diff = d.s - Date.now();
+  rows.push(["Állapot", diff > 0 ? "Kezdés " + fmtLead(Math.max(1, Math.round(diff / 60000))) + " múlva"
+    : (E && E.getTime() > Date.now()) ? "Éppen tart" : "Véget ért"]);
+  if (!ev) rows.push(["Megjegyzés", "Ez az esemény már nincs az órarendedben"]);
+  return { rows, ev };
+}
+function notifCard(title, rows) {
+  if (!rows || !rows.length) return "";
+  return (title ? `<div class="section-label">${esc(title)}</div>` : "")
+    + `<div class="card kv">` + rows.map(([k, v]) => `<div class="kv-row"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(String(v))}</span></div>`).join("") + `</div>`;
+}
+// Órarend-változás egy sora: minden, amit tudunk róla, a régi értékkel együtt.
+function notifChangeRows(x, kind) {
+  const p = parseClassSummary(x.sum || "") || {}, S = new Date(x.s), E = x.e ? new Date(x.e) : null;
+  const rows = [["Tárgy", p.name || x.sum || "Óra"]];
+  if (p.code) rows.push(["Kurzus kódja", p.code]);
+  if (p.type) rows.push(["Típus", p.type]);
+  if (p.teacher) rows.push(["Oktató", p.teacher]);
+  if (kind === "time") {
+    const O = new Date(x.from);
+    rows.push(["Eddig", dayHeading(O) + " · " + hm(O)]);
+    rows.push(["Mostantól", dayHeading(S) + " · " + hm(S) + (E ? "–" + hm(E) : "")]);
+  } else {
+    rows.push(["Mikor", dayHeading(S) + " · " + hm(S) + (E ? "–" + hm(E) : "")]);
+  }
+  if (kind === "room") { rows.push(["Eddigi terem", x.from || "?"]); rows.push(["Új terem", x.loc || "?"]); }
+  else if (x.loc) rows.push(["Terem", x.loc]);
+  return rows;
+}
 function renderNotifDetail() {
   const host = $("notif-scroll"); if (!host) return;
   const n = (state.notifLog || []).find((x) => x.id === detailNotifId);
   const ttl = $("notif-title"); if (ttl) ttl.textContent = n ? n.title : "Értesítés";
   if (!n) { host.innerHTML = `<div class="dash-empty" style="padding:32px">Az értesítés már nem elérhető.</div>`; return; }
   if (!n.read) { n.read = true; saveState(); updateNotifBell(); } // push-ból megnyitva is olvasottá válik
-  const when = new Date(n.at);
-  host.innerHTML = `<div class="card kv" style="padding:16px"><div class="dash-label" style="margin:0 0 6px">${esc(n.title)}</div>`
-    + `<div class="hint" style="margin:0 0 12px">${esc(dayHeading(when))} · ${esc(hm(when))}</div>`
-    + `<div class="msg-text" style="white-space:pre-line">${esc(n.detail || n.body)}</div></div>`
-    + (n.target ? `<button class="btn primary lg" id="notif-open" style="margin-top:16px">${icon("chev")} Megnyitás</button>` : "");
+  const when = new Date(n.at), d = n.data || null;
+  let h = `<div class="card kv" style="padding:16px"><div class="dash-label" style="margin:0 0 6px">${esc(n.title)}</div>`
+    + `<div class="hint" style="margin:0 0 12px">${esc(dayHeading(when))} · ${esc(hm(when))} · érkezett</div>`
+    + `<div class="msg-text" style="white-space:pre-line">${esc(n.body || n.detail)}</div></div>`;
+  let ev = null, matLink = "";
+  if (d && d.what === "reminder") {
+    const info = notifEventInfo(d); ev = info.ev;
+    h += notifCard("Az esemény adatai", info.rows);
+    if (ev && d.ev === "class") { try { matLink = matDetailLink(ev); } catch (e) {} }
+  } else if (d && d.what === "ttchange") {
+    const S = [["added", "Új óra"], ["time", "Időpont változott"], ["room", "Terem változott"], ["removed", "Elmaradó óra"]];
+    S.forEach(([k, label]) => (d[k] || []).forEach((x, i) => {
+      h += notifCard(label + ((d[k].length > 1) ? " (" + (i + 1) + "/" + d[k].length + ")" : ""), notifChangeRows(x, k));
+    }));
+  } else if (d && d.what === "grades") {
+    (d.items || []).forEach((g) => {
+      const rows = [["Tárgy", g.subject || g.code || "Tárgy"]];
+      if (g.code) rows.push(["Tárgy kódja", g.code]);
+      rows.push(["Jegy", g.result]);
+      if (g.credits) rows.push(["Kredit", g.credits]);
+      if (g.term) rows.push(["Félév", g.term]);
+      h += notifCard("Jegy", rows);
+    });
+    if (d.index != null) h += notifCard("Hatás", [["Kreditindex az értesítéskor", d.index]]);
+  } else if (d && d.what === "messages") {
+    (d.items || []).forEach((m) => {
+      const rows = [["Feladó", m.from || "?"], ["Tárgy", m.subject || "(nincs tárgy)"]];
+      if (m.date) rows.push(["Dátum", exFmtDate(m.date) || m.date]);
+      h += notifCard("Üzenet", rows);
+    });
+  } else if (d && (d.what === "finance" || d.what === "schol")) {
+    (d.items || []).forEach((it) => {
+      const rows = [["Megnevezés", it.name || "Tétel"], ["Összeg", ftFt(it.value, it.currency)]];
+      if (it.dueDate) rows.push(["Határidő", exFmtDate(it.dueDate) + dueDaysSuffix(it.dueDate)]);
+      if (it.date) rows.push(["Dátum", exFmtDate(it.date) || it.date]);
+      if (it.term) rows.push(["Félév", it.term]);
+      if (it.subject) rows.push(["Tárgy", it.subject]);
+      h += notifCard(d.what === "schol" ? "Jóváírás" : "Befizetendő", rows);
+    });
+  } else if (n.detail && n.detail !== n.body) {
+    h += `<div class="card" style="padding:16px"><div class="msg-text" style="white-space:pre-line">${esc(n.detail)}</div></div>`;
+  }
+  h += matLink;
+  h += (n.target ? `<button class="btn primary lg" id="notif-open" style="margin-top:16px">${icon("chev")} Megnyitás</button>` : "");
+  host.innerHTML = h;
   { const o = $("notif-open"); if (o) o.onclick = () => openNotifTarget(n.target); }
+  { const ml = $("dn-mats"); if (ml) ml.onclick = () => openMatSubject(ml.dataset.sem, ml.dataset.name, ""); }
 }
 // ---- Morning brief (Reggeli összefoglaló) ----
 // One-liner about a given day: hány óra, első óra, vizsga/ZH, befizetendő.
