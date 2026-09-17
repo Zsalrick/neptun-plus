@@ -2,6 +2,16 @@
 // Sima szkript, KÖZÖS hatókörrel: a www/index.html tölti be sorrendben. Lásd PROJECT.md "Fájlok".
 "use strict";
 
+// Egy fiókban egy egyetem csak egyszer lehet (a képzésváltás a profilon belül megy), és létrehozás után
+// az egyetem és az azonosító nem módosítható: így egy app nem adható körbe több embernek.
+function otherProfiles() { return (state.profiles || []).filter((p) => p.id !== state.activeProfileId); }
+function uniTaken(name) { return otherProfiles().some((p) => p.university === name); }
+function hostOf(url) { try { return new URL(/^https?:\/\//.test(url) ? url : "https://" + url).hostname.toLowerCase(); } catch (e) { return ""; } }
+function hostTaken(url) { const h = hostOf(url); return !!h && otherProfiles().some((p) => (p.servers || []).some((s) => hostOf(s.url) === h)); }
+// A profil létrejött (a belépés ellenőrzése után): az azonosító innentől csak látható. Az egyetem akkor, ha már
+// be van állítva (régebbi profiloknál üres lehet, azt egyszer még ki lehet választani).
+function profileLocked() { return !!state.setupComplete && obMode !== "add" && !!state.username; }
+function uniLocked() { return profileLocked() && !!state.university; }
 function applyUniversity(uni) {
   state.servers = uni.servers.map((s, i) => ({ id: "u" + i, label: s.label, url: s.url }));
   state.activeServerId = "u0";
@@ -69,18 +79,22 @@ function initials(name) {
   if (map[name]) return map[name];
   return name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
-function renderUniList(container, query, selectedName, onPick) {
+// taken(u): igaz, ha az egyetem nem választható (már van ilyen profil); szürkén, magyarázattal jelenik meg.
+function renderUniList(container, query, selectedName, onPick, taken) {
   const q = (query || "").trim().toLowerCase();
-  const items = UNIVERSITIES.filter((u) => !q || (u.name + " " + u.city + " " + (u.alias || "")).toLowerCase().includes(q));
+  const items = UNIVERSITIES.filter((u) => !q || (u.name + " " + u.city + " " + (u.alias || "")).toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name, "hu"));
   container.innerHTML = "";
   if (!items.length) { container.innerHTML = `<div class="uni-empty">Nincs találat. Használd az „egyéni URL" opciót.</div>`; return; }
   items.forEach((u) => {
     const div = document.createElement("div");
-    div.className = "uni-item" + (u.name === selectedName ? " selected" : "");
+    const off = !!(taken && taken(u));
+    div.className = "uni-item" + (u.name === selectedName ? " selected" : "") + (off ? " off" : "");
     div.innerHTML = `<span class="u-flag">${esc(initials(u.name))}</span>
-      <span style="flex:1;min-width:0"><div class="u-name">${esc(u.name)}</div><div class="u-city">${esc(u.city)}</div></span>
+      <span style="flex:1;min-width:0"><div class="u-name">${esc(u.name)}</div><div class="u-city">${esc(off ? "Már van ilyen profilod" : u.city)}</div></span>
       <span class="u-check">${icon("check")}</span>`;
-    div.onclick = () => onPick(u);
+    if (off) div.setAttribute("aria-disabled", "true");
+    div.onclick = () => { if (off) toast("Ehhez az egyetemhez már van profilod. A képzést a profilon belül tudod váltani."); else onPick(u); };
     container.appendChild(div);
   });
 }
@@ -103,8 +117,8 @@ function updateObProgress() {
 function obStepValid() {
   if (obStep === 0) return state.legalAccepted;
   if (obStep === 1) {
-    if (obSel === "custom") return !!$("ob-custom-url").value.trim();
-    return !!obSel;
+    if (obSel === "custom") { const url = $("ob-custom-url").value.trim(); return !!url && !hostTaken(url); }
+    return !!obSel && !uniTaken(obSel.name);
   }
   if (obStep === 2) return !!state.username && !!state.password;
   if (obStep === 3) return obPinDone;
@@ -171,7 +185,7 @@ function renderObUni() {
     obSel = u; $("ob-custom-wrap").classList.add("hidden");
     $("ob-uni-custom").classList.remove("selected");
     renderObUni(); updateObFooter();
-  });
+  }, (u) => uniTaken(u.name));
   $("ob-uni-custom").classList.toggle("selected", obSel === "custom");
 }
 let ob2faChoice = null; // 'no' | 'yes' | null
@@ -235,7 +249,10 @@ function initOnboarding() {
   $("open-terms").onclick = () => $("terms-sheet").classList.remove("hidden");
   $("ob-uni-search").addEventListener("input", renderObUni);
   $("ob-uni-custom").onclick = () => { obSel = "custom"; $("ob-custom-wrap").classList.remove("hidden"); renderObUni(); updateObFooter(); };
-  $("ob-custom-url").addEventListener("input", updateObFooter);
+  $("ob-custom-url").addEventListener("input", () => {
+    updateObFooter();
+    if (hostTaken($("ob-custom-url").value.trim())) toast("Ehhez a Neptun-címhez már van profilod.");
+  });
   $("ob-username").addEventListener("input", (e) => {
     const v = e.target.value.slice(0, 255); e.target.value = v; state.username = v; saveState();
     $("ob-username-err").hidden = v.length > 0;

@@ -994,6 +994,7 @@ button.grade-row:active { background: var(--surface-2); }
   cursor: pointer; background: var(--surface); }
 .uni-item:last-child { border-bottom: 0; }
 .uni-item.selected { background: var(--surface-2); }
+.uni-item.off { opacity: .45; }
 .uni-item .u-flag { width: 30px; height: 30px; border-radius: 7px; background: var(--surface-3); color: var(--ink-2);
   display: grid; place-items: center; flex: none; font-size: 11px; font-weight: 700; }
 .uni-item .u-name { font-size: 14px; font-weight: 550; }

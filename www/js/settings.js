@@ -7,6 +7,7 @@
 // =====================================================================
 function syncSettings() {
   $("in-username").value = state.username || "";
+  syncLockedFields();
   $("in-username-err").hidden = !!state.username;
   { const cf = $("in-code-field"), ci = $("in-code"); if (cf && ci) { if (state.neptunCode) { ci.value = state.neptunCode; cf.hidden = false; } else cf.hidden = true; } }
   refreshAccountBar();
@@ -206,11 +207,25 @@ $("btn-check-update").onclick = async () => {
 function accountDirty() {
   const u = $("in-username"), p = $("in-password");
   if (!u || !p) return false;
-  return u.value !== (state.username || "") || p.value !== (state.password || "");
+  return (!profileLocked() && u.value !== (state.username || "")) || p.value !== (state.password || "");
+}
+// Létrehozott profilnál az azonosító és az egyetem csak látható (lásd profileLocked). A jelszó változhat.
+function syncLockedFields() {
+  const locked = profileLocked(), u = $("in-username");
+  if (u) { u.readOnly = locked; u.classList.toggle("mono", locked); }
+  let h = $("in-username-lock");
+  if (!h && u) { h = document.createElement("div"); h.id = "in-username-lock"; h.className = "hint"; u.insertAdjacentElement("afterend", h); }
+  if (h) { h.hidden = !locked; h.textContent = "A profil létrehozása után nem módosítható. Másik egyetemhez új profilt adhatsz hozzá."; }
+  const b = $("btn-change-uni"), ulock = uniLocked();
+  if (b) {
+    const sub = b.querySelector(".row-sub"), chev = b.querySelector(".row-chev");
+    if (sub) sub.textContent = ulock ? "A profil létrehozása után nem módosítható" : "Egyetem kiválasztása";
+    if (chev) chev.style.display = ulock ? "none" : "";
+  }
 }
 function refreshAccountBar() { const b = $("account-savebar"); if (b) b.hidden = !accountDirty(); }
 function saveAccount() {
-  const u = $("in-username").value.slice(0, 255);
+  const u = profileLocked() ? (state.username || "") : $("in-username").value.slice(0, 255);
   if (!u) { toast("Az azonosító nem lehet üres."); return false; }
   const old = state.username || "";
   state.username = u; state.password = $("in-password").value; saveState();
@@ -239,11 +254,14 @@ function renderServersSettings() {
     list.appendChild(row);
   });
 }
-$("btn-change-uni").onclick = () => openUniSheet();
+$("btn-change-uni").onclick = () => {
+  if (uniLocked()) { toast("Az egyetem a profil létrehozása után nem módosítható. Másik egyetemhez adj hozzá új profilt."); return; }
+  openUniSheet();
+};
 function openUniSheet() {
   const render = () => renderUniList($("uni-sheet-list"), $("uni-sheet-search").value, state.university, (u) => {
     applyUniversity(u); $("uni-sheet").classList.add("hidden"); syncSettings(); renderHome(); toast(u.name + " beállítva");
-  });
+  }, (u) => uniTaken(u.name));
   $("uni-sheet-search").value = ""; render();
   $("uni-sheet-search").oninput = render;
   $("uni-sheet").classList.remove("hidden");
