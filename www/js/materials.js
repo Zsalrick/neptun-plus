@@ -263,5 +263,66 @@ async function matRestore(file) {
     toast(fresh.length + " anyag visszaállítva.");
   } catch (e) { hideBusy(); await ask({ title: "Nem sikerült", okText: "OK", body: esc(String(e && e.message || e)) }); }
 }
+// ---- Megosztás a Kredit+-ba (Android: PDF más appokból, lásd ShareReceiverPlugin) ----
+// A natív oldal a fájlt a cache-be másolja és "shared" eseményt küld (megtartva, amíg fel nem iratkozunk).
+// Csak akkor kérdezünk rá a tárgyra, ha az app már használható: be van állítva, nincs zárolva, nincs indítóképernyő.
+const matIncoming = [];
+let matIncomingBusy = false;
+function matShareReceiver() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.ShareReceiver; }
+// Az isLocked a lock.js-ben van, ami KÉSŐBB töltődik be: typeof-fal nézzük, hogy korai esemény se dobjon hibát.
+function matAppReady() { const b = $("boot"); return !!state.setupComplete && typeof isLocked !== "undefined" && !isLocked && (!b || b.hidden); }
+async function matProcessIncoming() {
+  if (matIncomingBusy || !matIncoming.length) return;
+  if (!state.setupComplete) { matIncoming.length = 0; toast("A PDF fogadásához előbb állítsd be az appot."); return; }
+  if (!matAppReady()) { setTimeout(matProcessIncoming, 700); return; }
+  matIncomingBusy = true;
+  try {
+    const batch = matIncoming.splice(0), files = [];
+    for (const f of batch) {
+      try {
+        const res = await fetch(window.Capacitor.convertFileSrc("file://" + f.path));
+        files.push(new File([await res.blob()], f.name || "dokumentum.pdf", { type: "application/pdf" }));
+      } catch (e) {}
+    }
+    if (!files.length) { toast("Nem sikerült beolvasni a megosztott PDF-et."); return; }
+    await matAssignIncoming(files);
+  } finally {
+    matIncomingBusy = false;
+    try { const P = matShareReceiver(); if (P && P.clear) P.clear(); } catch (e) {}
+    if (matIncoming.length) matProcessIncoming();
+  }
+}
+// Tárgyválasztó a beérkezett PDF-ekhez: a félév tárgyai, félévváltás, vagy új tárgy név szerint.
+async function matAssignIncoming(files) {
+  let sem = currentSemesterKey();
+  const label = files.length === 1 ? files[0].name : files.length + " PDF";
+  for (;;) {
+    const opts = matSubjects(sem).map((s) => { const n = matOf(sem, s.key).length; return { label: s.name, sub: n ? n + " anyag" : "", value: { subj: s } }; });
+    opts.push({ label: "Másik félév", sub: "Most: " + sem, value: { pickSem: true } });
+    opts.push({ label: "Új tárgy megadása", sub: "Ha a tárgy nincs a listában", value: { custom: true } });
+    const v = await askPick({ title: "Melyik tárgyhoz tegyem?", body: `<b>${esc(label)}</b><br>${esc(sem)} félév`, options: opts });
+    if (!v) return;
+    if (v.pickSem) {
+      const s2 = await askPick({ title: "Félév", options: matSemesters().map((k) => ({ label: k, sub: k === currentSemesterKey() ? "Aktuális félév" : "", value: k })) });
+      if (s2) sem = s2;
+      continue;
+    }
+    let subj = v.subj;
+    if (v.custom) {
+      const t = await askText({ title: "Tárgy neve", placeholder: "Például: Statisztika", body: "A tárgy ezzel a névvel jelenik meg az Anyagok között." });
+      if (t == null || !t.trim()) continue;
+      subj = { key: matSubjKey(t), name: t.trim(), code: "" };
+    }
+    for (const f of files) await matImportPdf(f, sem, subj);
+    openMatSubject(sem, subj.name, subj.code);
+    return;
+  }
+}
+(function matInitShareReceiver() {
+  const P = matShareReceiver();
+  if (!isNative || !P || !P.addListener) return;
+  P.addListener("shared", (d) => { (d && d.files || []).forEach((f) => matIncoming.push(f)); matProcessIncoming(); });
+})();
+
 $("mat-file").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f && matSubjCur) matImportPdf(f, matSem, matSubjCur); });
 $("mat-zip").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) matRestore(f); });

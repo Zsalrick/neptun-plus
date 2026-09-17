@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(DownloadsPlugin.class);
         registerPlugin(WidgetPlugin.class);
         registerPlugin(AppBrowserPlugin.class);
+        registerPlugin(ShareReceiverPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

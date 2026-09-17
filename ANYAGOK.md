@@ -59,9 +59,16 @@ Használják-e? Hány anyag, hány jegyzet, mennyi idő a megjelenítőben.
 - Excel: `SheetJS` (táblázat nézet, munkalap-váltó).
 - Beleírni nem lehet; mellé lehet üres jegyzetoldalt tenni.
 
-### 4. „Megosztás a Kredit+-ba" más appokból (APK kell)
-Android share intent (pl. Gmailből egy PDF egy koppintással a tárgyhoz).
-Natív `intent-filter` + a fájl átadása a WebView-nak, utána tárgyválasztó.
+### 4. „Megosztás a Kredit+-ba" más appokból (v0.287, APK versionCode 16, KÉSZ)
+Gmail, Letöltések, fájlkezelő: Megosztás → **Kredit+ Anyagok**, vagy „Megnyitás ezzel".
+- Natív: `ShareReceiverPlugin.java` + `intent-filter` (SEND, SEND_MULTIPLE, VIEW;
+  `application/pdf`). A megosztott URI olvasási joga ideiglenes, ezért a fájl azonnal
+  a cache-be másolódik (háttérszálon, max 150 MB), és "shared" esemény megy a JS-nek,
+  **megtartva**, amíg fel nem iratkozik (hidegindításnál sem vész el).
+- JS (`materials.js`): a menü csak akkor ugrik fel, ha az app használható (be van
+  állítva, nincs zárolva, eltűnt az indítóképernyő). Tárgyválasztó: az aktuális félév
+  tárgyai, „Másik félév", „Új tárgy megadása". Több PDF egyszerre is mehet.
+  Importálás után a tárgy anyaglistája nyílik meg; a cache-másolat törlődik.
 
 ### 5. Moodle automatikus behúzás
 A tárgy Moodle-anyagai (lásd a Moodle-elemzést) maguktól megjelennek az Anyagok
