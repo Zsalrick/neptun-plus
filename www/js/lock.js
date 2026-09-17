@@ -47,4 +47,19 @@ async function lockCheck() {
 }
 async function maybeBio() { if (!(state.biometric && bioOK)) return; try { await bioVerify(); lockSuccess(); } catch { /* fall back to PIN */ } }
 $("lock-cancel").onclick = () => { if (lockVerifyCb) { const cb = lockVerifyCb; lockVerifyCb = null; $("lock-cancel").hidden = true; if (!isLocked) $("lock").classList.add("hidden"); cb(false); } };
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && secOn("resume")) lockNow(); });
+// Anyag olvasása vagy jegyzetelése közben a visszatérés NE zároljon (gyors appváltás, fájlválasztó,
+// megosztás): a zárolás elhalasztódik, és akkor jön, amikor a felhasználó kilép az Anyagokból.
+const LOCK_DEFER_SCREENS = ["tab-mats", "tab-mat-subject", "tab-mat-view"];
+let lockDeferred = false;
+function lockOnResume() {
+  if (!secOn("resume")) return;
+  const cur = document.querySelector(".tabscreen.active");
+  if (cur && LOCK_DEFER_SCREENS.includes(cur.id)) { if (lockActive()) lockDeferred = true; return; }
+  lockNow();
+}
+// A navigáció hívja: ha el volt halasztva a zárolás, és az Anyagokon KÍVÜLRE lépünk, most zárolunk.
+function lockCheckDeferred(nextScreenId) {
+  if (!lockDeferred || LOCK_DEFER_SCREENS.includes(nextScreenId)) return;
+  lockDeferred = false; lockNow();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") lockOnResume(); });

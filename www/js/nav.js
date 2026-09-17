@@ -119,6 +119,7 @@ function setActive(id) {
   updateNavVisibility(id);
 }
 function showTab(id, dir) {
+  if (typeof lockCheckDeferred === "function") lockCheckDeferred(id); // Anyagokból kilépve jöhet az elhalasztott zárolás
   const cur = document.querySelector(".tabscreen.active");
   if (dir && cur && cur.id !== id) {
     const incoming = document.getElementById(id);
