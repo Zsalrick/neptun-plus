@@ -140,6 +140,10 @@ első megnyitásakor töltődnek be, az app indulását nem lassítják.
 - Az alacsony késleltetésű (`desynchronized`) vászon kivéve: egyes Android GPU-kon nem jelenik meg a tartalma.
 - Tipp, ha tollat érzékelt: tollal rajzolsz, ujjal görgetsz.
 
+**v0.297: a rajz a legfelső réteg**
+- A tinta- és élő vonás-vászon `z-index: 3`, `pointer-events: none`: az átírt PDF-szöveg takarása és a szövegdobozok
+  fölött is látszik, és a T eszköz koppintásait nem fogja meg. A megosztott PDF-ben is előbb a szöveg, utána a rajz.
+
 ### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
 Amit a diákok tényleg használnak, prioritás szerint:
 1. ~~Szöveg kijelölése a PDF-ben~~ (v0.294, KÉSZ)

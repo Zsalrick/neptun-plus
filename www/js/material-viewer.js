@@ -265,10 +265,10 @@ function mvDetailDrop(sl) {
 function mvDrawItems(ctx, items, W, H, live, withText) {
   const all = items.concat(live ? [live] : []);
   ctx.clearRect(0, 0, W, H);
+  if (withText) all.forEach((it) => { if (it.t === "text") mvDrawText(ctx, it, W, H); }); // a szöveg (és takarása) alul, a rajz fölötte
   all.forEach((it) => { if (it.t === "mark" && it.k === "hl") mvDrawMark(ctx, it, W, H); });
   for (const pass of ["hl", "pen"]) all.forEach((it) => { if (it.t === "ink" && it.tool === pass) mvDrawStroke(ctx, it, W, H); });
   all.forEach((it) => { if (it.t === "mark" && it.k !== "hl") mvDrawMark(ctx, it, W, H); });
-  if (withText) all.forEach((it) => { if (it.t === "text") mvDrawText(ctx, it, W, H); });
 }
 function mvDrawMark(ctx, it, W, H) {
   ctx.save(); ctx.globalAlpha = it.a != null ? it.a : 1; ctx.fillStyle = it.c;

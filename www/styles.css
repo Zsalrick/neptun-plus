@@ -1206,7 +1206,8 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 /* Két ujjas mozgatást és nagyítást a JS kezeli, a böngésző saját csípés-nagyítása ne szóljon bele. */
 .mv-scroll { touch-action: pan-x pan-y; }
 .mv-page canvas.mv-detail { inset: auto; }
-.mv-page canvas.mv-live { pointer-events: none; }
+/* A rajz a legfelső réteg: a szövegdobozok és az átírt PDF-szöveg takarása fölött is látszik (kattintást nem fog). */
+.mv-page canvas.mv-ink, .mv-page canvas.mv-live { z-index: 3; pointer-events: none; }
 /* A PDF saját szövege: átlátszó, kijelölhető réteg (olvasó módban), és az átírt sorok takarása */
 .mv-seltext { position: absolute; inset: 0; pointer-events: none; line-height: 1; overflow: hidden; }
 .mv-panmode .mv-seltext { pointer-events: auto; }
