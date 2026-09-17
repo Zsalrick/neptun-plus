@@ -33,6 +33,20 @@ Havi előfizetésnél ez tartja meg a felhasználót. A Moodle-integrációval e
   radír (egész vonást töröl), szövegdoboz, szín (3-3), visszavonás, nagyítás
   (lépked: 100, 150, 200, 300%).
 - A fejlécben: **új üres oldal** (a legjobban látható oldal után) és **megosztás**.
+
+**v0.288-289 javítások (telefonos teszt alapján):**
+- Két ujjas csípés-nagyítás 1x és 4x között (gesztus közben CSS előnézet).
+- Minden oldal FÖLÖTT fejléc („N. oldal · üres oldal" + ⋯), az oldalak között vékony vonal,
+  mert az oldal alatti ⋯ miatt véletlenül rossz oldal törlődött. Menü: új oldal ez után,
+  oldal törlése (megerősítés, a címben az oldalszám), **törölt eredeti PDF-oldalak
+  visszaállítása** (a fájlban megvannak, így újranyitás után is visszahozhatók).
+- Szöveg közvetlenül a lapra: T eszközzel koppintva ott villog a kurzor (textarea a lap
+  koordinátáin, a vászon "middle" alapvonallal rajzol, hogy egybeessen), meglévő szövegre
+  koppintva szerkeszthető, máshova koppintva ment, üresen törlődik.
+- Toll, kiemelő, szöveg beállításai (az aktív eszközre újra koppintva vagy a színkörre):
+  11 szín, vastagság, átlátszatlanság, betűméret. `state.inkPrefs`-ben megmaradnak.
+  Áttetsző tollvonás egy útvonalként rajzolódik, hogy ne sötétedjen be az átfedéseknél.
+- Anyagokban visszatéréskor nem kér PIN-t/biometriát, kilépéskor igen.
 - S Pen: ha egyszer tollat érzékel, onnantól **a toll rajzol, az ujj görget**
   (tenyér-elutasítás).
 - Automatikus mentés minden változás után.
