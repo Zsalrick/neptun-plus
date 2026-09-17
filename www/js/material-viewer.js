@@ -9,8 +9,14 @@
 // (a régi, "a" nélküli vonásoknál: toll 1, kiemelő 0.38; a régi, "bw" nélküli szövegnél a lap széléig)
 const MV_PALETTE = ["#1b1d22", "#ffffff", "#6b7079", "#2457c5", "#3aa0ff", "#1f9d6b", "#7fd48a", "#f2d33c", "#f08a24", "#c62f2f", "#f39ac4", "#8e44ad"];
 const MV_REF = 360; // a csúszkák px-értékei ekkora szélességű oldalra vonatkoznak
-const MV_DEFAULTS = { pen: { c: "#1b1d22", w: 2.2 / MV_REF, a: 1 }, hl: { c: "#f2d33c", w: 12 / MV_REF, a: 0.35 }, text: { c: "#1b1d22", s: 14 / MV_REF } };
-const MV_ZOOMS = [1, 1.5, 2, 3];
+const MV_DEFAULTS = { pen: { c: "#1b1d22", w: 2 / MV_REF, a: 1 }, hl: { c: "#f2d33c", w: 12 / MV_REF, a: 0.35 }, text: { c: "#1b1d22", s: 14 / MV_REF } };
+// Gyorsválasztó az eszköztár fölött (egy koppintás szín vagy vastagság váltásához, mint a GoodNotes-ban).
+// sizes: toll/kiemelő vastagsága px-ben, szövegnél betűméret px-ben (MV_REF szélességű oldalra).
+const MV_QUICK = {
+  pen: { colors: ["#1b1d22", "#2457c5", "#c62f2f", "#1f9d6b"], k: "w", sizes: [0.8, 2, 4] },
+  hl: { colors: ["#f2d33c", "#7fd48a", "#f39ac4", "#3aa0ff"], k: "w", sizes: [8, 14, 24] },
+  text: { colors: ["#1b1d22", "#2457c5", "#c62f2f", "#1f9d6b"], k: "s", sizes: [11, 14, 20] },
+};
 const MV_ZMIN = 1, MV_ZMAX = 4;
 const MV_FONT = `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
 let mv = null;
@@ -30,7 +36,7 @@ function mvPrefs() {
 async function openMaterial(id) {
   const m = matById(id); if (!m) { toast("Ez az anyag már nincs meg."); return; }
   mvClose();
-  mv = { id, m, doc: null, pdf: null, z: 1, tool: "pan", penSeen: false, undo: [], slots: [], io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
+  mv = { id, m, doc: null, pdf: null, z: 1, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
   pushScreen("tab-mat-view");
 }
 function renderMatView() {
@@ -76,7 +82,7 @@ function mvClose() {
 // ---- Elrendezés és lusta renderelés ----
 // Minden oldal fölött fejléc: "N. oldal" és a ⋯ menü, az oldalak között vékony elválasztó vonal.
 // Oldalon belül: PDF vászon, tinta-vászon, és felül a szövegdobozok rétege (DOM, hogy a szerkesztővel azonos legyen).
-// anchor: { cx, cy, mx, my, k }: nagyításnál a csípés közepe maradjon helyben (lásd mvSetZoom).
+// anchor: { pt, fx, fy }: nagyítás után a pt tartalompont (oldal + oldalon belüli arány) kerüljön az fx, fy képernyőpontra.
 function mvLayout(anchor) {
   const pages = $("mv-pages"), scroll = $("mv-scroll");
   if (!mv || !mv.doc || !pages) return;
@@ -89,6 +95,11 @@ function mvLayout(anchor) {
     // GYORS ÚT (nagyítás, forgatás): csak méretezünk. A meglévő kép CSS-sel kinyújtva látszik,
     // amíg az éles változat a háttérben elkészül, így nincs villanás és újraépítés.
     mv.slots.forEach((sl) => {
+      if (sl.det) { // az éles részlet arányosan nyúljon, amíg az új elkészül
+        const k = cssW / sl.cssW, d = sl.det;
+        Object.assign(d.cv.style, { left: d.lx * k + "px", top: d.ly * k + "px", width: (d.rx - d.lx) * k + "px", height: (d.ry - d.ly) * k + "px" });
+        d.lx *= k; d.ly *= k; d.rx *= k; d.ry *= k; d.z = -1;
+      }
       sl.cssW = cssW; sl.cssH = Math.round(cssW * (sl.pg.h / sl.pg.w));
       sl.sheet.style.width = cssW + "px"; sl.el.style.width = cssW + "px"; sl.el.style.height = sl.cssH + "px";
       if (sl.rendered) sl.stale = true;
@@ -126,8 +137,12 @@ function mvLayout(anchor) {
   if (mv.sel) { const ns = mv.slots.find((x) => x.pg.id === mv.sel.s.pg.id); if (ns) mv.sel.s = ns; else mv.sel = null; }
   mvApplyToolClass();
   scroll.style.overflowX = mv.z > 1.001 ? "auto" : "hidden";
-  if (anchor) { scroll.scrollLeft = anchor.cx * anchor.k - anchor.mx; scroll.scrollTop = anchor.cy * anchor.k - anchor.my; }
-  else scroll.scrollTop = ratio * scroll.scrollHeight;
+  const asl = anchor && anchor.pt && mv.slots[anchor.pt.i];
+  if (asl) {
+    const b = asl.el.getBoundingClientRect();
+    scroll.scrollLeft += b.left + anchor.pt.u * b.width - anchor.fx;
+    scroll.scrollTop += b.top + anchor.pt.v * b.height - anchor.fy;
+  } else scroll.scrollTop = ratio * scroll.scrollHeight;
   mvSchedule();
 }
 function mvApplyToolClass() {
@@ -138,8 +153,9 @@ function mvApplyToolClass() {
 // Pixelkeret: egy oldal vászna legfeljebb ~4 megapixel. Nagy nagyításnál kicsit lágyabb, de nem fogy el
 // a memória és nem akad. (A 3-4x-es nagyítás korábban oldalanként 20+ MP-t foglalt, két vásznon.)
 const MV_MAX_PX = 4e6;
+function mvDpr() { return Math.min(window.devicePixelRatio || 1, 3); }
 function mvScale(sl) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2), px = sl.cssW * sl.cssH * dpr * dpr;
+  const dpr = mvDpr(), px = sl.cssW * sl.cssH * dpr * dpr;
   return px > MV_MAX_PX ? dpr * Math.sqrt(MV_MAX_PX / px) : dpr;
 }
 // Renderelési sor: egyszerre egy oldal, a képernyő közepéhez legközelebbi elöl.
@@ -161,6 +177,7 @@ async function mvPump() {
       await mvRenderSlot(todo[0]);
     }
   } finally { cur.pumping = false; }
+  mvDetailSchedule();
 }
 async function mvRenderSlot(sl) {
   const gen = ++sl.gen, scale = mvScale(sl);
@@ -189,6 +206,51 @@ function mvReleaseSlot(sl) {
   try { sl.task && sl.task.cancel(); } catch (e) {}
   sl.task = null; sl.rendered = false; sl.stale = false;
   for (const cv of [sl.pdfCv, sl.inkCv]) { cv.width = 0; cv.height = 0; }
+  mvDetailDrop(sl);
+}
+
+// ---- Éles részlet nagyításkor ----
+// Az oldal teljes vászna pixelkeretes, ezért nagyítva lágy. A képernyőn LÁTHATÓ részt (plusz egy kis sávot)
+// külön vászonra, kijelző-felbontásban is kirajzoljuk. Ez legfeljebb képernyőnyi, a memória nem nő a nagyítással.
+function mvDetailSchedule() { if (!mv) return; clearTimeout(mv.detT); mv.detT = setTimeout(mvDetailPump, 140); }
+async function mvDetailPump() {
+  const cur = mv; if (!cur || !cur.pdf || cur.pinch || cur.detBusy) return;
+  cur.detBusy = true;
+  try {
+    const sc = $("mv-scroll"), R = sc.getBoundingClientRect(), dpr = mvDpr(), M = 48;
+    for (const sl of cur.slots) {
+      if (mv !== cur || cur.pinch) return;
+      const b = sl.el.getBoundingClientRect();
+      const x0 = Math.max(b.left, R.left) - b.left, y0 = Math.max(b.top, R.top) - b.top;
+      const x1 = Math.min(b.right, R.right) - b.left, y1 = Math.min(b.bottom, R.bottom) - b.top;
+      if (!sl.rendered || sl.pg.kind !== "pdf" || mvScale(sl) > dpr * 0.9 || x1 <= x0 || y1 <= y0) { mvDetailDrop(sl); continue; }
+      const d = sl.det;
+      if (d && d.z === cur.z && d.lx <= x0 && d.ly <= y0 && d.rx >= x1 && d.ry >= y1) continue; // már lefedi
+      const lx = Math.max(0, Math.floor(x0 - M)), ly = Math.max(0, Math.floor(y0 - M));
+      const rx = Math.min(sl.cssW, Math.ceil(x1 + M)), ry = Math.min(sl.cssH, Math.ceil(y1 + M));
+      const gen = sl.detGen = (sl.detGen || 0) + 1;
+      try {
+        const page = await cur.pdf.getPage(sl.pg.n);
+        if (mv !== cur || gen !== sl.detGen) continue;
+        const cv = document.createElement("canvas"); cv.className = "mv-detail";
+        cv.width = Math.round((rx - lx) * dpr); cv.height = Math.round((ry - ly) * dpr);
+        Object.assign(cv.style, { left: lx + "px", top: ly + "px", width: rx - lx + "px", height: ry - ly + "px" });
+        const vp = page.getViewport({ scale: (sl.cssW * dpr) / page.getViewport({ scale: 1 }).width, offsetX: -lx * dpr, offsetY: -ly * dpr });
+        sl.detTask = page.render({ canvasContext: cv.getContext("2d", { alpha: false }), viewport: vp });
+        await sl.detTask.promise; sl.detTask = null;
+        if (mv !== cur || gen !== sl.detGen || cur.pinch) continue;
+        if (sl.det) sl.det.cv.remove();
+        sl.el.insertBefore(cv, sl.inkCv);
+        sl.det = { cv, z: cur.z, lx, ly, rx, ry };
+      } catch (e) { sl.detTask = null; if (!e || e.name !== "RenderingCancelledException") console.warn("pdf részlet", e); }
+    }
+  } finally { cur.detBusy = false; }
+}
+function mvDetailDrop(sl) {
+  sl.detGen = (sl.detGen || 0) + 1;
+  try { sl.detTask && sl.detTask.cancel(); } catch (e) {}
+  sl.detTask = null;
+  if (sl.det) { sl.det.cv.width = 0; sl.det.cv.remove(); sl.det = null; }
 }
 
 // ---- Jegyzetréteg rajzolása ----
@@ -254,6 +316,20 @@ function mvDrawText(ctx, it, W, H) {
   mvWrapLines(ctx, it.text, mvTextBw(it) * W).forEach((ln, i) => ctx.fillText(ln, it.x * W, it.y * H + (i + 0.5) * lh));
   ctx.restore();
 }
+function mvLiveStart(d) {
+  const s = d.s, cv = document.createElement("canvas");
+  cv.className = "mv-live";
+  cv.width = s.inkW || Math.round(s.cssW * mvScale(s)); cv.height = s.inkH || Math.round(s.cssH * mvScale(s));
+  s.el.insertBefore(cv, s.textLayer);
+  d.live = cv;
+  d.liveCtx = cv.getContext("2d", { desynchronized: true }) || cv.getContext("2d"); // alacsony késleltetés Androidon
+}
+function mvLiveDraw(d) {
+  if (!d.live) return;
+  d.liveCtx.clearRect(0, 0, d.live.width, d.live.height);
+  mvDrawStroke(d.liveCtx, d.item, d.live.width, d.live.height);
+}
+function mvLiveEnd(d) { if (d && d.live) { d.live.width = 0; d.live.remove(); d.live = null; } }
 function mvDrawInk(s, live) {
   if (!s.rendered || !mv) return;
   const items = mv.doc.items[s.pg.id] || [];
@@ -273,18 +349,43 @@ function mvSave() {
   cur.saving = cur.saving.then(() => matPutDoc(cur.id, doc)).catch((e) => toast("A jegyzet mentése nem sikerült: " + (e && e.message ? e.message : e)));
   const st = $("mv-sub"); if (st) st.textContent = "Mentve";
 }
-function mvPush(op) { mv.undo.push(op); if (mv.undo.length > 100) mv.undo.shift(); mvRenderBar(); }
+function mvPush(op) { mv.undo.push(op); if (mv.undo.length > 100) mv.undo.shift(); mv.redo = []; mvRenderBar(); }
+// Egy művelet végrehajtása előre (fwd) vagy visszafelé. Minden művelet mindkét irányba lejátszható,
+// így ugyanaz az objektum vándorol a visszavonás és az újra verem között.
+function mvApplyOp(op, fwd) {
+  const items = mv.doc.items, arr = (id) => (items[id] = items[id] || []);
+  if (op.type === "add") {
+    const a = arr(op.page);
+    if (fwd) a.splice(op.ix != null ? Math.min(op.ix, a.length) : a.length, 0, op.item);
+    else { const ix = a.indexOf(op.item); if (ix >= 0) { a.splice(ix, 1); op.ix = ix; } if (mv.sel && mv.sel.it === op.item) mv.sel = null; }
+  } else if (op.type === "remove") {
+    const a = arr(op.page);
+    if (fwd) [...op.removed].sort((p, q) => q.ix - p.ix).forEach((r) => { const ix = a.indexOf(r.item); if (ix >= 0) a.splice(ix, 1); if (mv.sel && mv.sel.it === r.item) mv.sel = null; });
+    else [...op.removed].sort((p, q) => p.ix - q.ix).forEach((r) => a.splice(r.ix, 0, r.item));
+  } else if (op.type === "edit") { const t = op.item.text; op.item.text = op.before; op.before = t; }
+  else if (op.type === "prop") { const cur = mvTextProps(op.item); Object.assign(op.item, op.before); op.before = cur; }
+  else if (op.type === "addPage" || op.type === "delPage") {
+    const insert = (op.type === "addPage") === fwd;
+    if (insert) { mv.doc.pages.splice(op.index, 0, op.page); if (op.items) items[op.page.id] = op.items; }
+    else {
+      op.page = mv.doc.pages[op.index]; op.items = items[op.page.id];
+      if (mv.sel && mv.sel.s.pg.id === op.page.id) mv.sel = null;
+      mv.doc.pages.splice(op.index, 1); delete items[op.page.id];
+    }
+    mvSave(); mvLayout(); mvRenderBar(); if (insert) mvScrollToPage(op.index);
+    return;
+  }
+  mvSave(); mvRedrawPage(op.page); mvRenderBar();
+}
 function mvUndo() {
   mvTextCommit();
   const op = mv && mv.undo.pop(); if (!op) return;
-  const items = mv.doc.items;
-  if (op.type === "add") { const arr = items[op.page] || []; const ix = arr.indexOf(op.item); if (ix >= 0) arr.splice(ix, 1); if (mv.sel && mv.sel.it === op.item) mv.sel = null; }
-  else if (op.type === "remove") { const arr = (items[op.page] = items[op.page] || []); op.removed.sort((a, b) => a.ix - b.ix).forEach((r) => arr.splice(r.ix, 0, r.item)); }
-  else if (op.type === "edit") { op.item.text = op.before; }
-  else if (op.type === "prop") { Object.assign(op.item, op.before); }
-  else if (op.type === "addPage") { mv.doc.pages.splice(op.index, 1); delete items[op.pageId]; mvSave(); mvLayout(); mvRenderBar(); return; }
-  else if (op.type === "delPage") { mv.doc.pages.splice(op.index, 0, op.page); if (op.items) items[op.page.id] = op.items; mvSave(); mvLayout(); mvRenderBar(); mvScrollToPage(op.index); return; }
-  mvSave(); mvRedrawPage(op.page); mvRenderBar();
+  mv.redo.push(op); mvApplyOp(op, false);
+}
+function mvRedo() {
+  mvTextCommit();
+  const op = mv && mv.redo.pop(); if (!op) return;
+  mv.undo.push(op); mvApplyOp(op, true);
 }
 function mvRedrawPage(pageId) { (mv.slots || []).forEach((s) => { if (s.pg.id === pageId) { mvDrawInk(s); mvRenderTexts(s); } }); }
 
@@ -297,15 +398,16 @@ function mvWireInput() {
   $("mv-addpage").onclick = () => mvAction("addpage");
   $("mv-share").onclick = () => mvAction("share");
   mvWirePinch(scroll);
+  scroll.addEventListener("scroll", () => { if (mv && mv.z > 1.001) mvDetailSchedule(); }, { passive: true });
   // A billentyűzet megjelenésekor a szerkesztett doboz maradjon látható.
   if (window.visualViewport) window.visualViewport.addEventListener("resize", () => mvTextKeepVisible());
   scroll.addEventListener("pointerdown", (ev) => {
     if (!mv || !mv.doc || mv.pinch) return;
     const t = ev.target;
     if (t.closest && (t.closest(".mv-textedit") || t.closest(".mv-phead") || t.closest(".mv-tctx"))) return;
-    if (mv.popOpen) { mv.popOpen = false; mvRenderPop(); mvRenderBar(); }
+    if (mv.popOpen) { mv.popOpen = false; mvRenderPop(); mvRenderQuick(); }
     if (mv.tool === "text") return mvTextPointerDown(ev);
-    if (mv.tool === "pan") return;
+    if (mv.tool === "pan") { mv.tapDown = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, t: ev.timeStamp }; return; }
     if (ev.pointerType === "pen") mv.penSeen = true;
     // Tenyér-elutasítás: ha egyszer tollat láttunk, az ujj már csak görget.
     if (ev.pointerType === "touch" && mv.penSeen) { mv.draw = { pan: true, id: ev.pointerId, y: ev.clientY, x: ev.clientX }; return; }
@@ -317,7 +419,7 @@ function mvWireInput() {
     if (mv.tool === "pen" || mv.tool === "hl") {
       const p = mvPrefs()[mv.tool];
       mv.draw = { id: ev.pointerId, s, item: { t: "ink", tool: mv.tool, c: p.c, w: p.w, a: p.a, pts: [q.x, q.y, pr] } };
-      mvDrawInk(s, mv.draw.item);
+      mvLiveStart(mv.draw); mvLiveDraw(mv.draw);
     } else if (mv.tool === "eraser") {
       mv.draw = { id: ev.pointerId, s, removed: [] }; mvErase(s, q, ev);
     }
@@ -335,10 +437,11 @@ function mvWireInput() {
         if (Math.abs(q.x - lx) + Math.abs(q.y - ly) < 0.0012) continue; // túl sűrű pontok kihagyása
         p.push(q.x, q.y, pr);
       }
-      if (!d.raf) d.raf = requestAnimationFrame(() => { d.raf = 0; if (mv && mv.draw === d) mvDrawInk(d.s, d.item); });
+      if (!d.raf) d.raf = requestAnimationFrame(() => { d.raf = 0; if (mv && mv.draw === d) mvLiveDraw(d); });
     } else if (d.removed) mvErase(d.s, mvNorm(d.s, ev), ev);
   });
   const end = (ev) => {
+    if (mv && mv.tool === "pan" && ev.type === "pointerup") mvTapCheck(ev);
     const d = mv && mv.draw; if (!d || d.id !== ev.pointerId) return;
     mv.draw = null;
     if (d.pan) return;
@@ -347,13 +450,21 @@ function mvWireInput() {
     if (d.item) {
       if (d.raf) cancelAnimationFrame(d.raf);
       d.item.pts = d.item.pts.map((v) => Math.round(v * 10000) / 10000); // kisebb mentés
-      arr.push(d.item); mvPush({ type: "add", page: pageId, item: d.item }); mvSave(); mvDrawInk(d.s);
+      arr.push(d.item); mvPush({ type: "add", page: pageId, item: d.item }); mvSave(); mvDrawInk(d.s); mvLiveEnd(d);
     } else if (d.removed) {
       if (d.removed.length) { mvPush({ type: "remove", page: pageId, removed: d.removed }); mvSave(); }
     }
   };
   scroll.addEventListener("pointerup", end);
   scroll.addEventListener("pointercancel", end);
+}
+function mvTapCheck(ev) {
+  const t = mv.tapDown; mv.tapDown = null;
+  if (!t || t.id !== ev.pointerId || mv.pinch || ev.timeStamp - t.t > 300 || Math.hypot(ev.clientX - t.x, ev.clientY - t.y) > 12) return;
+  const last = mv.lastTap; mv.lastTap = { x: ev.clientX, y: ev.clientY, t: ev.timeStamp };
+  if (!last || ev.timeStamp - last.t > 320 || Math.hypot(ev.clientX - last.x, ev.clientY - last.y) > 40) return;
+  mv.lastTap = null;
+  mvSetZoom(mv.z > 1.05 ? 1 : 2.5, { x: ev.clientX, y: ev.clientY });
 }
 function mvErase(s, q, ev) {
   const arr = mv.doc.items[s.pg.id] || []; if (!arr.length) return;
@@ -530,6 +641,7 @@ function mvTextSetProp(fn) {
 }
 function mvRenderTextCtx() {
   document.querySelectorAll(".mv-tctx").forEach((x) => x.remove());
+  mvRenderQuick();
   const sel = mv && mv.sel; if (!sel || mv.tool !== "text") return;
   const bar = document.createElement("div");
   bar.className = "mv-tctx";
@@ -587,16 +699,36 @@ function mvTextKeepVisible() {
 // ---- Eszköztár és beállítások ----
 function mvRenderBar() {
   const bar = $("mv-bar"); if (!bar) return;
-  if (!mv) { bar.innerHTML = ""; return; }
-  const t = mv.tool, pr = mvPrefs()[t];
-  const btn = (id, ic, label, on) => `<button class="mv-tool${on ? " on" : ""}" data-mv="${id}" type="button" aria-label="${label}" title="${label}">${icon(ic)}</button>`;
-  bar.innerHTML = btn("pan", "hand", "Görgetés", t === "pan") + btn("pen", "pencil", "Toll", t === "pen") + btn("hl", "marker", "Kiemelő", t === "hl")
+  if (!mv) { bar.innerHTML = ""; mvRenderQuick(); return; }
+  const t = mv.tool;
+  const btn = (id, ic, label, on, dis, cls) => `<button class="mv-tool${on ? " on" : ""}${cls || ""}" data-mv="${id}" type="button" aria-label="${label}" title="${label}"${dis ? " disabled" : ""}>${icon(ic)}</button>`;
+  bar.innerHTML = btn("pan", "hand", "Olvasás és görgetés", t === "pan") + btn("pen", "pencil", "Toll", t === "pen") + btn("hl", "marker", "Kiemelő", t === "hl")
     + btn("eraser", "eraser", "Radír", t === "eraser") + btn("text", "text", "Szöveg", t === "text")
-    + (pr ? `<button class="mv-tool${mv.popOpen ? " on" : ""}" data-mv="color" type="button" aria-label="Szín és vastagság" title="Szín és vastagság"><span class="mv-swatch" style="background:${pr.c};opacity:${pr.a != null ? Math.max(0.35, pr.a) : 1}"></span></button>` : "")
     + `<span class="mv-sep"></span>`
-    + `<button class="mv-tool" data-mv="undo" type="button" aria-label="Visszavonás" title="Visszavonás"${mv.undo.length ? "" : " disabled"}>${icon("undo")}</button>`
-    + btn("zoom", MV_ZOOMS.some((z) => z > mv.z + 0.01) ? "zoomin" : "zoomout", "Nagyítás: " + Math.round(mv.z * 100) + "%", mv.z > 1.001);
+    + btn("undo", "undo", "Visszavonás", false, !mv.undo.length) + btn("redo", "undo", "Újra", false, !mv.redo.length, " mv-redo");
   bar.querySelectorAll("[data-mv]").forEach((b) => b.onclick = () => mvAction(b.dataset.mv));
+  mvRenderQuick();
+}
+// Gyorsválasztó: 4 szín és 3 méret egy koppintásra, a ⋯ nyitja a részletes beállítást.
+function mvRenderQuick() {
+  let q = $("mv-quick");
+  const bar = $("mv-bar"); if (!bar) return;
+  if (!q) { q = document.createElement("div"); q.id = "mv-quick"; q.className = "mv-quick"; bar.insertAdjacentElement("beforebegin", q); }
+  const t = mv && mv.tool, cfg = MV_QUICK[t];
+  if (!cfg || mv.popOpen || (t === "text" && mv.sel)) { q.innerHTML = ""; q.classList.add("hidden"); return; }
+  const p = mvPrefs()[t], cur = Math.round(p[cfg.k] * MV_REF * 10) / 10;
+  const colors = cfg.colors.includes(p.c) ? cfg.colors : cfg.colors.concat(p.c);
+  const near = cfg.sizes.reduce((best, v) => Math.abs(v - cur) < Math.abs(best - cur) ? v : best, cfg.sizes[0]);
+  const names = ["Vékony", "Közepes", "Vastag"];
+  q.innerHTML = colors.map((c) => `<button class="mv-qc${c === p.c ? " on" : ""}" data-qc="${c}" type="button" aria-label="Szín"><span style="background:${c}"></span></button>`).join("")
+    + `<span class="mv-sep"></span>`
+    + cfg.sizes.map((v, i) => `<button class="mv-qs${v === near ? " on" : ""}" data-qs="${v}" type="button" aria-label="${names[i]}">`
+      + (cfg.k === "s" ? `<span class="mv-qa" style="font-size:${12 + i * 4}px">A</span>` : `<span class="mv-qd" style="width:${5 + i * 5}px;height:${5 + i * 5}px"></span>`) + `</button>`).join("")
+    + `<button class="mv-qs" data-qmore="1" type="button" aria-label="További beállítások">${icon("more")}</button>`;
+  q.classList.remove("hidden");
+  q.querySelectorAll("[data-qc]").forEach((b) => b.onclick = () => { p.c = b.dataset.qc; saveState(); mvRenderQuick(); });
+  q.querySelectorAll("[data-qs]").forEach((b) => b.onclick = () => { p[cfg.k] = +b.dataset.qs / MV_REF; saveState(); mvRenderQuick(); });
+  q.querySelector("[data-qmore]").onclick = () => { mv.popOpen = true; mvRenderPop(); mvRenderQuick(); };
 }
 // Beállító panel az eszköztár fölött: szín, vastagság, átlátszóság (szövegnél betűméret az ÚJ dobozokhoz).
 function mvRenderPop() {
@@ -619,14 +751,14 @@ function mvRenderPop() {
   }
   pop.innerHTML = h;
   pop.classList.remove("hidden");
-  pop.querySelectorAll(".mv-sw").forEach((b) => b.onclick = () => { p.c = b.dataset.c; saveState(); mvRenderPop(); mvRenderBar(); });
+  pop.querySelectorAll(".mv-sw").forEach((b) => b.onclick = () => { p.c = b.dataset.c; saveState(); mvRenderPop(); });
   pop.querySelectorAll("input[type=range]").forEach((inp) => inp.oninput = () => {
     const k = inp.dataset.k, v = +inp.value;
     if (k === "a") p.a = v / 100; else p[k] = v / MV_REF;
     const lbl = pop.querySelector(`[data-v="${k}"]`); if (lbl) lbl.textContent = k === "a" ? v + "%" : (k === "s" ? Math.round(v) : v) + " px";
     const pv = pop.querySelector(".mv-prev span"); if (pv) { pv.style.height = Math.max(1, px(p.w)) + "px"; pv.style.opacity = p.a; }
     const tv = pop.querySelector(".mv-prev-text"); if (tv) tv.style.fontSize = Math.min(28, px(p.s)) + "px";
-    saveState(); mvRenderBar();
+    saveState();
   });
 }
 function mvAction(a) {
@@ -638,14 +770,9 @@ function mvAction(a) {
     mv.tool = a; mvApplyToolClass();
     mvRenderBar(); mvRenderPop(); mvRenderTextCtx(); return;
   }
-  if (a === "color") { mv.popOpen = !mv.popOpen; mvRenderBar(); mvRenderPop(); return; }
   if (a === "undo") return mvUndo();
+  if (a === "redo") return mvRedo();
   if (!mv.doc) return;
-  if (a === "zoom") { // a következő lépcsőre (100, 150, 200, 300%), a tetejéről vissza 100%-ra
-    mvSetZoom(MV_ZOOMS.find((z) => z > mv.z + 0.01) || 1);
-    toast("Nagyítás: " + Math.round(mv.z * 100) + "%");
-    return;
-  }
   if (a === "addpage") return mvAddPage(mvVisibleIx());
   if (a === "share") { mvTextCommit(); return matSharePdf(mv.id); }
 }
@@ -669,7 +796,7 @@ function mvAddPage(ix) {
   const ref = mv.doc.pages[ix] || MAT_A4;
   const pg = { id: "b" + uid(), kind: "blank", w: ref.w || MAT_A4.w, h: ref.h || MAT_A4.h };
   mv.doc.pages.splice(ix + 1, 0, pg);
-  mvPush({ type: "addPage", index: ix + 1, pageId: pg.id });
+  mvPush({ type: "addPage", index: ix + 1, page: pg });
   mvSave(); mvLayout();
   setTimeout(() => mvScrollToPage(ix + 1), 50);
   toast("Új oldal beszúrva a(z) " + (ix + 1) + ". oldal után.");
@@ -704,7 +831,7 @@ async function mvRestorePdfPages() {
     const v = (await mv.pdf.getPage(n)).getViewport({ scale: 1 });
     mv.doc.pages.splice(at, 0, { id: "p" + n, kind: "pdf", n, w: v.width, h: v.height });
   }
-  mv.undo = []; // ponytail: a visszaállítás után a visszavonási lista törlődik (a korábbi oldal-indexek elcsúsznának)
+  mv.undo = []; mv.redo = []; // ponytail: a visszaállítás után a visszavonási lista törlődik (a korábbi oldal-indexek elcsúsznának)
   mvSave(); mvLayout(); mvRenderBar();
   toast(miss.length + " eredeti oldal visszaállítva.");
 }
@@ -723,42 +850,55 @@ async function mvPageMenu(ix) {
   else if (act === "restore") mvRestorePdfPages();
 }
 
-// ---- Két ujjas csípés-nagyítás ----
-// Gesztus közben csak CSS-transzformációval nagyítunk (gyors), elengedéskor rendereljük újra a valódi méretben.
-function mvSetZoom(z, focus) {
+// ---- Két ujjal: nagyítás és mozgatás (minden eszközzel, így rajzolás közben sem kell a kézre váltani) ----
+// Gesztus közben csak CSS-transzformáció (gyors), elengedéskor valódi méretezés, és az ujjak alatti pont
+// pontosan ott marad, ahol a gesztus végén volt.
+// A képernyőpont alatti tartalom: oldal indexe + oldalon belüli arány (a lapok közti résre a legközelebbi oldal).
+function mvPointAt(x, y) {
+  let best = null, bd = Infinity;
+  mv.slots.forEach((sl, i) => {
+    const b = sl.el.getBoundingClientRect(), d = y < b.top ? b.top - y : y > b.bottom ? y - b.bottom : 0;
+    if (d < bd) { bd = d; best = { i, u: (x - b.left) / b.width, v: (y - b.top) / b.height }; }
+  });
+  return best;
+}
+function mvSetZoom(z, focus, pt) {
   const scroll = $("mv-scroll"); if (!mv || !mv.doc) return;
   z = Math.max(MV_ZMIN, Math.min(MV_ZMAX, z));
   const r = scroll.getBoundingClientRect();
-  const mx = focus ? focus.x - r.left : scroll.clientWidth / 2, my = focus ? focus.y - r.top : scroll.clientHeight / 2;
-  const anchor = { cx: scroll.scrollLeft + mx, cy: scroll.scrollTop + my, mx, my, k: z / mv.z };
-  mv.z = z; mvLayout(anchor); mvRenderBar();
+  const fx = focus ? focus.x : r.left + scroll.clientWidth / 2, fy = focus ? focus.y : r.top + scroll.clientHeight / 2;
+  pt = pt || mvPointAt(fx, fy);
+  mv.z = z; mvLayout({ pt, fx, fy }); mvRenderBar();
 }
 function mvWirePinch(scroll) {
   const pages = $("mv-pages");
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
   const midpt = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+  const reset = () => { pages.style.transform = ""; pages.style.transformOrigin = ""; pages.style.willChange = ""; };
   scroll.addEventListener("touchstart", (ev) => {
     if (!mv || !mv.doc || ev.touches.length !== 2 || mv.edit) return;
-    if (mv.draw && mv.draw.item && mv.draw.s) { const s = mv.draw.s; mv.draw = null; mvDrawInk(s); } // félbehagyott vonás eldobása
-    else mv.draw = null;
-    const r = scroll.getBoundingClientRect(), m = midpt(ev.touches);
-    mv.pinch = { d0: dist(ev.touches), k: 1, m, ox: scroll.scrollLeft + m.x - r.left, oy: scroll.scrollTop + m.y - r.top };
-    pages.style.transformOrigin = mv.pinch.ox + "px " + mv.pinch.oy + "px";
+    const d = mv.draw; mv.draw = null; mv.tapDown = null;
+    if (d && d.item) mvLiveEnd(d); // félbehagyott vonás eldobása
+    const m = midpt(ev.touches), pr = pages.getBoundingClientRect();
+    mv.pinch = { d0: dist(ev.touches), k: 1, m0: m, m, pt: mvPointAt(m.x, m.y) };
+    pages.style.transformOrigin = (m.x - pr.left) + "px " + (m.y - pr.top) + "px";
     pages.style.willChange = "transform";
   }, { passive: true });
   scroll.addEventListener("touchmove", (ev) => {
     const p = mv && mv.pinch; if (!p || ev.touches.length !== 2) return;
+    // ponytail: ha a böngésző már görget (egy ujjal kezdett görgetéshez jött a második), nem vesszük át a gesztust
+    if (!ev.cancelable) { mv.pinch = null; reset(); return; }
     ev.preventDefault();
     p.k = Math.max(MV_ZMIN / mv.z, Math.min(MV_ZMAX / mv.z, dist(ev.touches) / p.d0));
     p.m = midpt(ev.touches);
-    pages.style.transform = "scale(" + p.k + ")";
+    pages.style.transform = `translate(${p.m.x - p.m0.x}px, ${p.m.y - p.m0.y}px) scale(${p.k})`;
   }, { passive: false });
   const end = (ev) => {
     const p = mv && mv.pinch; if (!p || ev.touches.length >= 2) return;
     mv.pinch = null;
-    pages.style.transform = ""; pages.style.transformOrigin = ""; pages.style.willChange = "";
-    mvSchedule();
-    if (Math.abs(p.k - 1) > 0.03) mvSetZoom(mv.z * p.k, p.m);
+    reset();
+    if (Math.abs(p.k - 1) > 0.02) mvSetZoom(mv.z * p.k, p.m, p.pt);
+    else { scroll.scrollLeft -= p.m.x - p.m0.x; scroll.scrollTop -= p.m.y - p.m0.y; mvSchedule(); }
   };
   scroll.addEventListener("touchend", end);
   scroll.addEventListener("touchcancel", end);

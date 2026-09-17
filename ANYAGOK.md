@@ -89,6 +89,18 @@ első megnyitásakor töltődnek be, az app indulását nem lassítják.
 - Oldal-árnyék helyett `contain: layout paint` (a nagy felületek átfestése akasztott).
 - Fehér szín a palettán; vékonyabb minimum (toll 0,3 px, kiemelő 1,5 px).
 
+**v0.292: kezelhetőség (mérve, 412 px széles, 2,625-ös pixelsűrűség, 4x lassított CPU)**
+- Élő vonás külön vásznon: írás közben képkockánként csak a húzott vonal rajzolódik. Teleírt oldalon
+  (300 vonás) 33 ms helyett 0,1 ms képkockánként.
+- Két ujjal nagyítás ÉS mozgatás, minden eszközzel (tollal is görgethető, nem kell a kézre váltani).
+  Elengedéskor az ujjak alatti pont helyben marad: korábban 57 px csúszás és 204 px ugrás, most 0 és 0.
+- Éles nagyítás: a látható rész külön, kijelző-felbontású vásznon (`mvDetailPump`). 3x-en 58% helyett 100%.
+  A pixelsűrűség plafonja 2 helyett 3 (2,6-os kijelzőn 1x-en is lágy volt).
+- Dupla koppintás (olvasó módban): 250% oda, újra: vissza 100%-ra. A nagyítógomb helyett **Újra** gomb.
+- Gyorsválasztó az eszköztár fölött (toll, kiemelő, szöveg): 4 szín, 3 méret, ⋯ a részletes beállításhoz.
+- Tesztelés: chrome-devtools emulációval, szintetikus érintés- és toll-eseményekkel (scratchpad bench.js).
+  Valódi telefonos mérés: USB-hibakeresés + `adb` (a gépen megvan), `dumpsys gfxinfo` képkocka-statisztika.
+
 ### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
 Amit a diákok tényleg használnak, prioritás szerint:
 1. **Szöveg kijelölése a PDF-ben** → kiemelés / aláhúzás / áthúzás / másolás, a sorokra

@@ -1201,3 +1201,18 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .mv-tool:disabled { opacity: .35; cursor: default; }
 .mv-sep { flex: none; width: 1px; height: 24px; margin: 0 3px; background: var(--line-2); }
 .mv-swatch { width: 18px; height: 18px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--line-2); }
+.mv-redo svg.ic { transform: scaleX(-1); }
+/* Két ujjas mozgatást és nagyítást a JS kezeli, a böngésző saját csípés-nagyítása ne szóljon bele. */
+.mv-scroll { touch-action: pan-x pan-y; }
+.mv-page canvas.mv-detail { inset: auto; }
+.mv-page canvas.mv-live { pointer-events: none; }
+/* Gyorsválasztó az eszköztár fölött: 4 szín és 3 méret */
+.mv-quick { position: absolute; left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 3; display: flex; align-items: center; justify-content: space-between;
+  gap: 2px; padding: 3px 5px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow); }
+.mv-qc, .mv-qs { flex: 1 1 0; min-width: 32px; max-width: 44px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--ink-2); cursor: pointer; padding: 0; }
+.mv-qc span { width: 22px; height: 22px; border-radius: 50%; box-shadow: 0 0 0 1px var(--line-2); }
+.mv-qc.on span { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+.mv-qs.on { background: var(--surface-3); color: var(--ink); }
+.mv-qd { display: block; border-radius: 50%; background: currentColor; }
+.mv-qa { font-weight: 650; line-height: 1; color: var(--ink); }
+.mv-qs svg.ic { width: 20px; height: 20px; }
