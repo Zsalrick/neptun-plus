@@ -15,15 +15,82 @@ lábára.
 
 | Szál | Repo | Mappa / terület | Felelősség |
 |------|------|-----------------|------------|
-| **Telefon backend** (MAIN) | ez a repo | `www/app.js` logikai rétege, `android/`, `scripts/`, `server.js`, `capacitor.config.json` | Neptun belépés + API, adatolvasás, state, OTA + release, natív buildek, verziózás |
-| **Telefon frontend** | ez a repo | `www/index.html`, `www/styles.css`, `www/app.js` render-rétege | UI, elrendezés, navigáció, dizájn, ikonok, szövegek |
+| **Telefon backend** (MAIN) | ez a repo | `www/app.js` + `www/js/*` logikai rétege, `android/`, `scripts/`, `server.js`, `capacitor.config.json` | Neptun belépés + API, adatolvasás, state, OTA + release, natív buildek, verziózás |
+| **Telefon frontend** | ez a repo | `www/index.html`, `www/styles.css`, a `www/js/*` render-rétege | UI, elrendezés, navigáció, dizájn, ikonok, szövegek |
 | **Weboldal** | **külön repo** | `website/` (itt **gitignore**-olva) | Marketing/landing oldal, kreditplus.hu |
 | **Jog** | ez a repo | `legal/` | ÁSZF, Adatkezelési tájékoztató, jogi megfelelés |
 
-A backend és a frontend **ugyanazt a `www/app.js`-t szerkeszti** (nincs külön
-build-lépés, ami szétvágná) — a fájlon belüli szekció-határok tartják külön a
-kettőt, lásd lentebb. Fizikai szétbontás jelenleg **nincs** (YAGNI): a jelenlegi
-kódméretnél a merge-konfliktus kockázata kisebb, mint a refaktor kockázata.
+A kód **funkciónként külön fájlokban** van (`www/app.js` + `www/js/*.js`, lásd
+„Fájlok”). Egy fájlon belül a render-függvények (`render*`) a frontendé, az adat
+és a logika a backendé.
+
+---
+
+## Fájlok (v0.285-től)
+
+A 7000+ soros `app.js` 37 fájlra lett szétbontva. **Nincs build-lépés.**
+
+**Hogyan működik:** az app-fájlok **sima szkriptek, közös hatókörrel** (nem ES
+modulok, nincs `import`/`export`). Egy fájl felső szintű függvénye, `let`/`const`
+változója minden más fájlból elérhető és írható, pontosan úgy, mint korábban az
+egy fájlon belül. Mind `"use strict"`. Az `index.html` alján `defer`-rel,
+**sorrendben** töltődnek be.
+
+**Szabályok:**
+- **Új fájl:** vedd fel az `index.html`-be egy `<script defer src="js/…">` taggel,
+  az `init.js` ELÉ.
+- **Betöltési sorrend:** ami betöltéskor azonnal lefut (nem egy függvény belsejében,
+  pl. `$("x").onclick = foo;` vagy `const a = foo();`), az csak korábbi vagy
+  ugyanabban a fájlban lévő dologra hivatkozhat. Függvénytörzsön belül bármi
+  hivatkozhat bármire. Az indítás (`init.js`) fut utoljára.
+- **Egyedi nevek:** két fájlban ne legyen azonos nevű felső szintű deklaráció
+  (betöltéskor hibát dob).
+- **Külső könyvtárak** (`lib/totp.js`, `lib/gauth.js`, `lib/ical.js`,
+  `data/universities.js`) ES modulok: a `js/libs.js` modul teszi őket globálissá,
+  és minden app-fájl előtt fut.
+- **Verzió:** az `APP_VERSION` továbbra is a `www/app.js` tetején van (a
+  `release.mjs` onnan olvassa).
+
+| Fájl | Tartalom |
+|------|----------|
+| `app.js` | Alap: verzió, ikonok, állapot és profilok tárolása, segédfüggvények, biometria |
+| `js/libs.js` | Modul: a külső könyvtárak globálissá tétele |
+| `js/events.js` | Idő- és eseménymodell: dátum-segédek, félévek, órák, számonkérések |
+| `js/ui.js` | Párbeszédablakok, töltésjelző, választók, lehúzásos frissítés, szegmens-lapozás |
+| `js/onboarding.js` | Első indítás: egyetem, 2FA/QR, PIN |
+| `js/nav.js` | Navigáció, képernyők, vissza gomb, húzásos lapozás |
+| `js/theme.js` | Színtémák |
+| `js/search.js` | Kereső |
+| `js/referral.js` | Ajánlói kód |
+| `js/profiles.js` | Több profil |
+| `js/twofa.js` | Élő 2FA kód, szerverválasztó |
+| `js/home.js` | Kezdőlap widgetek és szerkesztés |
+| `js/more.js` | Több fül |
+| `js/credit.js` | Kredit oldal, diploma-haladás |
+| `js/finance.js` | Pénzügyek |
+| `js/messages.js` | Üzenetek (lista, olvasás, válasz, csatolmány, fogadási beállítás) |
+| `js/grades.js` | Jegyek, felajánlott jegyek |
+| `js/periods.js` | Időszakok |
+| `js/calc.js` | Átlag- és kreditindex-kalkulátor |
+| `js/widgets.js` | Híd a natív kezdőképernyő-widgetekhez |
+| `js/timetable.js` | Órarend és vizsgák nézet, iCal |
+| `js/export.js` | Kép-készítő, CSV |
+| `js/exams.js` | Kézi számonkérés |
+| `js/courses.js` | Tárgyak oldal |
+| `js/api.js` | Neptun API: munkamenet, token, GET/POST, alap lekérések |
+| `js/neptun-flow.js` | Böngészős Neptun folyamatok (befecskendezett szkriptek) |
+| `js/diagnostics.js` | API diagnosztika |
+| `js/sync.js` | Adatok beolvasása (szinkronizálók) |
+| `js/detail.js` | Óra részletei: tárgy, oktatók, diákok, megjegyzések |
+| `js/friends.js` | Barátok, önfelismerés, hallgató adatlap |
+| `js/planner.js` | Tárgyfelvétel tervező, órarend-generátor |
+| `js/dlc.js` | Kiegészítők, számlatükör-néző |
+| `js/notifications.js` | Értesítések, változás-riasztások, értesítési központ, reggeli összefoglaló |
+| `js/settings.js` | Beállítások |
+| `js/backup.js` | Mentés és visszaállítás |
+| `js/login.js` | Belépés a Neptunba |
+| `js/lock.js` | Alkalmazászár |
+| `js/init.js` | Indítás (utolsó) |
 
 ---
 
@@ -31,7 +98,7 @@ kódméretnél a merge-konfliktus kockázata kisebb, mint a refaktor kockázata.
 
 ### 1. Telefon backend (MAIN, ez a szál)
 **Birtokol:**
-- `www/app.js` logika: `P` ikon-készlet mint adat, `defaultState()`,
+- Logika (`app.js`, `js/api.js`, `js/neptun-flow.js`, `js/sync.js`, `js/login.js`, …): `P` ikon-készlet mint adat, `defaultState()`,
   `PROFILE_FIELDS`, `migrate()`, `saveState()`, profilkezelés, `CHTTP()`,
   `apiSession`/`getApiSession`/`apiGet`/`apiRead*`, a `buildLoginScript` /
   `runNeptunFlow` / `nativeLogin` belépési lánc, `warmSession`, `grab*` /
@@ -45,7 +112,7 @@ kódméretnél a merge-konfliktus kockázata kisebb, mint a refaktor kockázata.
 
 ### 2. Telefon frontend
 **Birtokol:** `www/index.html` (app-shell, tabscreenek, sheetek markup),
-`www/styles.css` teljes egésze, és `www/app.js`-ben a **render-réteg**:
+`www/styles.css` teljes egésze, és a `www/js/*` fájlokban a **render-réteg**:
 `renderHome`, `renderMore`, `renderCreditPage`, `renderProfilePage`,
 `renderTimetable`/`renderExams`/`renderCourses` HTML-generálása, `MORE_SERVICES`,
 `icon()` használat, `showTab`/nav/`onBackNav` viselkedés finomhangolása.
@@ -85,8 +152,8 @@ verziót, és a frontend szál ülteti be az `index.html`-be.
 
 ## Koordináció
 - A MAIN (backend) a „release gazda”: ő bumpol verziót és publikál.
-- Frontend/backend ugyanazt az `app.js`-t szerkeszti → a fenti szekció-felosztás
-  szerint, kis diffekkel, gyakori commit/pull, hogy ne ütközzenek.
+- Frontend/backend funkciónként külön fájlokban dolgozik (lásd „Fájlok”). Ugyanazon
+  a fájlon belül a render a frontendé, a logika a backendé: kis diffek, gyakori commit.
 - Website külön repo → nincs itt merge-ütközés.
 - Legal → a `legal/` a forrás, a beültetés a frontend feladata.
 

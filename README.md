@@ -54,7 +54,7 @@ A kész APK: `android/app/build/outputs/apk/debug/app-debug.apk` — ezt másold
 
 ### Hogyan lép be az APK (WebView + autofill)
 
-A `www/app.js` `nativeLogin()` függvénye a `cordova-plugin-inappbrowser` beépített böngészőjét
+A `www/js/login.js` `nativeLogin()` függvénye a `cordova-plugin-inappbrowser` beépített böngészőjét
 nyitja meg az aktív szerver URL-jén, majd minden oldalbetöltéskor beinjektálja a `buildInjectScript()`
 által előállított scriptet. Ez a Neptun oldalán (a valós, ellenőrzött mező-azonosítókkal):
 
@@ -81,7 +81,7 @@ npm install @capacitor-community/secure-storage-plugin
 |------|--------|
 | `www/index.html` | Felület (telefon-keret az előnézethez) |
 | `www/styles.css` | Stílus (világos/sötét téma) |
-| `www/app.js` | Logika: állapot, élő TOTP, QR-feltöltés, belépés (WebView autofill + előnézet) |
+| `www/app.js` + `www/js/*.js` | Logika funkciónként külön fájlokban (lásd PROJECT.md „Fájlok”) |
 | `www/lib/totp.js` | Base32 + TOTP (Web Crypto, RFC 6238) |
 | `www/lib/gauth.js` | Google Authenticator export (`otpauth-migration`) protobuf-olvasó |
 | `www/lib/jsQR.js` | QR-kód beolvasás képből |
