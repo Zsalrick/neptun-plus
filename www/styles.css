@@ -1144,7 +1144,8 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .mv-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--bg); -webkit-overflow-scrolling: touch; }
 .mv-pages { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 4px 12px calc(96px + env(safe-area-inset-bottom));
   width: max-content; min-width: 100%; box-sizing: border-box; }
-.mv-page { position: relative; flex: none; background: #fff; border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.mv-page { position: relative; flex: none; background: #fff; border-radius: 2px; contain: layout paint; } /* árnyék nélkül: a nagy felületek átfestése akadást okozott */
+.mv-page canvas.mv-pdf { background: #fff; }
 .mv-page canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* Oldal-fejléc: a ⋯ menü egyértelműen a SAJÁT oldala fölött, az oldalak között vékony vonal. */
 .mv-sheet { flex: none; padding: 4px 0 18px; }

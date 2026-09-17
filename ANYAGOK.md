@@ -80,6 +80,31 @@ vannak, így nagyítástól független.
 build a régebbi WebView-k miatt), pdf-lib (MIT), JSZip (MIT). Csak az Anyagok
 első megnyitásakor töltődnek be, az app indulását nem lassítják.
 
+**v0.291: teljesítmény (a telefonon akadt görgetésnél és nagyításnál)**
+- Nagyítás nem építi újra az oldalakat: csak átméretez (4 ms), a régi kép kinyújtva látszik,
+  amíg az éles külön vásznon elkészül, és csak kész állapotban cserélődik (nincs villanás).
+- Pixelkeret oldalanként ~4 MP (korábban 3-4x-en akár 20+ MP oldalanként, két vásznon).
+- Renderelési sor: egyszerre egy oldal, a képernyő közepéhez legközelebbi elöl; csípés közben szünetel.
+- Tinta-vászon csak azon az oldalon, ahol tinta van (üres oldalon 0 MP).
+- Oldal-árnyék helyett `contain: layout paint` (a nagy felületek átfestése akasztott).
+- Fehér szín a palettán; vékonyabb minimum (toll 0,3 px, kiemelő 1,5 px).
+
+### Profi irány (referenciák: Samsung Notes, GoodNotes, Flexcil, Xodo, PDF Expert)
+Amit a diákok tényleg használnak, prioritás szerint:
+1. **Szöveg kijelölése a PDF-ben** → kiemelés / aláhúzás / áthúzás / másolás, a sorokra
+   illesztve (pdf.js szövegréteg). Minden komoly PDF-app alapfunkciója.
+2. **Oldal-bélyegképek** oldalsávban (ugrás, átrendezés, törlés, beszúrás).
+3. **Lasszó**: jegyzetek kijelölése, mozgatása, átméretezése, színezése.
+4. **Keresés a PDF szövegében.**
+5. **Alakzat-felismerés** (egyenes, nyíl, kör, téglalap tartásra kiegyenesedik).
+6. Nagyításhoz igazodó tollvastagság; sablonos üres oldalak (vonalas, négyzethálós, pontozott).
+7. **Kitakarás**: fehér téglalap + szövegdoboz, ha a PDF szövegét „felül kell írni".
+
+**A PDF eredeti szövegének szerkesztése** (betűnként átírni, mint egy Word-dokumentumban): ezt csak az
+Adobe Acrobat Pro és a PDF Expert fizetős „Szerkesztés" módja tudja, a jegyzetelő appok (Samsung Notes,
+GoodNotes, Flexcil) nem. A PDF-ben a szöveg nem folyó szöveg, hanem pozícionált betűk, gyakran
+részleges (subset) betűkészlettel, ezért megbízhatóan nem szerkeszthető. A profi megoldás a 7. pont.
+
 ### 2. Mérés
 Használják-e? Hány anyag, hány jegyzet, mennyi idő a megjelenítőben.
 
@@ -104,7 +129,6 @@ A tárgy Moodle-anyagai (lásd a Moodle-elemzést) maguktól megjelennek az Anya
 alatt, és beléjük lehet jegyzetelni.
 
 ### További ötletek (később)
-- Kétujjas csípés-nagyítás a megjelenítőben (az 1. lépésben gombos nagyítás van).
 - Vektoros export (jelenleg a jegyzetréteg kép a PDF-en).
 - Nyomásérzékeny vonalvastagság exportban is (most átlagos vastagság).
 - Az anyagok bekerülése a napi automatikus mentésbe (most külön .zip mentés).
