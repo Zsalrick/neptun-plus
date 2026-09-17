@@ -291,6 +291,7 @@ $("confirm-ok").onclick = async () => {
   const ok = await requireAuthFor("actions");
   if (!ok) return;
   const keep = (!delPin && state.pinHash) ? { pinHash: state.pinHash, biometric: state.biometric } : null;
+  try { await matClearAll(); } catch { /* ignore */ } // az anyagok IndexedDB-ben vannak, azokat is töröljük
   try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
   if (keep) { const s = defaultState(); s.pinHash = keep.pinHash; s.biometric = keep.biometric; try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch { /* ignore */ } }
   location.reload();

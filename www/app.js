@@ -3,7 +3,7 @@
 "use strict";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.285";
+const APP_VERSION = "v0.286";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -50,6 +50,14 @@ const P = {
   send: '<path d="M4 12 20 4l-6 16-3-7-7-1Z"/>',
   download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/>',
   clip: '<path d="M21 11.5 12 20.5a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.6 1.6 0 0 1-2.3-2.3l7.8-7.8"/>',
+  hand: '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5V4a1.5 1.5 0 0 1 3 0v7m0-5.5a1.5 1.5 0 0 1 3 0V12m0-4.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.9-2.6L4.3 14a1.6 1.6 0 0 1 2.6-1.8L8 13.5"/>',
+  marker: '<path d="m9 15 7.5-10.5a1.8 1.8 0 0 1 2.9 2.2L12 17l-3.5.5L9 15Z"/><path d="M8.5 17.5 6 20h5M4 21h16"/>',
+  eraser: '<path d="m7 21-4.3-4.3a1.5 1.5 0 0 1 0-2.1l9.9-9.9a1.5 1.5 0 0 1 2.1 0l5.6 5.6a1.5 1.5 0 0 1 0 2.1L12 21Z"/><path d="M21 21H7M5.5 12.5l6 6"/>',
+  text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  zoomin: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/>',
+  zoomout: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6"/>',
+  more: '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
 };
 function icon(name) { return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ""}</svg>`; }
 function renderIcons(root = document) {
@@ -60,7 +68,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining", "plans"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining", "plans", "materials"];
 function defaultState() {
   return {
     setupComplete: false,

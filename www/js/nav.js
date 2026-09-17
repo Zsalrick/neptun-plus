@@ -52,6 +52,9 @@ function renderForTab(id) {
   else if (id === "tab-plan") renderPlan();
   else if (id === "tab-plan-pick") renderPlanPick();
   else if (id === "tab-plan-courses") renderPlanCourses();
+  else if (id === "tab-mats") renderMats();
+  else if (id === "tab-mat-subject") renderMatSubject();
+  else if (id === "tab-mat-view") renderMatView();
   else if (id === "tab-notifs") renderNotifs();
   else if (id === "tab-notif") renderNotifDetail();
   else if (id === "tab-export") renderExport();

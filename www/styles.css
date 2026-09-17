@@ -1138,3 +1138,25 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
    pointer taps clean: the ring only appears for keyboard / assistive navigation. */
 :focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
 .input:focus-visible { outline: none; }  /* inputs already show their own focus ring */
+
+/* ---------- Anyagok: PDF megjelenítő és jegyzetelés (MAIN, a frontend nyugodtan átszabhatja) ---------- */
+.mv-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mv-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--bg); -webkit-overflow-scrolling: touch; }
+.mv-pages { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 14px 12px calc(96px + env(safe-area-inset-bottom));
+  width: max-content; min-width: 100%; box-sizing: border-box; }
+.mv-page { position: relative; flex: none; background: #fff; border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.mv-page canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mv-num { position: absolute; right: 0; bottom: -18px; font-size: 11px; color: var(--ink-3); font-family: var(--font-mono); }
+.mv-drawing .mv-page { touch-action: none; }
+.mv-bar { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 2px;
+  overflow-x: auto; padding: 5px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow); }
+.mv-bar:empty { display: none; }
+.mv-bar { scrollbar-width: none; justify-content: space-between; }
+.mv-bar::-webkit-scrollbar { display: none; }
+.mv-tool { flex: 1 1 0; min-width: 34px; max-width: var(--ctl-md); height: var(--ctl-md); display: grid; place-items: center; border: 0; border-radius: 10px;
+  background: transparent; color: var(--ink-2); cursor: pointer; }
+.mv-tool svg.ic { width: 21px; height: 21px; }
+.mv-tool.on { background: var(--surface-3); color: var(--ink); }
+.mv-tool:disabled { opacity: .35; cursor: default; }
+.mv-sep { flex: none; width: 1px; height: 24px; margin: 0 3px; background: var(--line-2); }
+.mv-swatch { width: 18px; height: 18px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--line-2); }

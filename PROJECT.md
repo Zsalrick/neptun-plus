@@ -50,6 +50,9 @@ egy fájlon belül. Mind `"use strict"`. Az `index.html` alján `defer`-rel,
   és minden app-fájl előtt fut.
 - **Verzió:** az `APP_VERSION` továbbra is a `www/app.js` tetején van (a
   `release.mjs` onnan olvassa).
+- **Nagy könyvtárak lustán:** a pdf.js / pdf-lib / JSZip nincs az `index.html`-ben,
+  az Anyagok első használatakor töltődnek be (`matPdfjs()`, `matScript()`), hogy az
+  app indulása ne lassuljon. Licencek: `www/lib/THIRD-PARTY-NOTICES.txt`.
 
 | Fájl | Tartalom |
 |------|----------|
@@ -85,6 +88,8 @@ egy fájlon belül. Mind `"use strict"`. Az `index.html` alján `defer`-rel,
 | `js/friends.js` | Barátok, önfelismerés, hallgató adatlap |
 | `js/planner.js` | Tárgyfelvétel tervező, órarend-generátor |
 | `js/dlc.js` | Kiegészítők, számlatükör-néző |
+| `js/materials.js` | Anyagok: tárolás (IndexedDB), PDF importálás, listák, .zip mentés (lásd ANYAGOK.md) |
+| `js/material-viewer.js` | Anyag-megjelenítő: PDF oldalak, toll/kiemelő/radír/szöveg, új oldal, megosztás jegyzetekkel |
 | `js/notifications.js` | Értesítések, változás-riasztások, értesítési központ, reggeli összefoglaló |
 | `js/settings.js` | Beállítások |
 | `js/backup.js` | Mentés és visszaállítás |

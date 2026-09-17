@@ -82,6 +82,8 @@ async function deleteProfile(id) {
   });
   if (!ok) return;
   const wasActive = id === state.activeProfileId;
+  // A profil anyagfájljai IndexedDB-ben vannak, nem a profil adatai között: azokat külön töröljük.
+  for (const m of ((wasActive ? state.materials : p.materials) || [])) { try { await matDeleteData(m.id); } catch (e) {} }
   state.profiles = state.profiles.filter((x) => x.id !== id);
   if (wasActive) { const nx = state.profiles[0]; state.activeProfileId = nx.id; loadProfileToTop(nx); resetProfileCaches(); }
   saveState();

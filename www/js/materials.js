@@ -1,0 +1,267 @@
+// Anyagok: tárgyanként és félévenként csatolt PDF-ek és üres jegyzetek (lásd ANYAGOK.md).
+// Sima szkript, KÖZÖS hatókörrel: a www/index.html tölti be sorrendben. Lásd PROJECT.md "Fájlok".
+"use strict";
+
+// ---- Tárolás ----
+// A lista (metaadat) a state.materials-ben van profilonként, hogy a képernyők szinkron rajzolhassanak.
+// A fájlok (Blob) és a jegyzetrétegek IndexedDB-ben, mert a localStorage 5-10 MB-nál megtelik.
+// ponytail: IndexedDB az app saját WebView-adatterülete; ha valaha iOS is lesz, ott a Filesystem biztosabb.
+const MAT_DB = "kreditplus-anyagok", MAT_MAX_MB = 150;
+let matDbP = null;
+function matDb() {
+  if (matDbP) return matDbP;
+  matDbP = new Promise((res, rej) => {
+    const r = indexedDB.open(MAT_DB, 1);
+    r.onupgradeneeded = () => { const db = r.result; db.createObjectStore("files"); db.createObjectStore("docs"); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => { matDbP = null; rej(r.error); };
+  });
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  return matDbP;
+}
+async function matTx(store, mode, fn) {
+  const db = await matDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, mode);
+    const out = fn(tx.objectStore(store));
+    tx.oncomplete = () => res(out && "result" in out ? out.result : undefined);
+    tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error || new Error("A mentés megszakadt (lehet, hogy megtelt a tárhely)."));
+  });
+}
+const matPutFile = (id, blob) => matTx("files", "readwrite", (s) => s.put(blob, id));
+const matGetFile = (id) => matTx("files", "readonly", (s) => s.get(id));
+const matPutDoc = (id, doc) => matTx("docs", "readwrite", (s) => s.put(doc, id));
+const matGetDoc = (id) => matTx("docs", "readonly", (s) => s.get(id));
+async function matDeleteData(id) { await matTx("files", "readwrite", (s) => s.delete(id)); await matTx("docs", "readwrite", (s) => s.delete(id)); }
+async function matClearAll() { await matTx("files", "readwrite", (s) => s.clear()); await matTx("docs", "readwrite", (s) => s.clear()); }
+
+function mats() { return (state.materials = state.materials || []); }
+function matById(id) { return mats().find((m) => m.id === id) || null; }
+function matSubjKey(name) { return searchNorm(name || "").replace(/\s+/g, " ").trim(); }
+function matFmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1024)) + " KB"; }
+
+// ---- Könyvtárak: csak az első használatkor töltődnek be ----
+let matPdfjsP = null;
+function matPdfjs() {
+  if (!matPdfjsP) matPdfjsP = import(new URL("lib/pdfjs/pdf.min.js", document.baseURI).href).then((lib) => {
+    lib.GlobalWorkerOptions.workerSrc = new URL("lib/pdfjs/pdf.worker.min.js", document.baseURI).href;
+    return lib;
+  }).catch((e) => { matPdfjsP = null; throw e; });
+  return matPdfjsP;
+}
+function matPdfOpts(data) { return { data, standardFontDataUrl: new URL("lib/pdfjs/standard_fonts/", document.baseURI).href, isEvalSupported: false }; }
+const matScriptP = {};
+function matScript(path, globalName) {
+  if (window[globalName]) return Promise.resolve(window[globalName]);
+  if (!matScriptP[path]) matScriptP[path] = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = path; s.onload = () => res(window[globalName]); s.onerror = () => { delete matScriptP[path]; rej(new Error("Nem sikerült betölteni: " + path)); };
+    document.head.appendChild(s);
+  });
+  return matScriptP[path];
+}
+
+// ---- Félévek és tárgyak ----
+function matSemesters() {
+  const keys = new Set(allSemesters().map((s) => s.key));
+  keys.add(currentSemesterKey());
+  mats().forEach((m) => keys.add(m.sem));
+  return [...keys].sort().reverse();
+}
+// Egy félév tárgyai: a felvett tárgyakból, az órarendből és a már csatolt anyagokból összegyűjtve.
+function matSubjects(sem) {
+  const out = new Map();
+  const add = (name, code) => { const k = matSubjKey(name); if (!k) return; const o = out.get(k); if (!o) out.set(k, { key: k, name, code: code || "" }); else if (!o.code && code) o.code = code; };
+  ((state.courses && state.courses.list) || []).filter((c) => c.semester === sem).forEach((c) => add(c.name, c.code));
+  classEvents().forEach((e) => { if (semObj(e.S).key !== sem) return; const p = parseClassSummary(e.summary); if (p && p.name) add(p.name); });
+  mats().filter((m) => m.sem === sem).forEach((m) => add(m.subjName));
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name, "hu"));
+}
+function matOf(sem, subjKey) { return mats().filter((m) => m.sem === sem && m.subj === subjKey).sort((a, b) => (b.upd || 0) - (a.upd || 0)); }
+
+// ---- Importálás és új jegyzet ----
+const MAT_A4 = { w: 595, h: 842 };
+async function matImportPdf(file, sem, subj) {
+  if (!file) return;
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+  if (!isPdf) { toast("Most még csak PDF fájlt lehet importálni."); return; }
+  if (file.size > MAT_MAX_MB * 1048576) { toast("Túl nagy fájl (legfeljebb " + MAT_MAX_MB + " MB)."); return; }
+  showBusy("PDF beolvasása…");
+  try {
+    const lib = await matPdfjs();
+    const pdf = await lib.getDocument(matPdfOpts(new Uint8Array(await file.arrayBuffer()))).promise;
+    const n = pdf.numPages; try { pdf.destroy(); } catch (e) {}
+    const id = "m" + uid();
+    const doc = { v: 1, pages: Array.from({ length: n }, (_, i) => ({ id: "p" + (i + 1), kind: "pdf", n: i + 1 })), items: {} };
+    await matPutFile(id, file);
+    await matPutDoc(id, doc);
+    const title = (file.name || "Dokumentum").replace(/\.pdf$/i, "");
+    mats().push({ id, sem, subj: subj.key, subjName: subj.name, code: subj.code || "", title, kind: "pdf", pages: n, size: file.size, at: Date.now(), upd: Date.now() });
+    saveState(); hideBusy();
+    toast("Importálva: " + title);
+    renderMatSubject();
+  } catch (e) {
+    hideBusy();
+    const pw = e && e.name === "PasswordException";
+    await ask({ title: "Nem sikerült importálni", okText: "OK", cancelText: "Bezárás", body: pw ? "Ez a PDF jelszóval védett. Nyisd meg jelszó nélkül mentve, és úgy importáld." : "A fájlt nem tudtam PDF-ként beolvasni. " + esc(String(e && e.message || e)) });
+  }
+}
+async function matNewNote(sem, subj) {
+  const t = await askText({ title: "Új jegyzet", value: "Jegyzet", placeholder: "Például: 3. előadás", body: "Üres jegyzetfüzet, amibe írhatsz és rajzolhatsz. Később új oldalakat is hozzáadhatsz." });
+  if (t == null) return;
+  const id = "m" + uid();
+  await matPutDoc(id, { v: 1, pages: [{ id: "b" + uid(), kind: "blank", w: MAT_A4.w, h: MAT_A4.h }], items: {} });
+  mats().push({ id, sem, subj: subj.key, subjName: subj.name, code: subj.code || "", title: t.trim() || "Jegyzet", kind: "note", pages: 1, size: 0, at: Date.now(), upd: Date.now() });
+  saveState();
+  openMaterial(id);
+}
+async function matDelete(id) {
+  const m = matById(id); if (!m) return;
+  const ok = await ask({ title: "Anyag törlése", okText: "Törlés", cancelText: "Mégse", body: `Biztosan törlöd? A fájl és a benne lévő összes jegyzet elvész.<br><b>${esc(m.title)}</b>` });
+  if (!ok) return;
+  try { await matDeleteData(id); } catch (e) {}
+  state.materials = mats().filter((x) => x.id !== id); saveState(); renderMatSubject();
+}
+
+// ---- Képernyők ----
+let matSem = "", matSubjCur = null;
+function openMatSubject(sem, name, code) {
+  matSem = sem; matSubjCur = { key: matSubjKey(name), name, code: code || "" };
+  pushScreen("tab-mat-subject");
+}
+function renderMats() {
+  const host = $("mats-scroll"); if (!host) return;
+  mvClose();
+  if (!matSem) matSem = currentSemesterKey();
+  const subs = matSubjects(matSem);
+  let h = `<button class="row period-btn" id="mat-sem" type="button" style="width:100%;margin-bottom:14px"><span>Félév: ${esc(matSem)}</span>${icon("down")}</button>`;
+  if (!subs.length) h += `<div class="dash-empty" style="padding:24px 2px">Ehhez a félévhez nem találtam tárgyat. Olvasd be a tárgyaidat vagy az órarendet a Neptunból.</div>`;
+  else h += `<div class="card">` + subs.map((s) => {
+    const list = matOf(matSem, s.key), n = list.length;
+    const sub = n ? n + " anyag · utoljára " + fmtWhen(new Date(list[0].upd)) : "Még nincs anyag";
+    return `<div class="row mat-subj" data-name="${esc(s.name)}" data-code="${esc(s.code)}" style="cursor:pointer"><span class="row-ic">${icon("book")}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(s.name)}</span><span class="row-sub">${esc(sub)}</span></span>${icon("chev")}</div>`;
+  }).join("") + `</div>`;
+  h += `<div class="dash-label">Mentés</div><div class="card">`
+    + `<div class="row" id="mat-backup" style="cursor:pointer"><span class="row-ic">${icon("download")}</span><span class="row-main"><span class="row-title">Anyagok mentése</span><span class="row-sub">Minden fájl és jegyzet egy .zip fájlba</span></span>${icon("chev")}</div>`
+    + `<div class="row" id="mat-restore" style="cursor:pointer"><span class="row-ic">${icon("refresh")}</span><span class="row-main"><span class="row-title">Visszaállítás mentésből</span><span class="row-sub">Egy korábbi .zip mentés betöltése</span></span>${icon("chev")}</div></div>`
+    + `<div class="hint" style="margin:8px 2px">Az anyagok nincsenek benne az app napi automatikus mentésében, ezért időnként mentsd el őket külön.</div>`;
+  host.innerHTML = h;
+  $("mat-sem").onclick = async () => {
+    const v = await askPick({ title: "Félév", options: matSemesters().map((k) => ({ label: k, sub: k === currentSemesterKey() ? "Aktuális félév" : "", value: k })) });
+    if (v) { matSem = v; renderMats(); }
+  };
+  host.querySelectorAll(".mat-subj").forEach((b) => b.onclick = () => openMatSubject(matSem, b.dataset.name, b.dataset.code));
+  $("mat-backup").onclick = matBackup;
+  $("mat-restore").onclick = () => { const f = $("mat-zip"); f.value = ""; f.click(); };
+}
+function renderMatSubject() {
+  const host = $("mat-subject-scroll"); if (!host || !matSubjCur) return;
+  mvClose(); // a megnyitott PDF memóriáját elengedjük
+  const ttl = $("mat-subject-title"); if (ttl) ttl.textContent = matSubjCur.name;
+  const sub = $("mat-subject-sub"); if (sub) sub.textContent = matSem + (matSubjCur.code ? " · " + matSubjCur.code : "");
+  const list = matOf(matSem, matSubjCur.key);
+  let h = `<div class="detail-add" style="margin-bottom:8px"><button class="btn tonal" id="mat-import" type="button">${icon("download")} PDF importálása</button></div>`
+    + `<div class="detail-add" style="margin-bottom:14px"><button class="btn tonal" id="mat-note" type="button">${icon("pencil")} Új jegyzet</button></div>`;
+  if (!list.length) h += `<div class="dash-empty" style="padding:24px 2px">Még nincs anyag ehhez a tárgyhoz. Importálj egy PDF-et, vagy kezdj egy üres jegyzetet.</div>`;
+  else h += `<div class="card">` + list.map((m) => {
+    const meta = [m.kind === "pdf" ? "PDF" : "Jegyzet", m.pages + " oldal", m.size ? matFmtSize(m.size) : "", fmtWhen(new Date(m.upd))].filter(Boolean).join(" · ");
+    return `<div class="row mat-row" data-id="${esc(m.id)}" style="cursor:pointer"><span class="row-ic">${icon(m.kind === "pdf" ? "doc" : "note")}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(m.title)}</span><span class="row-sub">${esc(meta)}</span></span>`
+      + `<button class="mat-more" data-id="${esc(m.id)}" type="button" aria-label="Műveletek" style="background:none;border:0;padding:6px;cursor:pointer;color:var(--ink-2)">${icon("more")}</button></div>`;
+  }).join("") + `</div>`;
+  host.innerHTML = h;
+  $("mat-import").onclick = () => { const f = $("mat-file"); f.value = ""; f.click(); };
+  $("mat-note").onclick = () => matNewNote(matSem, matSubjCur);
+  host.querySelectorAll(".mat-row").forEach((b) => b.onclick = (ev) => { if (!ev.target.closest(".mat-more")) openMaterial(b.dataset.id); });
+  host.querySelectorAll(".mat-more").forEach((b) => b.onclick = async () => {
+    const m = matById(b.dataset.id); if (!m) return;
+    const act = await askPick({ title: m.title, options: [
+      { label: "Megnyitás", value: "open" }, { label: "Átnevezés", value: "rename" },
+      { label: "Megosztás jegyzetekkel", sub: "PDF-ként, a rajzokkal és szövegekkel együtt", value: "share" }, { label: "Törlés", value: "delete" }] });
+    if (act === "open") openMaterial(m.id);
+    else if (act === "rename") { const t = await askText({ title: "Átnevezés", value: m.title }); if (t != null && t.trim()) { m.title = t.trim(); saveState(); renderMatSubject(); } }
+    else if (act === "share") matSharePdf(m.id);
+    else if (act === "delete") matDelete(m.id);
+  });
+}
+// Link az óra részleteiből a tárgy anyagaihoz.
+function matDetailLink(e) {
+  const p = e && !e.manual ? parseClassSummary(e.summary) : null;
+  const name = (p && p.name) || (e && (e.subject || e.summary)) || "";
+  if (!name || !e.S) return "";
+  const sem = semObj(e.S).key, n = matOf(sem, matSubjKey(name)).length;
+  return `<div class="card" style="margin-bottom:12px"><div class="row" id="dn-mats" data-sem="${esc(sem)}" data-name="${esc(name)}" style="cursor:pointer"><span class="row-ic">${icon("doc")}</span>`
+    + `<span class="row-main"><span class="row-title">Anyagok</span><span class="row-sub">${n ? n + " anyag ehhez a tárgyhoz" : "PDF-ek és jegyzetek ehhez a tárgyhoz"}</span></span>${icon("chev")}</div></div>`;
+}
+
+// ---- Fájl mentése / megosztása (PDF, zip) ----
+async function matShareBlob(blob, name, mime, what) {
+  try {
+    const file = new File([blob], name, { type: mime });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Kredit+" }); return; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  const dl = DLP();
+  if (isNative && dl && dl.saveToDownloads) {
+    try {
+      const r = await dl.saveToDownloads({ base64: b64(await blob.arrayBuffer()), fileName: name, mime });
+      const open = await ask({ title: what + " mentve", okText: "Megnyitás", cancelText: "Kész", body: "Elmentve a Letöltések közé: <b>" + esc(name) + "</b>." });
+      if (open && r && r.uri) { try { await dl.open({ uri: r.uri, mime }); } catch (e) { toast("Nem sikerült megnyitni."); } }
+    } catch (e) { toast("Nem sikerült menteni: " + (e && e.message ? e.message : e)); }
+    return;
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+// ---- Mentés és visszaállítás (.zip) ----
+async function matBackup() {
+  const list = mats();
+  if (!list.length) { toast("Még nincs mit menteni."); return; }
+  showBusy("Mentés készítése…");
+  try {
+    const JSZip = await matScript("lib/jszip.min.js", "JSZip");
+    const zip = new JSZip(), docs = {};
+    for (const m of list) {
+      docs[m.id] = await matGetDoc(m.id);
+      if (m.kind === "pdf") { const f = await matGetFile(m.id); if (f) zip.file("files/" + m.id + ".pdf", f); }
+    }
+    zip.file("anyagok.json", JSON.stringify({ app: "Kredit+", v: 1, at: new Date().toISOString(), materials: list, docs }));
+    const blob = await zip.generateAsync({ type: "blob", mimeType: "application/zip" });
+    hideBusy();
+    await matShareBlob(blob, "kreditplus-anyagok-" + backupTs() + ".zip", "application/zip", "Mentés");
+  } catch (e) { hideBusy(); toast("Nem sikerült a mentés: " + (e && e.message ? e.message : e)); }
+}
+async function matRestore(file) {
+  if (!file) return;
+  showBusy("Mentés beolvasása…");
+  try {
+    const JSZip = await matScript("lib/jszip.min.js", "JSZip");
+    const zip = await JSZip.loadAsync(file);
+    const j = zip.file("anyagok.json");
+    if (!j) throw new Error("Ez nem Kredit+ anyag-mentés.");
+    const data = JSON.parse(await j.async("string"));
+    const incoming = (data.materials || []).filter((m) => m && m.id);
+    hideBusy();
+    const have = new Set(mats().map((m) => m.id));
+    const fresh = incoming.filter((m) => !have.has(m.id));
+    const ok = await ask({ title: "Visszaállítás", okText: "Visszaállítás", cancelText: "Mégse",
+      body: `A mentésben <b>${incoming.length}</b> anyag van, ebből <b>${fresh.length}</b> új. A már meglévőket nem írom felül.` });
+    if (!ok || !fresh.length) return;
+    showBusy("Visszaállítás…");
+    for (const m of fresh) {
+      if (m.kind === "pdf") {
+        const f = zip.file("files/" + m.id + ".pdf");
+        if (!f) continue;
+        await matPutFile(m.id, new Blob([await f.async("uint8array")], { type: "application/pdf" }));
+      }
+      await matPutDoc(m.id, (data.docs && data.docs[m.id]) || { v: 1, pages: [], items: {} });
+      mats().push(m);
+    }
+    saveState(); hideBusy(); renderMats();
+    toast(fresh.length + " anyag visszaállítva.");
+  } catch (e) { hideBusy(); await ask({ title: "Nem sikerült", okText: "OK", body: esc(String(e && e.message || e)) }); }
+}
+$("mat-file").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f && matSubjCur) matImportPdf(f, matSem, matSubjCur); });
+$("mat-zip").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) matRestore(f); });

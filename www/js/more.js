@@ -8,6 +8,7 @@
 // Grouped so the hub is scannable (no flat wall of tiles). Global "Adatok frissítése" lives ONLY here
 // (in Eszközök) + the per-screen refresh icon — the Kezdőlap stays a clean, glanceable dashboard.
 const MORE_SERVICES = [
+  { id: "materials", group: "Tanulmányok", label: "Anyagok", sub: () => { const n = (state.materials || []).length; return n ? n + " anyag" : "PDF-ek és jegyzetek a tárgyaidhoz"; }, icon: "doc", go: () => pushScreen("tab-mats") },
   { id: "courses", group: "Tanulmányok", label: "Tárgyak", sub: "Felvett és mintatanterv", icon: "book", go: () => pushScreen("tab-courses") },
   { id: "credit", group: "Tanulmányok", label: "Kredit", sub: () => { const p = state.progress; return (p && p.total) ? `${p.done} / ${p.total} kredit · ${Math.round(p.done / p.total * 100)}%` : "Előrehaladás"; }, icon: "chart", go: () => pushScreen("tab-credit") },
   { id: "grades", group: "Tanulmányok", label: "Jegyek", sub: () => { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; return i && i.korrigalt != null ? "Kreditindex " + i.korrigalt : "Jegyek és átlagok"; }, icon: "note", go: () => pushScreen("tab-grades") },

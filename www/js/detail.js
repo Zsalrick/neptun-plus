@@ -161,5 +161,6 @@ function renderCourseSeg(e) {
   if (reqs.length) h += `<div class="dash-label">Követelmények</div><div class="card"><div class="card-pad">` + reqs.map((r) => `<div class="req-row">${esc(r.description)}</div>`).join("") + `</div></div>`;
   if (d.description || d.note) h += `<div class="dash-label">Leírás</div><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.description || d.note)}</div></div>`;
   if (!h) h = `<div class="dash-empty" style="padding:18px 2px">${detailCourseErr ? "Nem sikerült betölteni a tárgy adatait." : "Nincs több adat."}</div>`;
-  host.innerHTML = h;
+  host.innerHTML = matDetailLink(e) + h;
+  const ml = $("dn-mats"); if (ml) ml.onclick = () => openMatSubject(ml.dataset.sem, ml.dataset.name);
 }

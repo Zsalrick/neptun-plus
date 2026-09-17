@@ -705,6 +705,33 @@
               <div class="scroll" id="plan-pick-scroll"></div>
             </section>
 
+            <section class="tabscreen" id="tab-mats">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Anyagok</div><div class="topbar-sub">PDF-ek és jegyzetek tárgyanként</div></div>
+              </header>
+              <div class="scroll" id="mats-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-mat-subject">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark" id="mat-subject-title">Tárgy</div><div class="topbar-sub" id="mat-subject-sub"></div></div>
+              </header>
+              <div class="scroll" id="mat-subject-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-mat-view">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark mv-title" id="mv-title">Anyag</div><div class="topbar-sub" id="mv-sub">Automatikus mentés</div></div>
+                <button class="iconbtn plain" id="mv-addpage" type="button" title="Új oldal" aria-label="Új oldal"><span data-icon="plus"></span></button>
+                <button class="iconbtn plain" id="mv-share" type="button" title="Megosztás jegyzetekkel" aria-label="Megosztás jegyzetekkel"><span data-icon="send"></span></button>
+              </header>
+              <div class="mv-scroll" id="mv-scroll"><div class="mv-pages" id="mv-pages"></div></div>
+              <div class="mv-bar" id="mv-bar"></div>
+            </section>
+
             <section class="tabscreen" id="tab-person">
               <header class="topbar">
                 <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
@@ -897,6 +924,8 @@
 
   <!-- ICS subscription link setup sheet -->
   <input type="file" id="import-file" accept=".npb,.json,application/json" hidden />
+  <input type="file" id="mat-file" accept="application/pdf,.pdf" hidden />
+  <input type="file" id="mat-zip" accept=".zip,application/zip" hidden />
   <div class="backdrop hidden" id="pw-dialog">
     <div class="sheet">
       <div class="sheet-title" id="pw-title">Jelszó</div>
@@ -1261,6 +1290,8 @@
   <script defer src="js/backup.js"></script>
   <script defer src="js/login.js"></script>
   <script defer src="js/lock.js"></script>
+  <script defer src="js/materials.js"></script>
+  <script defer src="js/material-viewer.js"></script>
   <script defer src="js/init.js"></script>
 </body>
 </html>
