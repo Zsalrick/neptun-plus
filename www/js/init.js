@@ -2,11 +2,54 @@
 // Sima szkript, KÖZÖS hatókörrel: a www/index.html tölti be sorrendben. Lásd PROJECT.md "Fájlok".
 "use strict";
 
+// ---------- szűrők megjegyzése (state.ui) ----------
+// A képernyők szűrői (félév, nézet, szegmens) modul-szintű változókban élnek. Háttérbe lépéskor elmentjük
+// őket, induláskor visszaállítjuk, így újraindítás után is az marad kiválasztva, amit a felhasználó hagyott.
+// A félévhez kötött választás csak ugyanabban a félévben él: új félév kezdetén alaphelyzetbe áll, különben
+// a tavalyi félévet mutatná. Az érvénytelen értéket (pl. másik profil félévét) a render maga is "Összes"-re állítja.
+const UI_KEYS = {
+  gradesFilter: [() => gradesFilter, (v) => { gradesFilter = v; }, true],
+  coFilter: [() => coFilter, (v) => { coFilter = v; }, true],
+  coSeg: [() => coSeg, (v) => { coSeg = v; }, false],
+  ttFilter: [() => ttFilter, (v) => { ttFilter = v; }, true],
+  exFilter: [() => exFilter, (v) => { exFilter = v; }, true],
+  ttView: [() => ttView, (v) => { ttView = v; }, false],
+  finTxFilter: [() => finTxFilter, (v) => { finTxFilter = v; }, false],
+  periodsStatus: [() => periodsStatus, (v) => { periodsStatus = v; }, false],
+  periodsTerm: [() => periodsTerm, (v) => { periodsTerm = v; }, true],
+  matSem: [() => matSem, (v) => { matSem = v; }, true],
+  calcTerm: [() => calcTerm, (v) => { calcTerm = v; }, true],
+  msgSem: [() => msgSem, (v) => { msgSem = v; }, true],
+};
+function saveUiState() {
+  const v = {};
+  Object.keys(UI_KEYS).forEach((k) => { const x = UI_KEYS[k][0](); if (x !== null && x !== undefined && x !== "") v[k] = x; });
+  state.ui = { sem: currentSemesterKey(), v };
+  // CSAK a ui mezőt írjuk a tárolt állapotba, nem az egészet (nem saveState): az oldal elhagyásakor fut, és
+  // ha előtte alaphelyzetbe állították vagy mentést töltöttek vissza (localStorage csere + reload), a régi
+  // memóriabeli állapot különben visszaírná magát. Ha nincs tárolt állapot (épp törölték), nem írunk semmit.
+  try {
+    const raw = localStorage.getItem(STORE_KEY); if (!raw) return;
+    const st = JSON.parse(raw); st.ui = state.ui; localStorage.setItem(STORE_KEY, JSON.stringify(st));
+  } catch (e) { /* ignore */ }
+}
+function restoreUiState() {
+  const u = state.ui; if (!u || !u.v) return;
+  const sameSem = u.sem === currentSemesterKey();
+  Object.keys(u.v).forEach((k) => {
+    const d = UI_KEYS[k]; if (!d || (d[2] && !sameSem)) return;
+    try { d[1](u.v[k]); } catch (e) {}
+  });
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveUiState(); });
+window.addEventListener("pagehide", saveUiState);
+
 // =====================================================================
 //  INIT
 // =====================================================================
 renderIcons(document);
 $("version-tag").textContent = APP_VERSION;
+restoreUiState();
 // Re-render the freshness lines + Home status when connectivity flips (offline ⇄ online).
 ["online", "offline"].forEach((ev) => window.addEventListener(ev, () => { try { renderHome(); const a = document.querySelector(".tabscreen.active"); if (a) renderForTab(a.id); } catch (e) {} }));
 attachPTR($("tt-scroll"), $("tt-ptr"), fetchTimetable);

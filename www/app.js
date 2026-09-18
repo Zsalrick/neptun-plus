@@ -3,7 +3,7 @@
 "use strict";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.304";
+const APP_VERSION = "v0.305";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -81,7 +81,8 @@ function defaultState() {
     username: "", password: "",
     neptunCode: "", // immutable Neptun code (read-only); the login name (username) can differ / be custom
     identity: null, // { code, name, at }: a Neptun api/UserInfo szerinti saját fiók, az első sikeres belépéskor rögzítve
-    identityMismatch: "", // ha a mentett azonosítóval MÁSIK Neptun-kód lép be, annak kódja (a munkamenetet elutasítjuk)
+    identityMismatch: "",
+    ui: null, // { sem, v: { gradesFilter, coFilter, ttView, ... } }: a képernyők szűrői (init.js saveUiState), eszközszintű // ha a mentett azonosítóval MÁSIK Neptun-kód lép be, annak kódja (a munkamenetet elutasítjuk)
     finance: null, // { fetchedAt, accounts, toPay, impositions, transactions, invoices, scholarships } — see FRONTEND-penzugyek.md
     no2fa: false,
     totp: null,
