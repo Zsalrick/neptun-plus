@@ -18,7 +18,15 @@ a már meglévő Access + `admins` ellenőrzés mögött. **Soha ne kapcsold be 
 apk/KreditPlus-v0.308.apk      maga az APK (Content-Type: application/vnd.android.package-archive)
 apk/KreditPlus-v0.308.json     a verzió adatai
 apk/latest.json                a legfrissebb verzió adatai (ugyanaz a formátum)
+apk/index.json                 a tárolt verziók listája: [{ versionName, versionCode, file }], legújabb elöl
 ```
+
+- **Megőrzés: legfeljebb 5 verzió.** A feltöltő szkript minden feltöltés után csak a legújabb 5 verziót
+  tartja meg (`versionCode` szerint), a régebbiek `.apk` és `.json` fájlját **törli**. Ezt a szkript
+  intézi, **az admin oldalnak nem kell (és nem is szabad) semmit törölnie** az R2-ből. Az admin csak olvas.
+- Emiatt a korábbi verziók listája legfeljebb 4 elemű (a legújabb mellett), és egy korábban látott
+  verzió eltűnhet a következő feltöltés után. A felület ne feltételezze, hogy egy régi link örökre él:
+  nem létező fájlnál a letöltés `404`, a felület ilyenkor frissítse a listát.
 
 - A `.json` formátuma (manifest):
 
@@ -53,7 +61,7 @@ A mezőkre építhetsz, de légy elnéző: ha egy mező hiányzik (pl. `notes`),
 
 | Végpont | Mit ad |
 |---|---|
-| `GET /api/admin/apk` | `{ latest, versions }`. `latest` = az `apk/latest.json` tartalma (vagy `null`). `versions` = az `apk/` alatti összes `KreditPlus-v*.json` beolvasva, `versionCode` szerint csökkenő sorrendben, legfeljebb 20. (`env.APK.list({ prefix: "apk/" })`, majd a `.json` kulcsokra `env.APK.get(key)` → `.json()`.) |
+| `GET /api/admin/apk` | `{ latest, versions }`. `latest` = az `apk/latest.json` tartalma (vagy `null`). `versions` = az `apk/` alatti összes `KreditPlus-v*.json` beolvasva, `versionCode` szerint csökkenő sorrendben (legfeljebb 5 lesz, lásd Megőrzés). (`env.APK.list({ prefix: "apk/" })`, majd a `KreditPlus-v*.json` kulcsokra `env.APK.get(key)` → `.json()`; a `latest.json` és az `index.json` ne kerüljön a listába.) |
 | `GET /api/admin/apk/download/<fájlnév>` | Maga az APK letöltése. A fájlnév csak `^KreditPlus-v[0-9.]+\.apk$` lehet, minden más `404`. `env.APK.get("apk/" + név)`, nem létezőnél `404`. Válasz: az objektum `body`-ja streamként, fejlécek: `Content-Type: application/vnd.android.package-archive`, `Content-Disposition: attachment; filename="<név>"`, `Content-Length` (az objektum mérete), `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`. Naplózás: `log(env, me, "apk.download", <versionName>)`. |
 
 - A letöltés GET, mert a böngésző így tudja fájlként menteni. A fájlnév nem személyes adat, mehet az URL-be.
@@ -70,7 +78,8 @@ A mezőkre építhetsz, de légy elnéző: ha egy mező hiányzik (pl. `notes`),
   - adatsorok: Méret (MB, egy tizedessel: 16,9 MB), Készült (dátum, magyar formátum), Megjegyzés (ha van),
     Ellenőrzőkód (SHA-256 első 12 karaktere + másolás gomb a teljeshez);
   - **Letöltés** gomb (sima `<a href="/api/admin/apk/download/KreditPlus-v0.308.apk">`, `download` attribútummal).
-- **Korábbi verziók** lista: verzió, dátum, méret, megjegyzés, soronként egy letöltés link.
+- **Korábbi verziók** lista (legfeljebb 4): verzió, dátum, méret, megjegyzés, soronként egy letöltés link.
+  Alatta halványan: „Az utolsó 5 verziót őrizzük meg, a régebbiek automatikusan törlődnek.”
 - Rövid tájékoztató a kártya alatt (fix szöveg, a DESIGN.md szerint gondolatjel nélkül):
   „Telefonon: töltsd le, majd nyisd meg a fájlt. Első alkalommal engedélyezni kell a telepítést ebből az
   alkalmazásból (Beállítások, Ismeretlen alkalmazások telepítése). A régi verziót felülírja, adat nem vész el.”
@@ -82,7 +91,8 @@ A mezőkre építhetsz, de légy elnéző: ha egy mező hiányzik (pl. `notes`),
 
 1. Belépés nélkül az `admin.kreditplus.hu/api/admin/apk` és a letöltés: Access belépő oldal, adat nem.
 2. Belépve, de nem admin (nincs az `admins` táblában): `403`.
-3. `GET /api/admin/apk` a legújabb és a korábbi verziókat adja, `versionCode` szerint csökkenőben.
+3. `GET /api/admin/apk` a legújabb és a korábbi verziókat adja, `versionCode` szerint csökkenőben, a
+   `latest.json` és az `index.json` nélkül. Az admin kód sehol nem hív `env.APK.delete`-et.
 4. A letöltés telefonon is működik, a fájl neve `KreditPlus-v0.308.apk`, mérete egyezik a manifestben lévővel.
 5. `../`, más kiterjesztés, nem létező fájlnév: `404`.
 6. Minden letöltés bekerül az `admin_log`-ba (`apk.download`, verzió).
