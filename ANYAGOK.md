@@ -202,9 +202,20 @@ Külön rész a Több menüben (Tanulmányok): saját könyvtár, ugyanazzal a m
 - **Felvétel:** jobb fent PDF (több is), más appból megosztva („Mentés a Könyvek közé"), keresőből letöltve,
   vagy linkről. Importáláskor az oldalméretek is elmentődnek, így egy 500 oldalas könyv is azonnal nyílik.
   Utána tárgyválasztó (félévváltó, keresés, saját név; bezárással kihagyható).
-- **Kereső:** saját könyvek + OpenAlex (`type:book,is_oa:true`, csak közvetlen PDF-linkkel, magyar elöl) +
-  MEK (a nyilvános címkereső HTML-je; a PDF-et letöltéskor a könyv oldaláról keressük ki). MeRSZ: fizetős,
-  csak a saját oldalán olvasható, ezért csak megnyitjuk (a keresett szó a vágólapra kerül, GET-keresője nincs).
+- **Kereső (v0.313):** fő mező + lenyitható részletes keresés (cím, szerző, kiadó, megjelenés éve ettől/eddig,
+  nyelv, források), a Keresés gombra indul, a találatok forrásonként érkeznek. Rendezés: relevancia (forrás-sorrend),
+  legújabb, cím. Ismétlés szűrve (cím + első szerző). Az összesítő forrásonként kiírja a darabszámot, vagy hogy miért
+  nem keresett benne (pl. MEK: kiadóra/évre nem lehet). Források, mind nyilvános és belépés nélkül letölthető:
+  - **DTK, Digitális Tankönyvtár** (dtk.tankonyvtar.hu, Oktatási Hivatal): magyar egyetemi tankönyvek. DSpace: a
+    `/discover` Solr-query mezőnként (`dc.title:`, `dc.creator:`, `dc.publisher:`, `dc.language:`, `dc.format:pdf`),
+    utána találatonként `/rest/handle/…?expand=metadata,bitstreams` (8 párhuzamos), csak ORIGINAL PDF marad
+    (sok tétel zip e-learning csomag). Böngésző-UA nélkül 403, ezért natívan `User-Agent` fejlécet küldünk.
+  - **OpenAlex:** `type:book,is_oa:true`, `title.search`, `raw_author_name.search`, `language`, `publication_year`;
+    csak közvetlen PDF-linkkel. Kiadót a könyveknél nem ismer: a tárhely nevére szűrünk helyben.
+  - **MEK:** a nyilvános kereső HTML-je (`dc_title`, `dc_creator`, `dc_subject`); a PDF letöltéskor a könyv oldaláról.
+  - **OpenStax:** angol egyetemi tankönyvek (CC BY), a CMS API teljes listája egyszer, helyben szűrve.
+  - Nem került be: OAPEN (a REST-je 500-at ad), DOAB (nem ad közvetlen PDF-et; ezek egy része az OpenAlexben megvan),
+    Internet Archive (vegyes jogállású gyűjtemény), MeRSZ (fizetős, csak link).
   Letöltés natívan CapacitorHttp-vel (base64), https-re cserélve (az Android nem enged http-t és nem követi a
   http→https átirányítást), a `%PDF` fejlécet ellenőrizzük. A Kredit+ nem tárol és nem továbbít könyvet.
 - **Tárgyhoz rendelés:** a tárgy NEVÉHEZ (`matSubjKey`), félévtől függetlenül; a tárgy Anyagok oldalán

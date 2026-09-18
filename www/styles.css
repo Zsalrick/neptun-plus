@@ -1464,3 +1464,21 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .mt-ol .row-title.mt-sub { font-weight: 450; font-size: 14.5px; }
 .mt-ol:disabled { opacity: .5; cursor: default; }
 #mv-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Könyvkereső: fő mező, lenyitható részletes keresés (cím, szerző, kiadó, év, nyelv, források), Keresés gomb */
+.bks-form { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+.bks-adv-t { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: var(--ctl-md); padding: 0 2px; border: 0; background: transparent;
+  color: var(--ink-2); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.bks-adv-t svg.ic { width: 18px; height: 18px; transition: transform .15s ease; }
+.bks-adv-t.open svg.ic { transform: rotate(180deg); }
+.bks-adv { padding: 4px 0 6px; }
+.bks-adv[hidden] { display: none; }
+.bks-yr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bks-src { display: flex; flex-direction: column; gap: 8px; }
+.bks-adv .seg { margin-bottom: 0; }
+.bks-adv #bks-clear { align-self: flex-start; margin-top: 2px; padding-left: 2px; }
+.bks-go { width: 100%; margin-top: 6px; }
+.bks-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.bks-head .period-btn { margin-bottom: 2px; }
+.bks-sum { margin: 0 2px 10px; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+.bks-hit .row-sub.bks-meta { margin-top: 1px; color: var(--ink-3); }
+.bks-head .period-btn.dd { font-size: 13.5px; color: var(--ink-2); min-height: 36px; }
