@@ -3,7 +3,7 @@
 "use strict";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.313";
+const APP_VERSION = "v0.314";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -44,6 +44,7 @@ const P = {
   note: '<path d="M5 4h14v13l-4 4H5z"/><path d="M15 21v-4h4M9 9h6M9 13h4"/>',
   book: '<path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 0-2 2z"/><path d="M5 4v16M18 20a2 2 0 0 1 2 2"/>',
   books: '<path d="M3 5.5c2.7-1.3 5.7-1.2 9 .8 3.3-2 6.3-2.1 9-.8V19c-2.7-1.3-5.7-1.2-9 .8-3.3-2-6.3-2.1-9-.8z"/><path d="M12 6.3v13.5"/>',
+  quiz: '<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M9.6 9.3a2.4 2.4 0 1 1 3.4 2.2c-.6.3-1 .9-1 1.6v.4M12 16.6h.01"/>',
   toc: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke-width="2.6"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   grid: '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>',
@@ -71,7 +72,7 @@ function renderIcons(root = document) {
 // Per-profile fields: everything tied to ONE Neptun identity (one university's login + its data).
 // These live at the top level of `state` for the ACTIVE profile (so all existing code keeps working),
 // and are mirrored into state.profiles[] on save; switching a profile swaps them in/out.
-const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining", "plans", "materials", "books", "identity", "identityMismatch"];
+const PROFILE_FIELDS = ["university", "servers", "activeServerId", "username", "password", "no2fa", "totp", "icsUrl", "courses", "curriculum", "ics", "manualExams", "notes", "hiddenOcc", "semesters", "progress", "neptunCode", "finance", "messages", "grades", "periods", "calcGoals", "calcPreds", "seen", "notifLog", "refCode", "friends", "people", "myName", "myId", "myTraining", "plans", "materials", "books", "quizzes", "quizCtx", "identity", "identityMismatch"];
 function defaultState() {
   return {
     setupComplete: false,

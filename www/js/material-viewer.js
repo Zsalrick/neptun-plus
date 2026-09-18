@@ -33,11 +33,12 @@ function mvPrefs() {
   return p;
 }
 
-async function openMaterial(id) {
+// opt.page: a PDF ennyiedik oldalán nyíljon (pl. a quiz "Megnézem" gombja), nem az utolsó olvasási helyen.
+async function openMaterial(id, opt) {
   const m = matById(id); if (!m) { toast("Ez az anyag már nincs meg."); return; }
   mvClose();
   m.opened = Date.now(); saveState();
-  mv = { id, m, doc: null, pdf: null, z: 1, mode: "read", search: null, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], tcache: {}, io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
+  mv = { id, m, doc: null, pdf: null, z: 1, mode: "read", search: null, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], tcache: {}, io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false, jumpPage: opt && opt.page };
   pushScreen("tab-mat-view");
 }
 function renderMatView() {
@@ -73,7 +74,8 @@ async function mvLoad(cur) {
   // A kiszámolt oldalméreteket elmentjük: egy több száz oldalas könyv így legközelebb azonnal nyílik.
   if (cur.sized) cur.saving = cur.saving.then(() => matPutDoc(cur.id, doc)).catch(() => {});
   mvLayout();
-  mvRestorePos(cur);
+  const jx = cur.jumpPage ? cur.doc.pages.findIndex((p) => p.kind === "pdf" && p.n === cur.jumpPage) : -1;
+  if (jx >= 0) mvScrollToPage(jx, true); else mvRestorePos(cur);
   mvPill();
   const pr = mvPrefs();
   if (!pr.hintRead) { pr.hintRead = 1; saveState(); toast("Olvasó mód. Jegyzeteléshez koppints a ceruzára jobb fent."); }

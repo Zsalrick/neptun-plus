@@ -175,8 +175,11 @@ function renderMatSubject() {
   // A tárgyhoz rendelt könyvek (books.js): félévtől függetlenül, a tárgy neve alapján.
   const bks = (state.books || []).filter((b) => (b.subjects || []).some((s) => s.key === matSubjCur.key));
   if (bks.length) h += `<div class="dash-label">Könyvek</div><div class="card">` + bks.map((b) => bookRow(b, false)).join("") + `</div>`;
+  const qzs = (state.quizzes || []).filter((q) => (q.subjects || []).some((s) => s.key === matSubjCur.key));
+  if (qzs.length) h += `<div class="dash-label">Quizek</div><div class="card">` + qzs.map((q) => quizRow(q, false)).join("") + `</div>`;
   host.innerHTML = h;
   host.querySelectorAll(".bk-row").forEach((b) => b.onclick = () => openMaterial(b.dataset.id));
+  host.querySelectorAll(".qz-row").forEach((b) => b.onclick = () => quizStartMenu(b.dataset.id));
   $("mat-import").onclick = () => { const f = $("mat-file"); f.value = ""; f.click(); };
   $("mat-note").onclick = () => matNewNote(matSem, matSubjCur);
   host.querySelectorAll(".mat-row").forEach((b) => b.onclick = (ev) => { if (!ev.target.closest(".mat-more")) openMaterial(b.dataset.id); });
@@ -222,17 +225,17 @@ async function matShareBlob(blob, name, mime, what) {
 
 // ---- Mentés és visszaállítás (.zip) ----
 async function matBackup() {
-  const list = mats(), bookList = state.books || [];
-  if (!list.length && !bookList.length) { toast("Még nincs mit menteni."); return; }
+  const list = mats(), bookList = state.books || [], quizList = state.quizzes || [];
+  if (!list.length && !bookList.length && !quizList.length) { toast("Még nincs mit menteni."); return; }
   showBusy("Mentés készítése…");
   try {
     const JSZip = await matScript("lib/jszip.min.js", "JSZip");
     const zip = new JSZip(), docs = {};
-    for (const m of list.concat(bookList)) {
+    for (const m of list.concat(bookList, quizList)) {
       docs[m.id] = await matGetDoc(m.id);
       if (m.kind === "pdf") { const f = await matGetFile(m.id); if (f) zip.file("files/" + m.id + ".pdf", f); }
     }
-    zip.file("anyagok.json", JSON.stringify({ app: "Kredit+", v: 1, at: new Date().toISOString(), materials: list, books: bookList, docs }));
+    zip.file("anyagok.json", JSON.stringify({ app: "Kredit+", v: 1, at: new Date().toISOString(), materials: list, books: bookList, quizzes: quizList, docs }));
     const blob = await zip.generateAsync({ type: "blob", mimeType: "application/zip" });
     hideBusy();
     await matShareBlob(blob, "kreditplus-anyagok-" + backupTs() + ".zip", "application/zip", "Mentés");
@@ -247,13 +250,14 @@ async function matRestore(file) {
     const j = zip.file("anyagok.json");
     if (!j) throw new Error("Ez nem Kredit+ anyag-mentés.");
     const data = JSON.parse(await j.async("string"));
-    const incoming = (data.materials || []).concat((data.books || []).map((b) => Object.assign({}, b, { book: true }))).filter((m) => m && m.id);
+    const incoming = (data.materials || []).concat((data.books || []).map((b) => Object.assign({}, b, { book: true })),
+      (data.quizzes || []).map((q) => Object.assign({}, q, { quiz: true }))).filter((m) => m && m.id);
     hideBusy();
-    const have = new Set(mats().concat(state.books || []).map((m) => m.id));
+    const have = new Set(mats().concat(state.books || [], state.quizzes || []).map((m) => m.id));
     const fresh = incoming.filter((m) => !have.has(m.id));
-    const nb = incoming.filter((m) => m.book).length;
+    const nb = incoming.filter((m) => m.book || m.quiz).length;
     const ok = await ask({ title: "Visszaállítás", okText: "Visszaállítás", cancelText: "Mégse",
-      body: `A mentésben <b>${incoming.length - nb}</b> anyag${nb ? ` és <b>${nb}</b> könyv` : ""} van, ebből <b>${fresh.length}</b> új. A már meglévőket nem írom felül.` });
+      body: `A mentésben <b>${incoming.length - nb}</b> anyag${nb ? ` és <b>${nb}</b> könyv vagy quiz` : ""} van, ebből <b>${fresh.length}</b> új. A már meglévőket nem írom felül.` });
     if (!ok || !fresh.length) return;
     showBusy("Visszaállítás…");
     for (const m of fresh) {
@@ -263,7 +267,7 @@ async function matRestore(file) {
         await matPutFile(m.id, new Blob([await f.async("uint8array")], { type: "application/pdf" }));
       }
       await matPutDoc(m.id, (data.docs && data.docs[m.id]) || { v: 1, pages: [], items: {} });
-      if (m.book) (state.books = state.books || []).push(m); else mats().push(m);
+      if (m.book) (state.books = state.books || []).push(m); else if (m.quiz) (state.quizzes = state.quizzes || []).push(m); else mats().push(m);
     }
     saveState(); hideBusy(); renderMats();
     toast(fresh.length + (nb ? " anyag és könyv" : " anyag") + " visszaállítva.");

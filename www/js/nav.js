@@ -19,6 +19,8 @@ function pushScreen(id) {
 function popScreen() {
   const cur = document.querySelector(".tabscreen.active");
   if (cur && cur.id === "tab-set-account" && accountDirty()) { promptSaveAccount(); return; } // guard unsaved edits
+  if (cur && cur.id === "tab-quiz-play" && quizPlayGuard()) return; // quiz közben: kilépés megerősítése
+  if (cur && cur.id === "tab-quiz-edit" && quizEditGuard()) return; // mentetlen quiz-szerkesztés
   const prev = navStack.pop() || lastMainTab;
   showTab(prev, -1); // slide back to the left
 }
@@ -58,6 +60,11 @@ function renderForTab(id) {
   else if (id === "tab-mat-toc") renderMatToc();
   else if (id === "tab-books") renderBooks();
   else if (id === "tab-book-search") renderBookSearch();
+  else if (id === "tab-quizzes") renderQuizzes();
+  else if (id === "tab-quiz-ai") renderQuizAi();
+  else if (id === "tab-quiz-edit") renderQuizEdit();
+  else if (id === "tab-quiz-q") renderQuizQ();
+  else if (id === "tab-quiz-play") renderQuizPlay();
   else if (id === "tab-notifs") renderNotifs();
   else if (id === "tab-notif") renderNotifDetail();
   else if (id === "tab-export") renderExport();

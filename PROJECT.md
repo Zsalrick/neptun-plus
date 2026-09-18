@@ -91,6 +91,7 @@ egy fájlon belül. Mind `"use strict"`. Az `index.html` alján `defer`-rel,
 | `js/materials.js` | Anyagok: tárolás (IndexedDB), PDF importálás, listák, .zip mentés (lásd ANYAGOK.md) |
 | `js/material-viewer.js` | Anyag-megjelenítő: PDF oldalak, toll/kiemelő/radír/szöveg, új oldal, megosztás jegyzetekkel, olvasási pozíció, oldaljegyzetek, Tartalom képernyő |
 | `js/books.js` | Könyvek: saját könyvtár, könyvkereső (OpenAlex, MEK, MeRSZ link), letöltés, tárgyhoz rendelés (lásd ANYAGOK.md) |
+| `js/quiz.js` | Quizek: formátum-beolvasó, AI-prompt, beillesztés, kézi szerkesztő, gyakorló és vizsga mód (lásd QUIZ-FORMAT.md) |
 | `js/notifications.js` | Értesítések, változás-riasztások, értesítési központ, reggeli összefoglaló |
 | `js/settings.js` | Beállítások |
 | `js/backup.js` | Mentés és visszaállítás |

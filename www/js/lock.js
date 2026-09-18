@@ -49,7 +49,7 @@ async function maybeBio() { if (!(state.biometric && bioOK)) return; try { await
 $("lock-cancel").onclick = () => { if (lockVerifyCb) { const cb = lockVerifyCb; lockVerifyCb = null; $("lock-cancel").hidden = true; if (!isLocked) $("lock").classList.add("hidden"); cb(false); } };
 // Anyag olvasása vagy jegyzetelése közben a visszatérés NE zároljon (gyors appváltás, fájlválasztó,
 // megosztás): a zárolás elhalasztódik, és akkor jön, amikor a felhasználó kilép az Anyagokból.
-const LOCK_DEFER_SCREENS = ["tab-mats", "tab-mat-subject", "tab-mat-view", "tab-mat-toc", "tab-books", "tab-book-search"];
+const LOCK_DEFER_SCREENS = ["tab-mats", "tab-mat-subject", "tab-mat-view", "tab-mat-toc", "tab-books", "tab-book-search", "tab-quiz-ai", "tab-quiz-edit", "tab-quiz-q", "tab-quiz-play"];
 let lockDeferred = false;
 function lockOnResume() {
   if (!secOn("resume")) return;

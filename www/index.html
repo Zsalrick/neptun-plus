@@ -762,6 +762,49 @@
               <div class="scroll" id="mat-toc-scroll"></div>
             </section>
 
+            <section class="tabscreen" id="tab-quizzes">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark">Quizek</div><div class="topbar-sub">Gyakorlás ZH-ra és vizsgára</div></div>
+                <button class="iconbtn plain" id="quiz-new" type="button" title="Új quiz" aria-label="Új quiz"><span data-icon="plus"></span></button>
+              </header>
+              <div class="scroll" id="quizzes-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-quiz-ai">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark">Quiz AI-jal</div><div class="topbar-sub">Prompt a saját AI-odnak</div></div>
+              </header>
+              <div class="scroll" id="quiz-ai-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-quiz-edit">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark">Quiz szerkesztése</div><div class="topbar-sub">Kérdések és válaszok</div></div>
+              </header>
+              <div class="scroll" id="quiz-edit-scroll"></div>
+              <div class="save-bar"><button class="btn primary lg" id="qe-save" type="button">Mentés</button></div>
+            </section>
+
+            <section class="tabscreen" id="tab-quiz-q">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark" id="quiz-q-title">Kérdés</div><div class="topbar-sub">Típus, kérdés, helyes válasz</div></div>
+              </header>
+              <div class="scroll" id="quiz-q-scroll"></div>
+              <div class="save-bar"><button class="btn primary lg" id="qq-save" type="button">Kész</button></div>
+            </section>
+
+            <section class="tabscreen" id="tab-quiz-play">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark mv-title" id="quiz-play-title">Quiz</div><div class="topbar-sub" id="quiz-play-sub"></div></div>
+              </header>
+              <div class="scroll" id="quiz-play-scroll"></div>
+            </section>
+
             <section class="tabscreen" id="tab-mat-view">
               <header class="topbar">
                 <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
@@ -1336,6 +1379,7 @@
   <script defer src="js/materials.js"></script>
   <script defer src="js/material-viewer.js"></script>
   <script defer src="js/books.js"></script>
+  <script defer src="js/quiz.js"></script>
   <script defer src="js/init.js"></script>
 </body>
 </html>
