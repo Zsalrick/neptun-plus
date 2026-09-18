@@ -9,7 +9,9 @@
     <string name="widget_current_desc">A most zajló órád a kezdőképernyőn.</string>
     <string name="widget_current_label">Jelenlegi óra</string>
     <string name="widget_next_label">Következő óra</string>
-    <string name="widget_stat_desc">Kredit+ statisztika a kezdőképernyőn.</string>
+    <string name="widget_grades_desc">A korrigált kreditindexed nagyban.</string>
+    <string name="widget_finance_desc">A gyűjtőszámlád egyenlege.</string>
+    <string name="widget_today_desc">Hány órád van ma, és mikor kezdődik a következő.</string>
     <string name="widget_exam_desc">A következő számonkérésed a kezdőképernyőn.</string>
     <string name="widget_grades_label">Kreditindex</string>
     <string name="widget_finance_label">Egyenleg</string>

@@ -69,7 +69,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/widget_stat_info" />
+                android:resource="@xml/widget_grades_info" />
         </receiver>
 
         <receiver
@@ -81,7 +81,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/widget_stat_info" />
+                android:resource="@xml/widget_finance_info" />
         </receiver>
 
         <receiver
@@ -93,7 +93,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/widget_stat_info" />
+                android:resource="@xml/widget_today_info" />
         </receiver>
 
         <receiver

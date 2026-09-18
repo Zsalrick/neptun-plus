@@ -22,7 +22,7 @@
         android:textStyle="bold"
         android:maxLines="1"
         android:ellipsize="end"
-        android:text="Korrigált kreditindex" />
+        android:text="Mai órák" />
 
     <TextView
         android:id="@+id/w_val"
@@ -41,7 +41,7 @@
         android:autoSizeMinTextSize="20sp"
         android:autoSizeMaxTextSize="46sp"
         android:autoSizeStepGranularity="1sp"
-        android:text="-" />
+        android:text="3" />
 
     <TextView
         android:id="@+id/w_sub"
@@ -52,5 +52,5 @@
         android:textSize="13sp"
         android:maxLines="1"
         android:ellipsize="end"
-        android:text="" />
+        android:text="Következő 12:00 · Menedzsment" />
 </LinearLayout>

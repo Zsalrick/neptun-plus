@@ -51,9 +51,9 @@ class WidgetRender {
 
     static void render(Context ctx, AppWidgetManager mgr, int id, boolean currentMode) {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_next_class);
-        String label = currentMode ? "JELENLEGI ÓRA" : "KÖVETKEZŐ ÓRA";
-        String title = currentMode ? "Nincs most órád" : "Nincs közelgő óra";
-        String sub = "";
+        String label = currentMode ? "Most tart" : "Következő óra";
+        String title = currentMode ? "Most nincs órád" : "Nincs közelgő óra";
+        String sub = "", big = "", bigSub = "";
         int accent = 0xFFF5B221;
         try {
             SharedPreferences sp = ctx.getSharedPreferences(WidgetPlugin.PREFS, Context.MODE_PRIVATE);
@@ -74,13 +74,14 @@ class WidgetRender {
                 title = pick.optString("n", "Óra");
                 long s = pick.optLong("s"), en = pick.optLong("e");
                 SimpleDateFormat hm = new SimpleDateFormat("HH:mm", HU);
+                // Big column: start time, end time under it. The day goes into the label ("Következő óra · kedd").
+                big = hm.format(s);
+                if (en > 0) bigSub = hm.format(en);
+                if (!currentMode) { String d = dayPrefix(s, now); if (!d.isEmpty()) label = label + " · " + d; }
                 StringBuilder sb = new StringBuilder();
-                if (!currentMode) { String d = dayPrefix(s, now); if (!d.isEmpty()) sb.append(d).append(" · "); }
-                sb.append(hm.format(s));
-                if (en > 0) sb.append("-").append(hm.format(en));
                 String t = pick.optString("t", ""), r = pick.optString("r", "");
-                if (!t.isEmpty()) sb.append(" · ").append(t);
-                if (!r.isEmpty()) sb.append(" · ").append(r);
+                if (!t.isEmpty()) sb.append(t);
+                if (!r.isEmpty()) { if (sb.length() > 0) sb.append(" · "); sb.append(r); }
                 sub = sb.toString();
             }
         } catch (Exception ex) { /* default empty state */ }
@@ -90,6 +91,7 @@ class WidgetRender {
         v.setTextViewText(R.id.w_title, title);
         v.setTextViewText(R.id.w_sub, sub);
         v.setViewVisibility(R.id.w_sub, sub.isEmpty() ? View.GONE : View.VISIBLE);
+        setBig(v, big, bigSub);
 
         setOpen(ctx, v);
         mgr.updateAppWidget(id, v);
@@ -123,7 +125,7 @@ class WidgetRender {
     static void renderExam(Context ctx, AppWidgetManager mgr, int id) {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_next_class);
         int accent = 0xFFF5B221;
-        String label = "KÖVETKEZŐ SZÁMONKÉRÉS", title = "Nincs közelgő", sub = "";
+        String label = "Következő számonkérés", title = "Nincs közelgő", sub = "", big = "", bigSub = "";
         try {
             SharedPreferences sp = ctx.getSharedPreferences(WidgetPlugin.PREFS, Context.MODE_PRIVATE);
             try { accent = Color.parseColor(sp.getString("accent", "#F5B221")); } catch (Exception ignore) {}
@@ -132,6 +134,8 @@ class WidgetRender {
                 label = o.optString("l", label);
                 title = o.optString("t", title);
                 sub = o.optString("s", "");
+                big = o.optString("b", "");      // "12" / "Ma" / "Holnap" (newer app versions)
+                bigSub = o.optString("bs", "");  // "nap múlva" / "16:00"
             }
         } catch (Exception ex) { /* default empty state */ }
         v.setTextViewText(R.id.w_label, label);
@@ -139,14 +143,25 @@ class WidgetRender {
         v.setTextViewText(R.id.w_title, title);
         v.setTextViewText(R.id.w_sub, sub);
         v.setViewVisibility(R.id.w_sub, sub.isEmpty() ? View.GONE : View.VISIBLE);
+        setBig(v, big, bigSub);
         setOpen(ctx, v);
         mgr.updateAppWidget(id, v);
     }
 
+    // The big left column (time / days). Hidden when there is nothing to show, so the title takes the width.
+    private static void setBig(RemoteViews v, String big, String bigSub) {
+        int vis = big.isEmpty() ? View.GONE : View.VISIBLE;
+        v.setViewVisibility(R.id.w_timecol, vis);
+        v.setViewVisibility(R.id.w_div, vis);
+        v.setTextViewText(R.id.w_big, big);
+        v.setTextViewText(R.id.w_bigsub, bigSub);
+        v.setViewVisibility(R.id.w_bigsub, bigSub.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
     private static String defaultStatLabel(String kind) {
-        if ("balance".equals(kind)) return "EGYENLEG";
-        if ("today".equals(kind)) return "MAI ÓRÁK";
-        return "KREDITINDEX";
+        if ("balance".equals(kind)) return "Egyenleg";
+        if ("today".equals(kind)) return "Mai órák";
+        return "Kreditindex";
     }
 
     // Tapping any widget opens the app.
@@ -162,6 +177,8 @@ class WidgetRender {
         Calendar a = Calendar.getInstance(); a.setTimeInMillis(ts);
         Calendar b = Calendar.getInstance(); b.setTimeInMillis(now);
         if (a.get(Calendar.YEAR) == b.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)) return "";
-        return new SimpleDateFormat("EEE", HU).format(ts);
+        Calendar t = (Calendar) b.clone(); t.add(Calendar.DAY_OF_YEAR, 1);
+        if (a.get(Calendar.YEAR) == t.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == t.get(Calendar.DAY_OF_YEAR)) return "holnap";
+        return new SimpleDateFormat("EEEE", HU).format(ts); // "kedd"
     }
 }
