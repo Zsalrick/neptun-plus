@@ -37,7 +37,8 @@ async function matDeleteData(id) { await matTx("files", "readwrite", (s) => s.de
 async function matClearAll() { await matTx("files", "readwrite", (s) => s.clear()); await matTx("docs", "readwrite", (s) => s.clear()); }
 
 function mats() { return (state.materials = state.materials || []); }
-function matById(id) { return mats().find((m) => m.id === id) || null; }
+// A könyvek (books.js) ugyanazt a tárolót és megjelenítőt használják, ezért itt is keresünk köztük.
+function matById(id) { return mats().find((m) => m.id === id) || (state.books || []).find((m) => m.id === id) || null; }
 function matSubjKey(name) { return searchNorm(name || "").replace(/\s+/g, " ").trim(); }
 function matFmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1024)) + " KB"; }
 
@@ -171,7 +172,11 @@ function renderMatSubject() {
       + `<span class="row-main"><span class="row-title">${esc(m.title)}</span><span class="row-sub">${esc(meta)}</span></span>`
       + `<button class="iconbtn plain mat-more" data-id="${esc(m.id)}" type="button" aria-label="Műveletek">${icon("more")}</button></div>`;
   }).join("") + `</div>`;
+  // A tárgyhoz rendelt könyvek (books.js): félévtől függetlenül, a tárgy neve alapján.
+  const bks = (state.books || []).filter((b) => (b.subjects || []).some((s) => s.key === matSubjCur.key));
+  if (bks.length) h += `<div class="dash-label">Könyvek</div><div class="card">` + bks.map((b) => bookRow(b, false)).join("") + `</div>`;
   host.innerHTML = h;
+  host.querySelectorAll(".bk-row").forEach((b) => b.onclick = () => openMaterial(b.dataset.id));
   $("mat-import").onclick = () => { const f = $("mat-file"); f.value = ""; f.click(); };
   $("mat-note").onclick = () => matNewNote(matSem, matSubjCur);
   host.querySelectorAll(".mat-row").forEach((b) => b.onclick = (ev) => { if (!ev.target.closest(".mat-more")) openMaterial(b.dataset.id); });
@@ -217,17 +222,17 @@ async function matShareBlob(blob, name, mime, what) {
 
 // ---- Mentés és visszaállítás (.zip) ----
 async function matBackup() {
-  const list = mats();
-  if (!list.length) { toast("Még nincs mit menteni."); return; }
+  const list = mats(), bookList = state.books || [];
+  if (!list.length && !bookList.length) { toast("Még nincs mit menteni."); return; }
   showBusy("Mentés készítése…");
   try {
     const JSZip = await matScript("lib/jszip.min.js", "JSZip");
     const zip = new JSZip(), docs = {};
-    for (const m of list) {
+    for (const m of list.concat(bookList)) {
       docs[m.id] = await matGetDoc(m.id);
       if (m.kind === "pdf") { const f = await matGetFile(m.id); if (f) zip.file("files/" + m.id + ".pdf", f); }
     }
-    zip.file("anyagok.json", JSON.stringify({ app: "Kredit+", v: 1, at: new Date().toISOString(), materials: list, docs }));
+    zip.file("anyagok.json", JSON.stringify({ app: "Kredit+", v: 1, at: new Date().toISOString(), materials: list, books: bookList, docs }));
     const blob = await zip.generateAsync({ type: "blob", mimeType: "application/zip" });
     hideBusy();
     await matShareBlob(blob, "kreditplus-anyagok-" + backupTs() + ".zip", "application/zip", "Mentés");
@@ -242,12 +247,13 @@ async function matRestore(file) {
     const j = zip.file("anyagok.json");
     if (!j) throw new Error("Ez nem Kredit+ anyag-mentés.");
     const data = JSON.parse(await j.async("string"));
-    const incoming = (data.materials || []).filter((m) => m && m.id);
+    const incoming = (data.materials || []).concat((data.books || []).map((b) => Object.assign({}, b, { book: true }))).filter((m) => m && m.id);
     hideBusy();
-    const have = new Set(mats().map((m) => m.id));
+    const have = new Set(mats().concat(state.books || []).map((m) => m.id));
     const fresh = incoming.filter((m) => !have.has(m.id));
+    const nb = incoming.filter((m) => m.book).length;
     const ok = await ask({ title: "Visszaállítás", okText: "Visszaállítás", cancelText: "Mégse",
-      body: `A mentésben <b>${incoming.length}</b> anyag van, ebből <b>${fresh.length}</b> új. A már meglévőket nem írom felül.` });
+      body: `A mentésben <b>${incoming.length - nb}</b> anyag${nb ? ` és <b>${nb}</b> könyv` : ""} van, ebből <b>${fresh.length}</b> új. A már meglévőket nem írom felül.` });
     if (!ok || !fresh.length) return;
     showBusy("Visszaállítás…");
     for (const m of fresh) {
@@ -257,10 +263,10 @@ async function matRestore(file) {
         await matPutFile(m.id, new Blob([await f.async("uint8array")], { type: "application/pdf" }));
       }
       await matPutDoc(m.id, (data.docs && data.docs[m.id]) || { v: 1, pages: [], items: {} });
-      mats().push(m);
+      if (m.book) (state.books = state.books || []).push(m); else mats().push(m);
     }
     saveState(); hideBusy(); renderMats();
-    toast(fresh.length + " anyag visszaállítva.");
+    toast(fresh.length + (nb ? " anyag és könyv" : " anyag") + " visszaállítva.");
   } catch (e) { hideBusy(); await ask({ title: "Nem sikerült", okText: "OK", body: esc(String(e && e.message || e)) }); }
 }
 // ---- Megosztás a Kredit+-ba (Android: PDF más appokból, lásd ShareReceiverPlugin) ----
@@ -308,7 +314,9 @@ function renderMatShare() {
   const { files, sem } = matShare, cur = currentSemesterKey();
   $("mat-share-sub").textContent = files.length === 1 ? files[0].name : files.length + " PDF";
   const subs = matSubjects(sem);
-  let h = `<div class="dash-label" style="margin-top:2px">Félév</div>`
+  let h = `<div class="card"><button class="row" type="button" id="mat-share-book"><span class="row-ic">${icon("books")}</span>`
+    + `<span class="row-main"><span class="row-title">Mentés a Könyvek közé</span><span class="row-sub">Olvasás, folytatás és oldaljegyzetek, tárgyhoz később is rendelhető</span></span><span class="row-chev">${icon("chev")}</span></button></div>`
+    + `<div class="dash-label">Vagy anyagként egy tárgyhoz, félév</div>`
     + `<button class="period-btn" id="mat-share-sem" type="button" style="width:100%"><span>${esc(sem)}${sem === cur ? " · aktuális" : ""}</span>${icon("down")}</button>`
     + `<div class="dash-label">Tárgy</div>`;
   if (!subs.length) h += `<div class="hint" style="margin:0 2px 10px">Ebben a félévben nem találtam tárgyat. Válassz másik félévet, vagy add meg a tárgy nevét.</div>`;
@@ -324,6 +332,14 @@ function renderMatShare() {
     items: matSemesters().map((k) => ({ value: k, label: k, sub: k === cur ? "Aktuális félév" : "" })),
     onPick: (v) => { if (matShare) { matShare.sem = v; renderMatShare(); } } });
   host.querySelectorAll("[data-share-subj]").forEach((b) => b.onclick = () => { const s = subs.find((x) => x.key === b.dataset.shareSubj); if (s) matShareImport(s); });
+  $("mat-share-book").onclick = async () => {
+    const s = matShare; if (!s) return;
+    matShare = null; // innen az oldal elhagyása már nem elvetés
+    await bookImportFiles(s.files);
+    pushScreen("tab-books");
+    navStack = navStack.filter((id) => id !== "tab-mat-share");
+    s.resolve(true);
+  };
   $("mat-share-custom").onclick = async () => {
     const t = await askText({ title: "Tárgy neve", placeholder: "Például: Statisztika", body: "A tárgy ezzel a névvel jelenik meg az Anyagok között." });
     if (t == null || !t.trim()) return;

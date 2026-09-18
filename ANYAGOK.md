@@ -194,6 +194,26 @@ Gmail, Letöltések, fájlkezelő: Megosztás → **Kredit+ Anyagok**, vagy „M
   tárgyai, „Másik félév", „Új tárgy megadása". Több PDF egyszerre is mehet.
   Importálás után a tárgy anyaglistája nyílik meg; a cache-másolat törlődik.
 
+### Könyvek (v0.312, KÉSZ)
+Külön rész a Több menüben (Tanulmányok): saját könyvtár, ugyanazzal a megjelenítővel és tárolóval, mint az anyagok.
+- **Adat:** `state.books` (profilonként, PROFILE_FIELDS), a fájl és a jegyzetréteg az anyagok IndexedDB-jében
+  (`k…` azonosítóval). A `matById` a könyvekben is keres, így a megjelenítő, a megosztás és a .zip mentés közös
+  (a mentésben `books` lista). Borító: az első oldal 132 px széles JPEG-je a metaadatban.
+- **Felvétel:** jobb fent PDF (több is), más appból megosztva („Mentés a Könyvek közé"), keresőből letöltve,
+  vagy linkről. Importáláskor az oldalméretek is elmentődnek, így egy 500 oldalas könyv is azonnal nyílik.
+  Utána tárgyválasztó (félévváltó, keresés, saját név; bezárással kihagyható).
+- **Kereső:** saját könyvek + OpenAlex (`type:book,is_oa:true`, csak közvetlen PDF-linkkel, magyar elöl) +
+  MEK (a nyilvános címkereső HTML-je; a PDF-et letöltéskor a könyv oldaláról keressük ki). MeRSZ: fizetős,
+  csak a saját oldalán olvasható, ezért csak megnyitjuk (a keresett szó a vágólapra kerül, GET-keresője nincs).
+  Letöltés natívan CapacitorHttp-vel (base64), https-re cserélve (az Android nem enged http-t és nem követi a
+  http→https átirányítást), a `%PDF` fejlécet ellenőrizzük. A Kredit+ nem tárol és nem továbbít könyvet.
+- **Tárgyhoz rendelés:** a tárgy NEVÉHEZ (`matSubjKey`), félévtől függetlenül; a tárgy Anyagok oldalán
+  „Könyvek" blokkban látszik. Egy könyv több tárgyhoz is tartozhat.
+- **Olvasás (minden anyagnál is):** `m.last = { i, f, p, at }` (a képernyő teteje oldal + arány, p a látott oldal),
+  visszanyitáskor oda görget („Folytatás a(z) N. oldaltól"). Oldalszám-jelző lent (olvasó módban), koppintásra:
+  jegyzet, ugrás oldalra, Tartalom. Oldaljegyzet: `m.pnotes = [{ id, pid, text, at }]`, az oldal fölött kártyaként.
+  Tartalom képernyő (`tab-mat-toc`): ugrás oldalra, a jegyzetek listája, a PDF beépített tartalomjegyzéke.
+
 ### 5. Moodle automatikus behúzás
 A tárgy Moodle-anyagai (lásd a Moodle-elemzést) maguktól megjelennek az Anyagok
 alatt, és beléjük lehet jegyzetelni.

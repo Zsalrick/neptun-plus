@@ -36,6 +36,7 @@ function mvPrefs() {
 async function openMaterial(id) {
   const m = matById(id); if (!m) { toast("Ez az anyag már nincs meg."); return; }
   mvClose();
+  m.opened = Date.now(); saveState();
   mv = { id, m, doc: null, pdf: null, z: 1, mode: "read", search: null, tool: "pan", penSeen: false, undo: [], redo: [], slots: [], tcache: {}, io: null, saving: Promise.resolve(), draw: null, edit: null, sel: null, ctxColors: false, popOpen: false };
   pushScreen("tab-mat-view");
 }
@@ -64,20 +65,26 @@ async function mvLoad(cur) {
     for (const pg of doc.pages) { // az oldalméretek kellenek az elrendezéshez; a tartalom csak láthatóan renderelődik
       if (pg.kind !== "pdf" || pg.w) continue;
       const v = (await cur.pdf.getPage(pg.n)).getViewport({ scale: 1 });
-      pg.w = v.width; pg.h = v.height;
+      pg.w = v.width; pg.h = v.height; cur.sized = true;
     }
   }
   if (mv !== cur) { try { cur.pdf && cur.pdf.destroy(); } catch (e) {} return; } // közben bezárták
   cur.doc = doc; doc.items = doc.items || {};
+  // A kiszámolt oldalméreteket elmentjük: egy több száz oldalas könyv így legközelebb azonnal nyílik.
+  if (cur.sized) cur.saving = cur.saving.then(() => matPutDoc(cur.id, doc)).catch(() => {});
   mvLayout();
+  mvRestorePos(cur);
+  mvPill();
   const pr = mvPrefs();
   if (!pr.hintRead) { pr.hintRead = 1; saveState(); toast("Olvasó mód. Jegyzeteléshez koppints a ceruzára jobb fent."); }
 }
 function mvClose() {
   const sb = $("mv-selbar"); if (sb) sb.remove();
   const sr = $("mv-searchbar"); if (sr) sr.remove();
+  const pill = $("mv-pill"); if (pill) pill.hidden = true;
   if (!mv) return;
   mvTextCommit();
+  if (mv.posT) { clearTimeout(mv.posT); saveState(); } // a még el nem mentett olvasási pozíció
   try { mv.io && mv.io.disconnect(); } catch (e) {}
   try { mv.pdf && mv.pdf.destroy(); } catch (e) {}
   mv = null;
@@ -119,7 +126,8 @@ function mvLayout(anchor) {
       const sheet = document.createElement("div");
       sheet.className = "mv-sheet"; sheet.style.width = cssW + "px";
       sheet.innerHTML = `<div class="mv-phead"><span class="mv-plabel">${mvPageLabel(pg, i)}</span>`
-        + `<button class="mv-pmenu" type="button" data-pix="${i}" aria-label="${i + 1}. oldal műveletei">${icon("more")}</button></div>`;
+        + `<button class="mv-pmenu" type="button" data-pix="${i}" aria-label="${i + 1}. oldal műveletei">${icon("more")}</button></div>`
+        + `<div class="mv-pnotes"></div>`;
       const el = document.createElement("div");
       el.className = "mv-page"; el.dataset.ix = i;
       const cssH = Math.round(cssW * (pg.h / pg.w));
@@ -127,8 +135,9 @@ function mvLayout(anchor) {
       el.innerHTML = `<canvas class="mv-pdf" width="0" height="0"></canvas><canvas class="mv-ink" width="0" height="0"></canvas><div class="mv-texts"></div>`;
       sheet.appendChild(el);
       pages.appendChild(sheet);
-      return { pg, el, sheet, cssW, cssH, pdfCv: el.children[0], inkCv: el.children[1], textLayer: el.children[2], rendered: false, stale: false, visible: false, gen: 0 };
+      return { pg, el, sheet, cssW, cssH, pdfCv: el.children[0], inkCv: el.children[1], textLayer: el.children[2], notesEl: sheet.querySelector(".mv-pnotes"), rendered: false, stale: false, visible: false, gen: 0 };
     });
+    mv.slots.forEach(mvRenderNotes);
     mv.io = new IntersectionObserver((ents) => ents.forEach((en) => {
       const sl = mv && mv.slots[+en.target.dataset.ix]; if (!sl) return;
       sl.visible = en.isIntersecting;
@@ -444,7 +453,10 @@ function mvWireInput() {
   $("mv-addpage").onclick = () => mvAction("addpage");
   $("mv-share").onclick = () => mvAction("share");
   mvWirePinch(scroll);
-  scroll.addEventListener("scroll", () => { if (mv && mv.z > 1.001) mvDetailSchedule(); if ($("mv-selbar")) mvSelBar(); }, { passive: true });
+  scroll.addEventListener("scroll", () => {
+    if (mv && mv.z > 1.001) mvDetailSchedule(); if ($("mv-selbar")) mvSelBar();
+    if (mv && !mv.posRaf) mv.posRaf = requestAnimationFrame(() => { if (mv) { mv.posRaf = 0; mvTrackPos(); } });
+  }, { passive: true });
   document.addEventListener("selectionchange", () => { if (!mv) return; clearTimeout(mv.selT); mv.selT = setTimeout(mvSelBar, 150); });
   // A billentyűzet megjelenésekor a szerkesztett doboz maradjon látható.
   if (window.visualViewport) window.visualViewport.addEventListener("resize", () => mvTextKeepVisible());
@@ -1098,7 +1110,12 @@ function mvRenderHeader() {
     return b;
   };
   const find = mk("mv-find", add), mode = mk("mv-mode", share); // sorrend: új oldal, keresés, megosztás, mód
+  const toc = mk("mv-toc", add); // tartalom és jegyzetek (a keresés elé kerül)
   const read = mv.mode === "read";
+  toc.innerHTML = icon("toc"); toc.title = "Tartalom és jegyzetek"; toc.setAttribute("aria-label", toc.title);
+  toc.style.display = read ? "" : "none";
+  share.style.display = read ? "none" : ""; // olvasás közben a fejléc a címé; megosztás szerkesztő módban és a könyv ⋯ menüjében
+  toc.onclick = () => openMatToc();
   find.innerHTML = icon("search"); find.title = "Keresés a PDF-ben"; find.setAttribute("aria-label", "Keresés a PDF-ben");
   find.style.display = read && mv.m.kind === "pdf" ? "" : "none";
   add.style.display = read ? "none" : "";
@@ -1117,7 +1134,7 @@ function mvSetMode(m) {
     try { window.getSelection().removeAllRanges(); } catch (e) {}
     mv.tool = mv.lastTool || "pen";
   }
-  mvApplyToolClass(); mvRenderHeader(); mvRenderBar(); mvRenderPop(); mvRenderTextCtx(); mvSelBar();
+  mvApplyToolClass(); mvRenderHeader(); mvRenderBar(); mvRenderPop(); mvRenderTextCtx(); mvSelBar(); mvPill();
 }
 
 // ---- Keresés a PDF szövegében ----
@@ -1330,10 +1347,10 @@ function mvVisibleIx() {
   return ix;
 }
 // Csak a PDF-listát görgetjük (a scrollIntoView a teljes képernyőt is elgörgette, és eltűnt a fejléc).
-function mvScrollToPage(ix) {
+function mvScrollToPage(ix, instant) {
   const scroll = $("mv-scroll"), s = mv && mv.slots[ix]; if (!s) return;
   const top = scroll.scrollTop + s.sheet.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 4;
-  scroll.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  scroll.scrollTo({ top: Math.max(0, top), behavior: instant ? "auto" : "smooth" });
 }
 // Új üres oldal a megadott oldal UTÁN, annak méretével.
 function mvAddPage(ix) {
@@ -1384,7 +1401,8 @@ async function mvPageMenu(ix) {
   mvTextFinish();
   const miss = mvMissingPdfPages(), pg = mv.doc.pages[ix], only = mv.doc.pages.length <= 1;
   const list = miss.slice(0, 6).join(", ") + (miss.length > 6 ? "…" : "");
-  const opts = [{ icon: "plus", label: "Új üres oldal ez után", sub: "Ugyanakkora, mint ez az oldal", value: "add" }];
+  const opts = [{ icon: "note", label: "Jegyzet ehhez az oldalhoz", sub: "Rövid megjegyzés, az oldal fölött látszik", value: "note" },
+    { icon: "plus", label: "Új üres oldal ez után", sub: "Ugyanakkora, mint ez az oldal", value: "add" }];
   if (pg && pg.kind === "blank") opts.push({ icon: "grid", label: "Oldal háttere", sub: MV_BG_NAMES[pg.bg || "plain"], value: "bg" });
   if (miss.length) opts.push({ icon: "refresh", label: miss.length === 1 ? "Törölt eredeti oldal visszaállítása" : "Törölt eredeti oldalak visszaállítása",
     sub: (miss.length === 1 ? "Az eredeti PDF " : "Az eredeti PDF oldalai: ") + list + (miss.length === 1 ? ". oldala" : ""), value: "restore" });
@@ -1392,7 +1410,8 @@ async function mvPageMenu(ix) {
   const kind = pg && pg.kind === "blank" ? "Saját oldal" : "PDF-oldal";
   const act = await askPick({ title: (ix + 1) + ". oldal", body: `<div class="hint">${kind} · ${mv.doc.pages.length} oldalból</div>`, options: opts });
   if (!mv) return;
-  if (act === "add") mvAddPage(ix);
+  if (act === "note") mvNoteEdit(pg.id, null);
+  else if (act === "add") mvAddPage(ix);
   else if (act === "del") mvDeletePage(ix);
   else if (act === "restore") mvRestorePdfPages();
   else if (act === "bg") mvPageBgMenu(ix);
@@ -1580,4 +1599,172 @@ async function mvComposePage(pdfjsDoc, pg, items) {
 async function mvCanvasBytes(cv) {
   const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+// ---- Olvasási pozíció: ahol abbahagytad, onnan folytatja (anyagoknál és könyveknél is) ----
+// m.last = { i: a képernyő tetején lévő oldal indexe, f: azon belül hol (0..1), at }.
+// Az oldalt bináris kereséssel keressük (egy több száz oldalas könyvnél görgetés közben is olcsó).
+function mvIxAt(y) {
+  const S = mv.slots; let lo = 0, hi = S.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (S[mid].sheet.getBoundingClientRect().bottom <= y) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+function mvTrackPos() {
+  if (!mv || !mv.doc || !mv.slots.length || mv.pinch) return;
+  const sc = $("mv-scroll"); if (!sc || !sc.clientHeight) return; // elrejtett képernyőn nem mérünk
+  const R = sc.getBoundingClientRect(), i = mvIxAt(R.top + 1), r = mv.slots[i].sheet.getBoundingClientRect();
+  const f = Math.max(0, Math.min(1, (R.top - r.top) / Math.max(1, r.height)));
+  mvPill(); // p: a képernyő közepén lévő oldal, ezt mutatjuk ("hányadik oldalnál tartasz")
+  mv.m.last = { i, f: Math.round(f * 1000) / 1000, p: mv.curIx != null ? mv.curIx : i, at: Date.now() };
+  clearTimeout(mv.posT); mv.posT = setTimeout(() => { if (mv) mv.posT = 0; saveState(); }, 1200);
+}
+function mvRestorePos(cur) {
+  const L = cur.m.last, sl = L && cur.slots[L.i], sc = $("mv-scroll");
+  if (!sl || !sc || (!L.i && !L.f)) return;
+  sc.scrollTop += sl.sheet.getBoundingClientRect().top - sc.getBoundingClientRect().top + (L.f || 0) * sl.sheet.offsetHeight;
+  const p = L.p != null ? L.p : L.i;
+  if (p > 0) toast("Folytatás a(z) " + (p + 1) + ". oldaltól");
+}
+// Oldalszám-jelző olvasó módban (lent középen). Koppintásra: jegyzet, ugrás, tartalom.
+function mvPill() {
+  let p = $("mv-pill");
+  if (!p) {
+    const bar = $("mv-bar"); if (!bar) return;
+    p = document.createElement("button"); p.id = "mv-pill"; p.type = "button"; p.className = "mv-pill";
+    bar.insertAdjacentElement("beforebegin", p);
+    p.onclick = () => mvPillMenu();
+  }
+  const show = !!(mv && mv.doc && mv.mode === "read" && mv.slots.length > 1);
+  p.hidden = !show; if (!show) return;
+  const sc = $("mv-scroll"); if (!sc.clientHeight) return;
+  const R = sc.getBoundingClientRect();
+  mv.curIx = mvIxAt(R.top + R.height / 2);
+  p.textContent = `${mv.curIx + 1} / ${mv.slots.length}`;
+  p.setAttribute("aria-label", `${mv.curIx + 1}. oldal, összesen ${mv.slots.length}. Koppints az oldal műveleteihez.`);
+}
+async function mvPillMenu() {
+  if (!mv || !mv.doc) return;
+  const cur = mv, i = cur.curIx || 0, nn = mvNoteList(cur).length;
+  const a = await askPick({ title: `${i + 1}. oldal`, body: `<div class="hint">${cur.slots.length} oldalból</div>`, options: [
+    { icon: "note", label: "Jegyzet ehhez az oldalhoz", value: "note" },
+    { icon: "doc", label: "Ugrás oldalra", value: "go" },
+    { icon: "toc", label: "Tartalom és jegyzetek", sub: nn ? nn + " jegyzet" : "Tartalomjegyzék és az összes jegyzet", value: "toc" }] });
+  if (mv !== cur) return;
+  if (a === "note") mvNoteEdit(cur.doc.pages[i].id, null);
+  else if (a === "go") mvGoToPage();
+  else if (a === "toc") openMatToc();
+}
+async function mvGoToPage(after) {
+  const cur = mv; if (!cur || !cur.doc) return;
+  const n = cur.doc.pages.length;
+  const t = await askText({ title: "Ugrás oldalra", value: "", placeholder: "1 és " + n + " között", okText: "Ugrás", body: `<div class="hint">Most: ${(cur.curIx || 0) + 1}. oldal · ${n} oldalból</div>` });
+  if (t == null || mv !== cur) return;
+  const k = parseInt(String(t).replace(/\D+/g, ""), 10);
+  if (!(k >= 1 && k <= n)) { toast("Nincs ilyen oldal (1 és " + n + " között)."); return; }
+  if (after) after();
+  setTimeout(() => mvScrollToPage(k - 1, true), after ? 90 : 0);
+}
+
+// ---- Oldaljegyzetek: rövid szöveg egy oldalhoz, az oldal fölött látszik ----
+// m.pnotes = [{ id, pid: a doc oldal-azonosítója, text, at }] a metaadatban (kis szöveg, a mentésben is benne van).
+function mvNoteList(cur) {
+  const ids = new Map(cur.doc.pages.map((p, i) => [p.id, i]));
+  return (cur.m.pnotes || []).filter((n) => ids.has(n.pid)).map((n) => ({ n, ix: ids.get(n.pid) })).sort((a, b) => a.ix - b.ix || a.n.at - b.n.at);
+}
+function mvRenderNotes(sl) {
+  const box = sl.notesEl; if (!box || !mv) return;
+  const list = (mv.m.pnotes || []).filter((n) => n.pid === sl.pg.id);
+  box.innerHTML = list.map((n) => `<button class="mv-pnote" type="button" data-nid="${esc(n.id)}">${icon("note")}<span>${esc(n.text)}</span></button>`).join("");
+  box.querySelectorAll("[data-nid]").forEach((b) => b.onclick = () => mvNoteMenu(b.dataset.nid));
+}
+function mvRefreshNotes(pid) { if (mv) mv.slots.forEach((sl) => { if (sl.pg.id === pid) mvRenderNotes(sl); }); }
+// Többsoros szövegmező a közös párbeszédablakban (mint az askText, csak textarea).
+function askLong({ title, body = "", value = "", placeholder = "", okText = "Mentés", cancelText = "Mégse" }) {
+  return new Promise((res) => {
+    $("ask-title").textContent = title;
+    $("ask-body").innerHTML = body + `<div class="field" style="margin-top:14px"><textarea class="input mv-notearea" id="ask-long" rows="5" placeholder="${esc(placeholder)}"></textarea></div>`;
+    $("ask-ok").textContent = okText; $("ask-cancel").textContent = cancelText;
+    const ok = $("ask-ok"), inp = $("ask-long");
+    inp.value = value || ""; ok.disabled = false;
+    $("ask-dialog").classList.remove("hidden");
+    setTimeout(() => { try { inp.focus(); } catch (e) {} }, 50);
+    const done = (v) => { $("ask-dialog").classList.add("hidden"); ok.onclick = null; $("ask-cancel").onclick = null; res(v); };
+    ok.onclick = () => done(inp.value); $("ask-cancel").onclick = () => done(null);
+  });
+}
+async function mvNoteEdit(pid, note) {
+  const cur = mv; if (!cur || !cur.doc) return;
+  const ix = cur.doc.pages.findIndex((p) => p.id === pid);
+  const t = await askLong({ title: note ? `Jegyzet · ${ix + 1}. oldal` : `Jegyzet a(z) ${ix + 1}. oldalhoz`, value: note ? note.text : "",
+    placeholder: "Például: ez kell a ZH-hoz, 3. tétel" });
+  if (t == null || mv !== cur) return;
+  const arr = (cur.m.pnotes = cur.m.pnotes || []), text = t.trim();
+  if (note && !text) arr.splice(arr.indexOf(note), 1);
+  else if (note) { note.text = text; note.at = Date.now(); }
+  else if (text) arr.push({ id: "n" + uid(), pid, text, at: Date.now() });
+  else return;
+  saveState(); mvRefreshNotes(pid);
+  if (!note && text) toast("Jegyzet mentve.");
+}
+async function mvNoteMenu(nid) {
+  const cur = mv; if (!cur) return;
+  const note = (cur.m.pnotes || []).find((n) => n.id === nid); if (!note) return;
+  const a = await askPick({ title: "Jegyzet", body: `<div class="mv-note-prev">${esc(note.text)}</div>`, options: [
+    { icon: "pencil", label: "Szerkesztés", value: "edit" }, { icon: "trash", label: "Törlés", danger: true, value: "del" }] });
+  if (mv !== cur) return;
+  if (a === "edit") mvNoteEdit(note.pid, note);
+  else if (a === "del") {
+    cur.m.pnotes = cur.m.pnotes.filter((n) => n !== note); saveState(); mvRefreshNotes(note.pid);
+    if ($("tab-mat-toc").classList.contains("active")) renderMatToc();
+  }
+}
+
+// ---- Tartalom: ugrás oldalra, jegyzetek listája, a PDF tartalomjegyzéke ----
+function openMatToc() { if (!mv || !mv.doc) return; mvTextFinish(); pushScreen("tab-mat-toc"); }
+// A PDF beépített tartalomjegyzéke (könyvjelzők), laposítva, legfeljebb 4 szint és 400 elem.
+async function mvOutline(cur) {
+  if (cur.toc) return cur.toc;
+  const out = [];
+  let raw = null; try { raw = cur.pdf ? await cur.pdf.getOutline() : null; } catch (e) {}
+  const walk = async (items, depth) => {
+    for (const it of items || []) {
+      if (out.length >= 400) return;
+      let n = null;
+      try {
+        let d = it.dest; if (typeof d === "string") d = await cur.pdf.getDestination(d);
+        if (Array.isArray(d) && d[0] != null) n = typeof d[0] === "number" ? d[0] + 1 : (await cur.pdf.getPageIndex(d[0])) + 1;
+      } catch (e) {}
+      const ix = n ? cur.doc.pages.findIndex((p) => p.kind === "pdf" && p.n === n) : -1;
+      out.push({ t: String(it.title || "").trim() || "(cím nélkül)", depth, ix });
+      if (depth < 3) await walk(it.items, depth + 1);
+    }
+  };
+  await walk(raw, 0);
+  return (cur.toc = out);
+}
+function mvTocJump(ix) { popScreen(); setTimeout(() => mvScrollToPage(ix, true), 90); }
+async function renderMatToc() {
+  const host = $("mat-toc-scroll"); if (!host) return;
+  const sub = $("mat-toc-sub");
+  if (!mv || !mv.doc) { host.innerHTML = `<div class="dash-empty" style="padding:24px 2px">Nincs megnyitott könyv vagy anyag.</div>`; if (sub) sub.textContent = ""; return; }
+  const cur = mv, n = cur.doc.pages.length, at = cur.curIx || 0, notes = mvNoteList(cur);
+  if (sub) sub.textContent = cur.m.title;
+  const row = (attrs, ic, title, s, right) => `<button class="row" type="button" ${attrs}><span class="row-ic">${icon(ic)}</span>`
+    + `<span class="row-main"><span class="row-title">${title}</span>${s ? `<span class="row-sub">${s}</span>` : ""}</span>${right || `<span class="row-chev">${icon("chev")}</span>`}</button>`;
+  let h = `<div class="card">` + row(`id="mt-go"`, "doc", "Ugrás oldalra", `Most: ${at + 1}. oldal · ${n} oldalból`)
+    + row(`id="mt-note"`, "note", `Jegyzet a(z) ${at + 1}. oldalhoz`, "Rövid megjegyzés, az oldal fölött látszik") + `</div>`;
+  h += `<div class="dash-label">Jegyzetek${notes.length ? " · " + notes.length : ""}</div>`;
+  h += notes.length ? `<div class="card">` + notes.map((x) => row(`data-mt-ix="${x.ix}"`, "note", esc(x.n.text), "", `<span class="mt-pg">${x.ix + 1}. oldal</span>`)).join("") + `</div>`
+    : `<div class="hint" style="margin:0 2px">Még nincs jegyzet. Az oldalszámra vagy az oldal ⋯ menüjére koppintva adhatsz hozzá.</div>`;
+  h += `<div class="dash-label">Tartalomjegyzék</div><div id="mt-outline"><div class="hint" style="margin:0 2px">Betöltés…</div></div>`;
+  host.innerHTML = h;
+  $("mt-go").onclick = () => mvGoToPage(() => popScreen());
+  $("mt-note").onclick = async () => { await mvNoteEdit(cur.doc.pages[at].id, null); if (mv === cur && $("tab-mat-toc").classList.contains("active")) renderMatToc(); };
+  host.querySelectorAll("[data-mt-ix]").forEach((b) => b.onclick = () => mvTocJump(+b.dataset.mtIx));
+  const ol = await mvOutline(cur);
+  const box = $("mt-outline"); if (!box || mv !== cur) return;
+  if (!ol.length) { box.innerHTML = `<div class="hint" style="margin:0 2px">Ebben a PDF-ben nincs beépített tartalomjegyzék. A nagyítóval kereshetsz a szövegben.</div>`; return; }
+  box.innerHTML = `<div class="card">` + ol.map((o, k) => `<button class="row mt-ol" type="button" data-ol="${k}" style="padding-left:${o.depth * 16}px"${o.ix < 0 ? " disabled" : ""}>`
+    + `<span class="row-main"><span class="row-title${o.depth ? " mt-sub" : ""}">${esc(o.t)}</span></span>${o.ix >= 0 ? `<span class="mt-pg">${o.ix + 1}</span>` : ""}</button>`).join("") + `</div>`;
+  box.querySelectorAll("[data-ol]").forEach((b) => b.onclick = () => { const o = ol[+b.dataset.ol]; if (o && o.ix >= 0) mvTocJump(o.ix); });
 }

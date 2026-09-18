@@ -24,6 +24,8 @@ const MORE_SERVICES = [
     val: () => { const p = state.periods, a = p && activePeriods(p.items).length; return a ? { t: a + " aktív", acc: true } : null; } },
   { id: "materials", group: "study", label: "Anyagok", icon: "doc", desc: "PDF-ek és jegyzetek", go: () => pushScreen("tab-mats"),
     val: () => { const n = (state.materials || []).length; return n ? { t: n + " anyag" } : null; } },
+  { id: "books", group: "study", label: "Könyvek", icon: "books", desc: "Olvasás, jegyzetek, ingyenes könyvek", go: () => pushScreen("tab-books"),
+    val: () => { const n = (state.books || []).length; return n ? { t: n + " könyv" } : null; } },
   { id: "finance", group: "money", label: "Pénzügyek", icon: "wallet", desc: "Gyűjtőszámla", go: () => pushScreen("tab-finance"),
     val: () => { const f = state.finance, a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); return a && a.balance != null ? { t: a.balance.toLocaleString("hu") + " Ft", big: true } : null; } },
   { id: "messages", group: "money", label: "Üzenetek", icon: "mail", desc: "Neptun üzenetek", go: () => pushScreen("tab-messages"),

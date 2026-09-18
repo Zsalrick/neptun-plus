@@ -89,7 +89,8 @@ egy fájlon belül. Mind `"use strict"`. Az `index.html` alján `defer`-rel,
 | `js/planner.js` | Tárgyfelvétel tervező, órarend-generátor |
 | `js/dlc.js` | Kiegészítők, számlatükör-néző |
 | `js/materials.js` | Anyagok: tárolás (IndexedDB), PDF importálás, listák, .zip mentés (lásd ANYAGOK.md) |
-| `js/material-viewer.js` | Anyag-megjelenítő: PDF oldalak, toll/kiemelő/radír/szöveg, új oldal, megosztás jegyzetekkel |
+| `js/material-viewer.js` | Anyag-megjelenítő: PDF oldalak, toll/kiemelő/radír/szöveg, új oldal, megosztás jegyzetekkel, olvasási pozíció, oldaljegyzetek, Tartalom képernyő |
+| `js/books.js` | Könyvek: saját könyvtár, könyvkereső (OpenAlex, MEK, MeRSZ link), letöltés, tárgyhoz rendelés (lásd ANYAGOK.md) |
 | `js/notifications.js` | Értesítések, változás-riasztások, értesítési központ, reggeli összefoglaló |
 | `js/settings.js` | Beállítások |
 | `js/backup.js` | Mentés és visszaállítás |

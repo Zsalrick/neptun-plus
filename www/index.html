@@ -735,6 +735,34 @@
               <div class="save-bar"><button class="btn tonal lg" id="mat-share-cancel" type="button">Mégse</button></div>
             </section>
 
+            <section class="tabscreen" id="tab-books">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark">Könyvek</div><div class="topbar-sub">Olvasás és jegyzetek</div></div>
+                <button class="iconbtn plain" id="book-search" type="button" title="Könyv keresése" aria-label="Könyv keresése"><span data-icon="search"></span></button>
+                <button class="iconbtn plain" id="book-import" type="button" title="PDF felvétele" aria-label="PDF felvétele"><span data-icon="download"></span></button>
+              </header>
+              <div class="scroll" id="books-scroll"></div>
+            </section>
+
+            <section class="tabscreen" id="tab-book-search">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark">Könyv keresése</div><div class="topbar-sub">Saját könyvek és ingyenes források</div></div>
+              </header>
+              <div class="field" style="padding:0 16px 8px"><input class="input" id="bks-q" type="search" inputmode="search" enterkeyhint="search" placeholder="Cím, szerző vagy téma" autocomplete="off" autocorrect="off" spellcheck="false" /></div>
+              <div class="scroll" id="bks-scroll"></div>
+            </section>
+
+            <!-- Könyv vagy anyag tartalma: ugrás oldalra, oldaljegyzetek, a PDF tartalomjegyzéke (material-viewer.js renderMatToc) -->
+            <section class="tabscreen" id="tab-mat-toc">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark">Tartalom</div><div class="topbar-sub mv-title" id="mat-toc-sub"></div></div>
+              </header>
+              <div class="scroll" id="mat-toc-scroll"></div>
+            </section>
+
             <section class="tabscreen" id="tab-mat-view">
               <header class="topbar">
                 <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
@@ -941,6 +969,7 @@
   <input type="file" id="import-file" accept=".npb,.json,application/json" hidden />
   <input type="file" id="mat-file" accept="application/pdf,.pdf" hidden />
   <input type="file" id="mat-zip" accept=".zip,application/zip" hidden />
+  <input type="file" id="book-file" accept="application/pdf,.pdf" multiple hidden />
   <div class="backdrop hidden" id="pw-dialog">
     <div class="sheet">
       <div class="sheet-title" id="pw-title">Jelszó</div>
@@ -1307,6 +1336,7 @@
   <script defer src="js/lock.js"></script>
   <script defer src="js/materials.js"></script>
   <script defer src="js/material-viewer.js"></script>
+  <script defer src="js/books.js"></script>
   <script defer src="js/init.js"></script>
 </body>
 </html>
