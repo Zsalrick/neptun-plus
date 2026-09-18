@@ -4,16 +4,25 @@
 
 // ---- Jegyek: átlagok/indexek + félévenként a jegyek ----
 let gradesFilter = "all"; // "all" or a termName
-// A grade badge coloured by how good the grade is (1 red → 5 green). Shows the NUMBER for any graded
-// subject; only signature/"megfelelt" results (no numeric grade) show a check. Recomputes the number
-// from the result text if it wasn't stored, so older reads render correctly too.
+// Grade badge: a neutral numeral (no colour by value, see FRONTEND-design-frissites 1.). Shows the NUMBER
+// for any graded subject; only signature/"megfelelt" results (no numeric grade) show a check. Recomputes
+// the number from the result text if it wasn't stored, so older reads render correctly too.
 function isSignatureResult(r) { return /alá[ií]r|megfelelt|teljes[ií]t/i.test(String(r || "")); }
 function gradeBox(e) {
   const v = (e.value != null) ? e.value : gradeValue(e.result);
   const g = (v >= 1 && v <= 5) ? v : 0;
-  const inner = (v != null) ? String(v) : (isSignatureResult(e.result) || e.passed ? icon("check") : (e.result ? esc(e.result[0].toUpperCase()) : "–"));
+  const inner = (v != null) ? String(v) : (isSignatureResult(e.result) || e.passed ? icon("check") : (e.result ? esc(e.result[0].toUpperCase()) : "-"));
   return `<span class="grade-box g${g}" title="${esc(e.result || "")}">${inner}</span>`;
 }
+// Napló grade cell: the numeral with the grade word under it ("5 / jeles"), right-aligned in the row.
+const GRADE_WORD = { 5: "jeles", 4: "jó", 3: "közepes", 2: "elégséges", 1: "elégtelen" };
+function gradeCell(e) {
+  const v = (e.value != null) ? e.value : gradeValue(e.result);
+  if (v >= 1 && v <= 5) return `<span class="gcell"><b>${v}</b><small>${GRADE_WORD[v]}</small></span>`;
+  const sig = isSignatureResult(e.result) || e.passed;
+  return `<span class="gcell g0"><b>${sig ? icon("check") : "-"}</b><small>${esc(sig ? String(e.result || "teljesítve").toLowerCase() : (e.result ? String(e.result).toLowerCase() : "nincs jegy"))}</small></span>`;
+}
+const fmtIdx = (v) => (v == null || v === "" || isNaN(+v)) ? "-" : (+v).toFixed(2).replace(".", ",");
 function renderGrades() {
   const host = $("grades-scroll"); if (!host) return;
   const gr = state.grades;
@@ -29,7 +38,7 @@ function renderGrades() {
   // Megajánlott jegyek — accept/reject right here.
   const offered = gr.offered || [];
   if (offered.length) {
-    html += `<div class="dash-label">Megajánlott jegyek</div>`;
+    html += `<h3 class="ma-h">Megajánlott jegyek</h3>`;
     offered.forEach((o) => {
       html += `<div class="card offer-card"><div class="offer-top">`
         + `<div class="row-main"><span class="row-title">${esc(o.subject || o.code || "Tárgy")}</span><span class="row-sub">${[esc(o.code), o.deadline ? "határidő " + esc(ftDate(o.deadline)) : ""].filter(Boolean).join(" · ")}</span></div>`
@@ -37,40 +46,43 @@ function renderGrades() {
         + `<div class="offer-actions"><button class="btn outline" data-offrej="${esc(o.id)}" type="button">Elutasítás</button><button class="btn primary" data-offacc="${esc(o.id)}" type="button">Elfogadás</button></div></div>`;
     });
   }
-  // Semester filter (Összes félév / one term).
+  // Semester filter (Összes félév / one term): the term label itself is the dropdown.
   const terms = gr.terms || [];
   const termNames = terms.map((t) => t.termName).filter(Boolean);
   if (gradesFilter !== "all" && termNames.indexOf(gradesFilter) < 0) gradesFilter = "all";
-  html += `<div class="controls" style="margin-bottom:6px"><button class="period-btn" id="grades-period" type="button"><span>${gradesFilter === "all" ? "Összes félév" : esc(gradesFilter)}</span>${icon("down")}</button></div>`;
-  // Per-term averages map for the per-term stat headers.
-  const avgByTerm = {}; perTerm.forEach((t) => { avgByTerm[t.termName] = t; });
-  const norm = (s) => String(s || "").replace(/\s*\(.*\)\s*$/, "").trim();
+  const norm = (s) => fmtTerm(s);
+  const avgByTerm = {}; perTerm.forEach((t) => { avgByTerm[norm(t.termName)] = t; });
   const attempts = gr.attempts || {};
+  // Headline: the term the two figures describe. "Összes" → the dashboard's term (else the newest).
+  const focusName = gradesFilter !== "all" ? gradesFilter : ((idx && idx.termName && termNames.find((n) => norm(n) === norm(idx.termName))) || termNames[0] || (idx && idx.termName) || "");
+  const focusAvg = avgByTerm[norm(focusName)] || {};
+  const useKorr = idx && idx.korrigalt != null && (gradesFilter === "all" || norm(idx.termName) === norm(focusName));
+  const leftV = useKorr ? idx.korrigalt : focusAvg.creditIndex, leftK = useKorr ? "Korrigált kreditindex" : "Kreditindex";
+  const focusTerm = terms.find((t) => t.termName === focusName);
+  const doneCr = focusTerm ? focusTerm.subjects.reduce((n, x) => n + (((x.value != null ? x.value : gradeValue(x.result)) >= 2 || x.passed) ? (+x.credits || 0) : 0), 0) : null;
+  html = `<div class="controls dd-row"><button class="period-btn dd" id="grades-period" type="button"><span>${gradesFilter === "all" ? "Összes félév" : esc(fmtTerm(gradesFilter))}</span>${icon("down")}</button></div>`
+    + `<div class="gstats"><div class="gs"><div class="gs-v">${fmtIdx(leftV)}</div><div class="gs-k">${leftK}</div></div>`
+    + `<div class="gs"><div class="gs-v">${fmtIdx(focusAvg.sumAverage)}</div><div class="gs-k">Súlyozott átlag</div></div></div>`
+    + (doneCr != null ? `<p class="gs-note">${doneCr} kredit teljesítve ${gradesFilter === "all" ? "ebben a félévben · " + esc(fmtTerm(focusName)) : "ebben a félévben"}</p>` : "")
+    + html; // offered grades (accept/reject) come right after the headline
   (gradesFilter === "all" ? terms : terms.filter((t) => t.termName === gradesFilter)).forEach((t) => {
     const a = avgByTerm[norm(t.termName)];
-    // Highlighted header for this term with its stats (átlag / súlyozott / kreditindex).
-    html += `<div class="dash-label" style="margin-top:18px">${esc(t.termName)}</div>`;
-    if (a && (a.average != null || a.sumAverage != null || a.creditIndex != null)) {
-      const cells = [];
-      if (a.average != null) cells.push(["Átlag", a.average]);
-      if (a.sumAverage != null) cells.push(["Súlyozott", a.sumAverage]);
-      if (a.creditIndex != null) cells.push(["Kreditindex", a.creditIndex]);
-      html += `<div class="card grade-idx">` + cells.map(([k, v], i) => `<div class="gi-cell${i ? " gi-div" : ""}"><div class="gi-v">${esc(String(v))}</div><div class="gi-k">${esc(k)}</div></div>`).join("") + `</div>`;
-    }
+    const extra = a ? [a.average != null ? "Átlag " + fmtIdx(a.average) : "", a.creditIndex != null ? "Kreditindex " + fmtIdx(a.creditIndex) : "", a.sumAverage != null ? "Súlyozott " + fmtIdx(a.sumAverage) : ""].filter(Boolean).join(" · ") : "";
+    html += `<h3 class="ma-h">${esc(fmtTerm(t.termName))}${extra ? `<span class="ma-h-sub">${extra}</span>` : ""}</h3>`;
     if (!t.subjects.length) { html += `<div class="dash-empty" style="padding:10px 4px">Nincs tárgy ebben a félévben.</div>`; return; }
-    html += `<div class="card">` + t.subjects.map((s) => {
-      const n = (attempts[s.subjectId] || []).length;
-      const sub = [esc(s.code), s.credits ? esc(s.credits + " kr") : "", n > 1 ? esc(n + " jegy") : ""].filter(Boolean).join(" · ");
-      return `<button class="row grade-row" data-sid="${esc(s.subjectId)}" type="button">`
-        + `<span class="row-main"><span class="row-title">${esc(s.subject)}</span><span class="row-sub">${sub}</span></span>`
-        + gradeBox(s) + `</button>`;
+    html += `<div class="rows">` + t.subjects.map((x) => {
+      const n = (attempts[x.subjectId] || []).length;
+      const sub = [x.credits ? esc(x.credits + " kredit") : "", esc(x.code), n > 1 ? esc(n + " jegy") : ""].filter(Boolean).join(" · ");
+      return `<button class="r r-kv grade-row" data-sid="${esc(x.subjectId)}" type="button">`
+        + `<span class="r-b"><span class="r-n">${esc(x.subject)}</span><span class="r-m">${sub}</span></span>`
+        + `<span class="r-x">${gradeCell(x)}</span></button>`;
     }).join("") + `</div>`;
   });
   html += `<div class="hint center" style="margin-top:16px">${esc(freshText(gr.fetchedAt))}</div>`;
   host.innerHTML = html;
   const pb = $("grades-period");
   if (pb) pb.onclick = () => openList({ title: "Félév", selected: gradesFilter,
-    items: [{ value: "all", label: "Összes félév" }].concat(termNames.map((n) => ({ value: n, label: n }))),
+    items: [{ value: "all", label: "Összes félév" }].concat(termNames.map((n) => ({ value: n, label: fmtTerm(n) }))),
     onPick: (v) => { gradesFilter = v; renderGrades(); } });
   host.querySelectorAll("[data-sid]").forEach((b) => b.onclick = () => openGradeDetail(b.dataset.sid));
   host.querySelectorAll("[data-offacc]").forEach((b) => b.onclick = () => offeredDecide(b.dataset.offacc, true));
@@ -79,7 +91,7 @@ function renderGrades() {
 async function offeredDecide(id, accept) {
   const gr = state.grades; const o = (gr && gr.offered || []).find((x) => x.id === id); if (!o) return;
   const ok = await askTyped({ title: accept ? "Biztosan elfogadod?" : "Biztosan elutasítod?", okText: accept ? "Elfogadom" : "Elutasítom", cancelText: "Mégse", word: "IGEN",
-    body: `<b>${esc(o.subject || o.code)}</b><br>Megajánlott jegy: <b>${esc(o.result || "—")}</b><br><br>${accept ? "Elfogadás után a jegy bekerül a leckekönyvbe, és ezt nem lehet visszavonni." : "Elutasítás után vizsgáznod kell a tárgyból."}<br>A megerősítéshez írd be, hogy <b>IGEN</b>.` });
+    body: `<b>${esc(o.subject || o.code)}</b><br>Megajánlott jegy: <b>${esc(o.result || "nincs megadva")}</b><br><br>${accept ? "Elfogadás után a jegy bekerül a leckekönyvbe, és ezt nem lehet visszavonni." : "Elutasítás után vizsgáznod kell a tárgyból."}<br>A megerősítéshez írd be, hogy <b>IGEN</b>.` });
   if (!ok) return;
   showBusy(accept ? "Elfogadás…" : "Elutasítás…", true);
   let r; try { r = await apiOfferedGradeDecision(id, accept); } catch (e) { r = { ok: false }; }
@@ -95,14 +107,14 @@ function openGradeDetail(subjectId) {
   if (!subj) return;
   const list = (gr.attempts && gr.attempts[subjectId]) || [];
   let h = `<div class="sheet-title">${esc(subj.subject)}</div>`
-    + `<div class="detail-meta">${[esc(subj.code), subj.credits ? esc(subj.credits + " kredit") : "", esc(subj.termName)].filter(Boolean).join(" · ")}</div>`;
+    + `<div class="detail-meta">${[esc(subj.code), subj.credits ? esc(subj.credits + " kredit") : "", esc(fmtTerm(subj.termName))].filter(Boolean).join(" · ")}</div>`;
   h += `<div class="grade-final">${gradeBox(subj)}<div><div class="gf-t">Végleges jegy</div><div class="gf-v">${esc(subj.result || (subj.passed ? "Teljesítve" : "—"))}</div></div></div>`;
   if (list.length) {
-    h += `<div class="dash-label" style="margin-top:8px">Összes bejegyzett jegy</div><div class="card">`
-      + list.map((e) => `<div class="row grade-row"><span class="row-main"><span class="row-title">${esc(e.result || "—")}</span><span class="row-sub">${[esc(e.type), e.date ? esc(ftDate(e.date)) : ""].filter(Boolean).join(" · ")}</span></span>${gradeBox(e)}</div>`).join("")
+    h += `<h3 class="ma-h">Összes bejegyzett jegy</h3><div class="rows">`
+      + list.map((e) => `<div class="r r-kv grade-row"><span class="r-b"><span class="r-n">${esc(e.result || "Nincs jegy")}</span><span class="r-m">${[esc(e.type), e.date ? esc(ftDate(e.date)) : ""].filter(Boolean).join(" · ")}</span></span><span class="r-x">${gradeCell(e)}</span></div>`).join("")
       + `</div>`;
   } else {
-    h += `<div class="hint" style="margin-top:12px">Ehhez a tárgyhoz nincs külön vizsgabejegyzés — a leckekönyvi végleges jegy látszik.</div>`;
+    h += `<div class="hint" style="margin-top:12px">Ehhez a tárgyhoz nincs külön vizsgabejegyzés. A leckekönyvi végleges jegy látszik.</div>`;
   }
   $("grade-body").innerHTML = h;
   $("grade-sheet").classList.remove("hidden");

@@ -2,7 +2,8 @@
 <html lang="hu">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#0c0d0f" />
   <title>Kredit+</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -200,55 +201,56 @@
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll">
-                <div class="home-search" style="margin-bottom:12px">
-                  <div style="display:flex;gap:10px;align-items:stretch">
-                    <div style="position:relative;flex:1;min-width:0">
-                      <span data-icon="search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted,#9aa0a6);pointer-events:none"></span>
-                      <input id="hub-search-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés: tárgy, jegy, üzenet, oldal…" style="width:100%;box-sizing:border-box;font-size:15px;padding:11px 14px 11px 40px;border-radius:12px;border:1px solid var(--line,#2a2f37);background:var(--card,#161a21);color:var(--fg,#e8eaed)">
-                    </div>
-                    <button class="iconbtn" id="hub-edit" title="Kezdőlap testreszabása" style="flex:none;width:46px;height:auto;align-self:stretch;border-radius:12px;background:var(--card,#161a21);border:1px solid var(--line,#2a2f37)"><span data-icon="pencil"></span></button>
+                <div class="home-search">
+                  <div class="hs-row">
+                    <label class="hs-field"><span data-icon="search"></span>
+                      <input id="hub-search-input" class="hs-input" type="search" inputmode="search" autocomplete="off" placeholder="Keresés: tárgy, jegy, üzenet, oldal…"></label>
+                    <button class="iconbtn" id="hub-edit" title="Kezdőlap testreszabása" aria-label="Kezdőlap testreszabása"><span data-icon="pencil"></span></button>
                   </div>
                   <div id="hub-search-results" hidden></div>
-                </div>
-                <div class="card hero">
-                  <div class="hero-top">
-                    <div style="min-width:0">
-                      <div class="hero-cap">Azonosító</div>
-                      <div class="hero-id" id="disp-username">Nincs adat</div>
-                      <div class="hero-uni" id="disp-server"></div>
-                    </div>
-                    <button class="chip" id="server-chip"><span data-icon="swap"></span> Váltás</button>
-                  </div>
-                  <div class="totp-tile" id="totp-tile">
-                    <div class="ring-wrap"><svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"></circle><circle class="fg" id="ring-fg" cx="22" cy="22" r="19"></circle></svg><span class="ring-sec" id="totp-seconds">30</span></div>
-                    <div class="totp-main"><div class="totp-lbl" id="totp-account">2FA kód</div><div class="totp-code" id="totp-code">000 000</div></div>
-                    <button class="iconbtn plain" id="btn-copy-code" title="Másolás"><span data-icon="copy"></span></button>
-                  </div>
-                  <span class="chip-muted hidden" id="chip-no2fa"><span data-icon="shield"></span> Kétlépcsős azonosítás kikapcsolva</span>
-                  <button class="btn primary lg" id="btn-login" style="margin-top:14px"><span data-icon="key"></span> <span id="btn-login-text">Bejelentkezés</span></button>
                 </div>
 
                 <div id="hub-widgets"></div>
 
                 <div class="version-tag" id="version-tag"></div>
               </div>
+              <!-- Belépősáv: az egyetlen kiemelt felület, a navigáció fölé rögzítve (napló koncepció). -->
+              <div class="login-strip hero">
+                <div class="ls-who">
+                  <div class="totp-tile" id="totp-tile">
+                    <span class="totp-code" id="totp-code">000 000</span>
+                    <span class="ring-wrap"><svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"></circle><circle class="fg" id="ring-fg" cx="22" cy="22" r="19"></circle></svg><span class="ring-sec" id="totp-seconds">30</span></span>
+                    <button class="iconbtn plain" id="btn-copy-code" title="Kód másolása" aria-label="Kód másolása"><span data-icon="copy"></span></button>
+                    <span class="totp-lbl" id="totp-account" hidden>2FA kód</span>
+                  </div>
+                  <div class="ls-id"><span class="hero-cap" hidden>Azonosító</span><span class="hero-id" id="disp-username">Nincs adat</span><span class="hero-uni" id="disp-server"></span></div>
+                  <span class="chip-muted hidden" id="chip-no2fa"><span data-icon="shield"></span> Kétlépcsős azonosítás kikapcsolva</span>
+                </div>
+                <button class="iconbtn plain ls-switch" id="server-chip" title="Szerver váltása" aria-label="Szerver váltása"><span data-icon="swap"></span></button>
+                <button class="btn primary" id="btn-login"><span id="btn-login-text">Belépés</span></button>
+              </div>
             </section>
 
             <section class="tabscreen" id="tab-more">
               <header class="topbar">
-                <div style="flex:1"><div class="wordmark">Több</div><div class="topbar-sub">Szolgáltatások és eszközök</div></div>
+                <div style="flex:1"><div class="wordmark">Több</div></div>
+                <button class="iconbtn plain" id="more-edit" title="Több menü testreszabása" aria-label="Több menü testreszabása"><span data-icon="pencil"></span></button>
                 <button class="iconbtn plain notif-bell" title="Értesítések"><span data-icon="bell"></span><span class="notif-bell-badge" hidden></span></button>
                 <button class="iconbtn plain" data-settings title="Beállítások"><span data-icon="gear"></span></button>
               </header>
               <div class="scroll" id="more-scroll"></div>
             </section>
 
-            <section class="tabscreen" id="tab-more-cat">
+            <section class="tabscreen" id="tab-more-edit">
               <header class="topbar">
-                <button class="iconbtn plain" data-back title="Vissza"><span data-icon="back"></span></button>
-                <div style="flex:1"><div class="wordmark" id="more-cat-title">Több</div><div class="topbar-sub" id="more-cat-sub"></div></div>
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1"><div class="wordmark">Több</div><div class="topbar-sub">Csoportok és elemek sorrendje</div></div>
               </header>
-              <div class="scroll" id="more-cat-scroll"></div>
+              <div class="scroll" id="more-edit-scroll"></div>
+              <div class="save-bar" id="more-savebar" hidden>
+                <button class="btn outline" id="more-cancel" type="button">Mégse</button>
+                <button class="btn primary" id="more-save" type="button">Mentés</button>
+              </div>
             </section>
 
             <section class="tabscreen" id="tab-hub-edit">
@@ -717,8 +719,20 @@
               <header class="topbar">
                 <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
                 <div style="flex:1;min-width:0"><div class="wordmark" id="mat-subject-title">Tárgy</div><div class="topbar-sub" id="mat-subject-sub"></div></div>
+                <button class="iconbtn plain" id="mat-import" type="button" title="PDF importálása" aria-label="PDF importálása"><span data-icon="download"></span></button>
+                <button class="iconbtn plain" id="mat-note" type="button" title="Új jegyzet" aria-label="Új jegyzet"><span data-icon="pencil"></span></button>
               </header>
               <div class="scroll" id="mat-subject-scroll"></div>
+            </section>
+
+            <!-- Megosztott PDF hozzáadása egy tárgyhoz (más appból érkezik, lásd materials.js matAssignIncoming) -->
+            <section class="tabscreen" id="tab-mat-share">
+              <header class="topbar">
+                <button class="iconbtn plain" data-back title="Vissza" aria-label="Vissza"><span data-icon="back"></span></button>
+                <div style="flex:1;min-width:0"><div class="wordmark">Hozzáadás tárgyhoz</div><div class="topbar-sub" id="mat-share-sub"></div></div>
+              </header>
+              <div class="scroll" id="mat-share-scroll"></div>
+              <div class="save-bar"><button class="btn tonal lg" id="mat-share-cancel" type="button">Mégse</button></div>
             </section>
 
             <section class="tabscreen" id="tab-mat-view">
@@ -858,10 +872,10 @@
 
           <nav class="nav-island">
             <div class="nav-ind" id="nav-ind"></div>
-            <button class="nav-btn active" data-tab="tab-home"><span data-icon="home"></span><span class="nlabel">Kezdőlap</span></button>
+            <button class="nav-btn active" data-tab="tab-home"><span data-icon="sun"></span><span class="nlabel">Ma</span></button>
             <button class="nav-btn" data-tab="tab-timetable"><span data-icon="calendar"></span><span class="nlabel">Órarend</span></button>
             <button class="nav-btn" data-tab="tab-exams"><span data-icon="clipboard"></span><span class="nlabel">Vizsgák</span></button>
-            <button class="nav-btn" data-tab="tab-more"><span data-icon="grid"></span><span class="nlabel">Több</span></button>
+            <button class="nav-btn" data-tab="tab-more"><span data-icon="more"></span><span class="nlabel">Több</span></button>
           </nav>
         </div>
 

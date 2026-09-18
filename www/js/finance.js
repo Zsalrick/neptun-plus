@@ -70,7 +70,7 @@ function renderFinTx() {
   const years = Array.from(new Set(all.map((t) => t.date ? new Date(t.date).getFullYear() : null).filter(Boolean))).sort((a, b) => b - a);
   if (finTxFilter !== "all" && years.indexOf(+finTxFilter) < 0) finTxFilter = "all"; // filter no longer valid
   const list = finTxFilter === "all" ? all : all.filter((t) => t.date && new Date(t.date).getFullYear() === +finTxFilter);
-  let html = `<div class="controls" style="margin-bottom:12px"><button class="period-btn" type="button"><span>${finTxFilter === "all" ? "Összes időszak" : esc(finTxFilter)}</span>${icon("down")}</button></div><div class="card">`;
+  let html = `<div class="controls dd-row"><button class="period-btn dd" type="button"><span>${finTxFilter === "all" ? "Összes időszak" : esc(finTxFilter)}</span>${icon("down")}</button></div><div class="card">`;
   list.forEach((t) => {
     const pos = t.sign === "+";
     html += `<div class="row fin-tx"><span class="row-main"><span class="row-title">${esc(t.direction || t.type)}</span><span class="row-sub">${esc(ftDate(t.date))}${t.note ? " · " + esc(t.note) : ""}</span></span>`

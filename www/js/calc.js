@@ -55,7 +55,7 @@ function calcTargetSolve(rows, type, target) {
   const reqAvg = needPts / openCr;
   return { reqAvg, openCr, openN, feasible: reqAvg <= 5.0001, trivial: reqAvg <= 1.0001 };
 }
-const cf2 = (x) => (Math.round(x * 100) / 100).toFixed(2);
+const cf2 = (x) => (Math.round(x * 100) / 100).toFixed(2).replace(".", ","); // kijelzés: magyar tizedesvessző
 function renderCalc() {
   const host = $("calc-scroll"); if (!host) return;
   const gbtn = $("calc-goal-btn"); if (gbtn) gbtn.hidden = true; // shown only once real subjects exist
@@ -69,7 +69,7 @@ function renderCalc() {
   }
   if (!calcTerm || terms.indexOf(calcTerm) < 0) calcTerm = terms[0];
   const rows = calcRows(calcTerm), c = calcCompute(rows);
-  let html = `<div class="controls" style="margin-bottom:12px"><button class="period-btn" id="calc-term" type="button"><span>${esc(calcTerm)}</span>${icon("down")}</button></div>`;
+  let html = `<div class="controls dd-row"><button class="period-btn dd" id="calc-term" type="button"><span>${esc(fmtTerm(calcTerm))}</span>${icon("down")}</button></div>`;
   html += `<div class="stat-hero">`
     + `<div class="stat-hero-v">${cf2(c.suly)}</div><div class="stat-hero-l">Súlyozott átlag</div>`
     + `<div class="stat-hero-sub">`

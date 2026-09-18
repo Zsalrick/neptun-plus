@@ -59,9 +59,9 @@ function renderPeriods() {
   groups[0].items.sort((a, b) => new Date(a.to || 0) - new Date(b.to || 0));
   groups[1].items.sort((a, b) => new Date(a.from || 0) - new Date(b.from || 0));
   groups[2].items.sort((a, b) => new Date(b.to || 0) - new Date(a.to || 0));
-  let html = `<div class="controls" style="margin-bottom:12px">`
-    + `<button class="period-btn" id="per-status" type="button"><span>${esc(PERIOD_STATUS[periodsStatus])}</span>${icon("down")}</button>`
-    + (terms.length ? `<button class="period-btn view-btn" id="per-term" type="button"><span>${periodsTerm === "all" ? "Minden félév" : esc(periodsTerm)}</span>${icon("down")}</button>` : "")
+  let html = `<div class="controls dd-row">`
+    + `<button class="period-btn dd" id="per-status" type="button"><span>${esc(PERIOD_STATUS[periodsStatus])}</span>${icon("down")}</button>`
+    + (terms.length ? `<button class="period-btn dd view-btn" id="per-term" type="button"><span>${periodsTerm === "all" ? "Minden félév" : esc(fmtTerm(periodsTerm))}</span>${icon("down")}</button>` : "")
     + `</div>`;
   if (!items.length) html += `<div class="dash-empty" style="padding:24px 4px">Nincs a szűrőnek megfelelő időszak.</div>`;
   groups.forEach((g) => {

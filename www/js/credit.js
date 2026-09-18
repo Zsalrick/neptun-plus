@@ -50,7 +50,7 @@ function diplomaBlock(p, remaining) {
   const subTot = req.length;
   const subDone = req.filter((x) => x.completed).length;
   const subPct = subTot ? Math.round(subDone / subTot * 100) : 0;
-  const stat = (val, lbl) => `<div style="min-width:120px"><div style="font-size:22px;font-weight:700;font-family:var(--font-mono,inherit)">${esc(val)}</div><div style="font-size:12.5px;color:var(--muted,#9aa0a6);margin-top:2px">${esc(lbl)}</div></div>`;
+  const stat = (val, lbl) => `<div style="min-width:120px"><div style="font-size:24px;font-weight:800;letter-spacing:-.02em;font-family:var(--font-brand)">${esc(val)}</div><div style="font-size:12.5px;color:var(--muted,#9aa0a6);margin-top:2px">${esc(lbl)}</div></div>`;
   let h = `<div class="dash-label">Diploma-haladás</div><div class="card" style="padding:16px">`;
   h += `<div class="dip-stats" style="display:flex;gap:18px;flex-wrap:wrap">`
     + stat(semLeft <= 0 ? "Kész" : "≈ " + semLeft + " félév", semLeft <= 0 ? "minden kredit megvan" : "van hátra (30 kr/félév)")

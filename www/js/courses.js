@@ -10,13 +10,13 @@ const CO_SEG_LABEL = { aktualis: "Aktuális", osszes: "Összes", szabad: "Szabad
 let courseRowSeq = 0, courseRowMap = {}; // tap-target lookup: rows carry an id → the course object
 function courseRow(c) {
   const rid = "cr" + (++courseRowSeq); courseRowMap[rid] = c;
-  return `<button class="course-row" data-crid="${rid}" type="button">
-    <span class="cr-check ${c.completed ? "on" : ""}">${c.completed ? icon("check") : ""}</span>
-    <div class="cr-main"><div class="cr-name">${esc(c.name || c.code || "Tárgy")}</div><div class="cr-sub">${esc(c.code || "")}${c.teacher ? " · " + esc(c.teacher) : ""}${c.type ? " · " + esc(c.type) : ""}</div></div>
-    <span class="cr-cr">${esc(String(c.credits || 0))} kr</span><span class="row-chev">${icon("chev")}</span></button>`;
+  const meta = [c.completed ? `<span class="r-ok">${icon("check")}Teljesítve</span>` : "", esc(c.code || ""), esc(c.teacher || ""), esc(c.type || "")].filter(Boolean).join(" · ");
+  return `<button class="r r-kv" data-crid="${rid}" type="button">`
+    + `<span class="r-b"><span class="r-n">${esc(c.name || c.code || "Tárgy")}</span>${meta ? `<span class="r-m">${meta}</span>` : ""}</span>`
+    + `<span class="r-x"><span class="gcell"><b>${esc(String(c.credits || 0))}</b><small>kredit</small></span></span></button>`;
 }
 function creditCard(done, total, doneN, totalN) {
-  return `<div class="card cred"><div class="cred-row"><div><div class="cred-big">${done} / ${total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${doneN}/${totalN} tárgy</div></div><div class="cred-bar"><div class="cred-fill" style="width:${total ? Math.round(done / total * 100) : 0}%"></div></div></div>`;
+  return `<div class="cred"><div class="cred-row"><div><div class="cred-big">${done} / ${total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${doneN}/${totalN} tárgy</div></div><div class="cred-bar"><div class="cred-fill" style="width:${total ? Math.round(done / total * 100) : 0}%"></div></div></div>`;
 }
 function coEmpty(scroll, title, text, btnText, onRead) {
   scroll.insertAdjacentHTML("beforeend", `<div class="empty"><div class="empty-ic">${icon("book")}</div>
@@ -68,19 +68,48 @@ function renderSubject() {
   if (d.classesPerTerm) rows.push(["Féléves óraszám", String(d.classesPerTerm)]);
   if (d.subjectResult) rows.push(["Eredmény", d.subjectResult]);
   else if (c.completed) rows.push(["Státusz", "Teljesítve"]);
-  let h = `<div class="detail-subj" style="margin:2px 2px 4px">${esc(c.code || "")}</div><div class="sheet-title" style="margin:0 2px 14px">${esc(d.subjectName || c.name || "Tárgy")}</div>`;
+  const sname = d.subjectName || c.name || "Tárgy";
+  let h = `<div class="subj-h">${esc(sname)}</div><div class="subj-s">${[esc(c.code || ""), esc(req || "")].filter(Boolean).join(" · ")}</div>`;
   h += `<div class="card kv">` + rows.map(([k, v]) => `<div class="kv-row"><span class="kv-k">${esc(k)}</span><span class="kv-v">${esc(v)}</span></div>`).join("") + `</div>`;
   if (loading) h += `<div class="dash-empty" style="padding:14px 2px">További adatok betöltése…</div>`;
+  h += subjectClassesHtml(c, sname) + subjectMatsHtml(c, sname);
   // Prerequisites
   const pre = (subjectData && subjectData.prereqs || []).map((p) => p && (p.subjectName || p.name || p.description)).filter(Boolean);
   if (d.preRequirement) pre.unshift(d.preRequirement);
-  if (pre.length) h += `<div class="dash-label">Előkövetelmények</div><div class="card"><div class="card-pad">` + pre.map((p) => `<div class="req-row">${esc(p)}</div>`).join("") + `</div></div>`;
-  if (d.finalRequirement) h += `<div class="dash-label">Számonkérés / követelmény</div><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.finalRequirement)}</div></div>`;
+  if (pre.length) h += `<h3 class="ma-h">Előkövetelmények</h3><div class="card"><div class="card-pad">` + pre.map((p) => `<div class="req-row">${esc(p)}</div>`).join("") + `</div></div>`;
+  if (d.finalRequirement) h += `<h3 class="ma-h">Számonkérés és követelmény</h3><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.finalRequirement)}</div></div>`;
   const reqs = (subjectData && subjectData.reqs || []).filter((r) => r && r.description);
-  if (reqs.length) h += `<div class="dash-label">Általános követelmények</div><div class="card"><div class="card-pad">` + reqs.map((r) => `<div class="req-row">${esc(r.description)}</div>`).join("") + `</div></div>`;
-  if (d.description || d.note) h += `<div class="dash-label">Leírás</div><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.description || d.note)}</div></div>`;
+  if (reqs.length) h += `<h3 class="ma-h">Általános követelmények</h3><div class="card"><div class="card-pad">` + reqs.map((r) => `<div class="req-row">${esc(r.description)}</div>`).join("") + `</div></div>`;
+  if (d.description || d.note) h += `<h3 class="ma-h">Leírás</h3><div class="card"><div class="card-pad msg-text">${sanitizeHtml(d.description || d.note)}</div></div>`;
   if (subjectErr && !subjectData) h += `<div class="hint center" style="margin-top:14px">A további tárgyadatok nem tölthetők be.</div>`;
   host.innerHTML = h;
+  host.querySelectorAll("[data-sjmat]").forEach((b) => b.onclick = () => openMaterial(b.dataset.sjmat));
+  const all = $("sj-mats"); if (all) all.onclick = () => openMatSubject(all.dataset.sem, sname, c.code || "");
+}
+// Órák: a tárgy heti időpontjai az órarendből (nap + kezdés), ismétlődés nélkül.
+function subjectClassesHtml(c, name) {
+  const DS = ["V", "H", "K", "Sze", "Cs", "P", "Szo"], seen = {}, out = [];
+  const sem = c.semester || currentSemesterKey(), key = matSubjKey(name);
+  classEvents().filter((e) => semObj(e.S).key === sem).forEach((e) => {
+    const p = parseClassSummary(e.summary);
+    if (!p || !((c.code && p.code === c.code) || matSubjKey(p.name) === key)) return;
+    const k = e.S.getDay() + "|" + hm(e.S) + "|" + (p.type || "") + "|" + (e.location || "");
+    if (seen[k]) return; seen[k] = 1; out.push({ d: e.S.getDay(), t: hm(e.S), type: p.type, loc: e.location, teacher: p.teacher });
+  });
+  if (!out.length) return "";
+  out.sort((a, b) => ((a.d + 6) % 7) - ((b.d + 6) % 7) || a.t.localeCompare(b.t));
+  return `<h3 class="ma-h">Órák</h3><div class="rows">` + out.slice(0, 8).map((o) => `<div class="r"><span class="r-t">${DS[o.d]} ${o.t}</span>`
+    + `<span class="r-b"><span class="r-n">${esc(o.type || "Óra")}</span><span class="r-m">${esc([o.loc, o.teacher].filter(Boolean).join(" · "))}</span></span><span class="r-x"></span></div>`).join("") + `</div>`;
+}
+// Anyagok: a tárgyhoz csatolt PDF-ek és jegyzetek, plusz ugrás a tárgy anyag-oldalára.
+function subjectMatsHtml(c, name) {
+  const sem = c.semester || currentSemesterKey(), list = matOf(sem, matSubjKey(name));
+  let h = `<h3 class="ma-h">Anyagok</h3><div class="rows">`;
+  h += list.slice(0, 3).map((m) => `<button class="r" data-sjmat="${esc(m.id)}" type="button"><span class="r-t">${esc(TT_MON[new Date(m.upd).getMonth()] + " " + new Date(m.upd).getDate() + ".")}</span>`
+    + `<span class="r-b"><span class="r-n r-file">${icon(m.kind === "pdf" ? "doc" : "note")}${esc(m.title)}</span><span class="r-m">${esc([m.kind === "pdf" ? "PDF" : "Jegyzet", m.pages + " oldal"].join(" · "))}</span></span><span class="r-x"></span></button>`).join("");
+  h += `<button class="r r-kv" id="sj-mats" data-sem="${esc(sem)}" type="button"><span class="r-b"><span class="r-n">${list.length ? "Összes anyag" : "Anyag hozzáadása"}</span>`
+    + `<span class="r-m">${list.length ? list.length + " anyag ehhez a tárgyhoz" : "PDF importálása vagy új jegyzet"}</span></span><span class="r-x">${icon("chev")}</span></button></div>`;
+  return h;
 }
 function renderCoAktualis(scroll) {
   const list = (state.courses && state.courses.list) || [];
@@ -95,13 +124,15 @@ function renderCoAktualis(scroll) {
   const totalCr = items.reduce((s, c) => s + (+c.credits || 0), 0);
   const doneCr = items.filter((c) => c.completed).reduce((s, c) => s + (+c.credits || 0), 0);
   $("co-sub").textContent = "Aktuális · " + items.length + " tárgy";
-  let html = `<div class="controls"><button class="period-btn" type="button"><span>${coFilter === "all" ? "Összes félév" : esc(coFilter)}</span>${icon("down")}</button></div>`;
-  html += `<div class="tt-updated" style="margin:2px 4px 12px">${esc(freshText(state.courses && state.courses.fetchedAt))}</div>`;
+  let html = `<div class="controls dd-row"><button class="period-btn dd" type="button"><span>${coFilter === "all" ? "Összes félév" : esc(fmtTerm(coFilter))}</span>${icon("down")}</button></div>`;
+  html += `<div class="tt-updated">${esc(freshText(state.courses && state.courses.fetchedAt))}</div>`;
   html += creditCard(doneCr, totalCr, items.filter((c) => c.completed).length, items.length);
+  html += `<div class="rows">`;
   items.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu")).forEach((c) => { html += courseRow(c); });
+  html += `</div>`;
   scroll.insertAdjacentHTML("beforeend", html);
   const pb = scroll.querySelector(".period-btn");
-  if (pb) pb.onclick = () => openList({ title: "Időszak", selected: coFilter, items: [{ value: "all", label: "Összes félév" }].concat(sems.map((s) => ({ value: s.key, label: s.key }))), onPick: (v) => { coFilter = v; renderCourses(); } });
+  if (pb) pb.onclick = () => openList({ title: "Időszak", selected: coFilter, items: [{ value: "all", label: "Összes félév" }].concat(sems.map((s) => ({ value: s.key, label: fmtTerm(s.key) }))), onPick: (v) => { coFilter = v; renderCourses(); } });
 }
 function renderCoCurriculum(scroll, freeOnly) {
   const cur = state.curriculum;
@@ -118,10 +149,12 @@ function renderCoCurriculum(scroll, freeOnly) {
   $("co-sub").textContent = (freeOnly ? "Szabadon választható" : "Összes") + " · " + list.length + " tárgy";
   let html = "";
   if (cur.program) html += `<div class="co-program">${icon("building")} ${esc(cur.program)}</div>`;
-  html += `<div class="tt-updated" style="margin:2px 4px 12px">${esc(freshText(cur.fetchedAt))}</div>`;
+  html += `<div class="tt-updated">${esc(freshText(cur.fetchedAt))}</div>`;
   if (!list.length) { html += `<div class="hint center" style="margin-top:20px">Ebben a csoportban nincs beolvasott tárgy.</div>`; scroll.insertAdjacentHTML("beforeend", html); return; }
   html += creditCard(doneCr, totalCr, list.filter((c) => c.completed).length, list.length);
+  html += `<div class="rows">`;
   list.slice().sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu")).forEach((c) => { html += courseRow(c); });
+  html += `</div>`;
   scroll.insertAdjacentHTML("beforeend", html);
 }
 $("co-refresh").onclick = () => { if (coSeg === "aktualis") scrapeCourses(); else scrapeCurriculum(); };

@@ -230,7 +230,7 @@ function renderFriends() {
   const friends = entries.filter(isFriendEntry).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
   const others = entries.filter((e) => !isFriendEntry(e)).filter(hit).sort((a, b) => a.n.localeCompare(b.n, "hu"));
   const row = (e, isF) => `<div class="row fr-row" data-fk="${esc(e.k)}" style="cursor:pointer"><span class="row-ic">${icon("user")}</span>`
-    + `<span class="row-main"><span class="row-title">${isF ? `<span style="color:#5fa878">● </span>` : ""}${esc(e.n)}</span>`
+    + `<span class="row-main"><span class="row-title">${isF ? `<span style="color:var(--ok)">● </span>` : ""}${esc(e.n)}</span>`
     + (e.c.length ? `<span class="row-sub">${esc(e.c.slice(0, 2).join(" · "))}${e.c.length > 2 ? " · +" + (e.c.length - 2) : ""}</span>` : "")
     + `</span>${icon("chev")}</div>`;
   let h = `<div class="dash-label">Én</div><div class="card"><div class="row" id="fr-me" style="cursor:pointer"><span class="row-ic">${icon("user")}</span>`

@@ -327,7 +327,7 @@ function renderPlan() {
         + `<span class="row-main"><span class="row-title">${esc(i.name || "Tárgy")}</span>`
         + `<span class="row-sub">${esc(line2)}</span>`
         + `<span class="row-sub">${esc(line3)}</span></span>`
-        + `<button class="pl-del" data-ix="${ix}" type="button" title="Levétel a tervezetből" style="background:none;border:0;padding:6px;cursor:pointer;color:var(--muted)">${icon("x")}</button></div>`;
+        + `<button class="iconbtn plain pl-del" data-ix="${ix}" type="button" title="Levétel a tervezetből">${icon("x")}</button></div>`;
     }).join("") + `</div>`;
     // ---- Órarend generátor ----
     const st = planSettings(p);
@@ -348,7 +348,7 @@ function renderPlan() {
       const sub = [c.code, (c.credits ? c.credits + " kr" : ""), "most fel van véve"].filter(Boolean).join(" · ");
       return `<div class="row"><span class="row-ic">${icon("x")}</span>`
         + `<span class="row-main"><span class="row-title">${esc(c.name || "Tárgy")}</span><span class="row-sub">${esc(sub)}</span></span>`
-        + `<button class="pl-keep" data-code="${esc(c.code || "")}" data-sid="${esc(c.subjectId || "")}" type="button" title="Mégis maradjon" style="background:none;border:0;padding:6px;cursor:pointer;color:var(--muted)">${icon("plus")}</button></div>`;
+        + `<button class="iconbtn plain pl-keep" data-code="${esc(c.code || "")}" data-sid="${esc(c.subjectId || "")}" type="button" title="Mégis maradjon">${icon("plus")}</button></div>`;
     }).join("") + `</div>`;
     h += `<div class="hint" style="margin:8px 2px">Ezek most fel vannak véve a Neptunban, de nincsenek a tervezetben. Az alkalmazáskor leadom őket. A plusz gombbal visszateheted.</div>`;
   }
@@ -427,7 +427,7 @@ function renderPlanCourses() {
       const meta = [c.courseCode, c.tutorName, (c.isFull ? "betelt" : ""),
         (c.registeredStudentsCount != null && c.maxLimit != null ? c.registeredStudentsCount + "/" + c.maxLimit : "")].filter(Boolean).join(" · ");
       return `<div class="row plc-row" data-type="${esc(t)}" data-cid="${esc(c.id)}" style="cursor:pointer"><span class="row-ic">${icon("clock")}</span>`
-        + `<span class="row-main"><span class="row-title">${on ? `<span style="color:#5fa878">● </span>` : ""}${esc(courseTimeLabel(c))}</span>`
+        + `<span class="row-main"><span class="row-title">${on ? `<span style="color:var(--ok)">● </span>` : ""}${esc(courseTimeLabel(c))}</span>`
         + (meta ? `<span class="row-sub">${esc(meta)}</span>` : "") + `</span>`
         + `<span style="color:var(--muted);padding:6px">${icon(on ? "check" : "plus")}</span></div>`;
     }).join("") + `</div>`;
@@ -461,7 +461,7 @@ function renderPlanPick() {
         const inp = p && planHas(p, s);
         const sub = [s.code, (s.credits ? s.credits + " kr" : ""), s.type].filter(Boolean).join(" · ");
         return `<div class="row pk-row" data-sid="${esc(s.subjectId || "")}" data-code="${esc(s.code || "")}" style="cursor:pointer"><span class="row-ic">${icon("book")}</span>`
-          + `<span class="row-main"><span class="row-title">${inp ? `<span style="color:#5fa878">● </span>` : ""}${esc(s.name || "Tárgy")}</span>`
+          + `<span class="row-main"><span class="row-title">${inp ? `<span style="color:var(--ok)">● </span>` : ""}${esc(s.name || "Tárgy")}</span>`
           + (sub ? `<span class="row-sub">${esc(sub)}</span>` : "") + `</span>`
           + `<span style="color:var(--muted);padding:6px">${icon(inp ? "check" : "plus")}</span></div>`;
       }).join("") + `</div>`;

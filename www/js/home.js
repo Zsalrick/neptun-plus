@@ -29,34 +29,101 @@ function renderHome() {
   renderHubSearch(); // a kereső nézet szinkronban a mező tartalmával (üres → főmenü)
 }
 // ---- Customizable Kezdőlap hub: a registry of widgets + a saved, ordered list of the enabled ones ----
-function hubCard(cls) { const b = document.createElement("button"); b.type = "button"; b.className = "card " + (cls || ""); return b; }
+// Napló koncepció: minden widget ugyanabból a sor-primitívből épül (bal oldali idő/dátum sáv, cím, meta,
+// hajszálvonal). Az egymás utáni, azonos szakaszba tartozó widgetek egy fejléc alá kerülnek.
+P.sun = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
 function openTab(tab) { if (typeof MAIN_TABS !== "undefined" && MAIN_TABS.includes(tab)) navTo(tab); else pushScreen(tab); }
+const HU_MONTHS = ["január", "február", "március", "április", "május", "június", "július", "augusztus", "szeptember", "október", "november", "december"];
+const HU_NUM = ["nulla", "egy", "két", "három", "négy", "öt", "hat", "hét", "nyolc", "kilenc", "tíz"];
+const huNum = (n) => HU_NUM[n] || String(n);
+const huDec = (v) => String(v).replace(".", ",");
+const capFirst = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+// Bal oldali sáv: ma → óra:perc, holnap → "holnap", később → "szept. 22."
+function railWhen(d) { const n = daysUntil(d); return n === 0 ? hm(d) : n === 1 ? "holnap" : TT_MON[d.getMonth()] + " " + d.getDate() + "."; }
+// Egy napló sor. `o.onclick` esetén gomb.
+function maRow(o) {
+  const el = document.createElement(o.onclick ? "button" : "div");
+  if (o.onclick) { el.type = "button"; el.onclick = o.onclick; }
+  el.className = "r" + (o.kv ? " r-kv" : "") + (o.cls ? " " + o.cls : "");
+  el.innerHTML = (o.kv ? "" : `<span class="r-t">${o.t || ""}</span>`)
+    + `<span class="r-b"><span class="r-n">${o.n}</span>${o.m ? `<span class="r-m">${o.m}</span>` : ""}</span>`
+    + `<span class="r-x">${o.x || ""}</span>`;
+  return el;
+}
+// A host utolsó szakasza, ha azonos kulcsú; különben új fejléc + lista.
+function maSection(host, key, title) {
+  const last = host.lastElementChild;
+  if (last && last.classList.contains("rows") && last.dataset.sec === key) return last;
+  const h = document.createElement("h3"); h.className = "ma-h"; h.textContent = title; host.appendChild(h);
+  const rows = document.createElement("div"); rows.className = "rows"; rows.dataset.sec = key; host.appendChild(rows);
+  return rows;
+}
+function classTitle(e) { const p = e.manual ? null : parseClassSummary(e.summary); return { name: p ? p.name : (e.summary || ""), type: p ? p.type : "", teacher: p ? p.teacher : "" }; }
+function todaysClasses() { const now = new Date(); return visibleClassEvents().filter((e) => sameDay(e.S, now)).sort((a, b) => a.S - b.S); }
+// Mai órák idővonala: a lezajlottak halványak, a "most" vonal a véget nem ért órák elé kerül.
+function renderTodayTimeline(host) {
+  if (host.querySelector('[data-sec="today"]')) return; // a két óra-widget egy közös idővonalat ad
+  const list = todaysClasses(), now = Date.now();
+  if (!list.length) {
+    const e = nextClass(); if (!e) return;
+    const t = classTitle(e);
+    const rows = maSection(host, "today", "Következő óra");
+    rows.appendChild(maRow({ t: esc(railWhen(e.S)), n: esc(t.name), m: esc([t.type, hm(e.S), e.location].filter(Boolean).join(" · ")), onclick: () => navTo("tab-timetable") }));
+    return;
+  }
+  const rows = maSection(host, "today", "Mai órák");
+  let lined = false;
+  const nowLine = () => { const d = document.createElement("div"); d.className = "now-line"; d.innerHTML = `<b>${hm(new Date())}</b><i></i>`; rows.appendChild(d); lined = true; };
+  list.forEach((e) => {
+    const past = e.E.getTime() <= now, live = e.S.getTime() <= now && !past;
+    if (!past && !lined) nowLine();
+    const t = classTitle(e);
+    const meta = live ? `<span class="live">Most tart</span> · ${esc([e.location, hm(e.E) + "-ig"].filter(Boolean).join(" · "))}` : esc([t.type, e.location].filter(Boolean).join(" · "));
+    rows.appendChild(maRow({ t: hm(e.S), n: esc(t.name), m: meta, cls: past ? "past" : "", onclick: () => navTo("tab-timetable") }));
+  });
+  if (!lined) nowLine();
+}
+function statRow(host, label, value, meta, go) {
+  maSection(host, "stats", "Áttekintés").appendChild(maRow({ kv: true, n: esc(label), m: meta ? esc(meta) : "", x: `<span class="r-v">${esc(value)}</span>`, onclick: go }));
+}
 const HUB_WIDGETS = [
-  { id: "current-class", label: "Jelenlegi óra", desc: "A most zajló órád, amíg tart.", render(host) { const e = currentClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Jelenlegi óra", "tab-timetable", true); } },
-  { id: "next-class", label: "Következő óra", desc: "A soron következő órád ideje és terme.", render(host) { const e = nextClass(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Óra", "tab-timetable"); } },
-  { id: "next-exam", label: "Következő számonkérés", desc: "A legközelebbi ZH vagy vizsga, hátralévő napokkal.", render(host) { const e = nextAssessment(); if (!e) return; const el = hubCard("next-card"); host.appendChild(el); nextIsland(el, e, "Számonkérés", "tab-exams", false, true); } },
-  { id: "credit", label: "Kreditek", desc: "Teljesített kreditek aránya és mérősávja.", render(host) { const p = state.progress; if (!p || !p.total) return; const pct = Math.round(p.done / p.total * 100); const el = hubCard("cred clickable"); el.onclick = () => pushScreen("tab-credit"); el.innerHTML = `<div class="cred-row"><div><div class="cred-big">${p.done} / ${p.total}</div><div class="cred-lbl">teljesített kredit</div></div><div class="cred-count">${pct}%</div></div><div class="cred-bar"><div class="cred-fill" style="width:${pct}%"></div></div>`; host.appendChild(el); } },
-  { id: "messages", label: "Olvasatlan üzenetek", desc: "Hány olvasatlan Neptun üzeneted van.", render(host) { const m = state.messages; if (!m || !m.fetchedAt) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-messages"); el.innerHTML = `<span class="hs-ic">${icon("mail")}</span><span class="hs-main"><span class="hs-val">${m.unread || 0}</span><span class="hs-lbl">olvasatlan üzenet</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
-  { id: "balance", label: "Egyenleg", desc: "A gyűjtőszámlád aktuális egyenlege.", render(host) { const f = state.finance; const a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); if (!a || a.balance == null) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-finance"); el.innerHTML = `<span class="hs-ic">${icon("wallet")}</span><span class="hs-main"><span class="hs-val">${a.balance.toLocaleString("hu")} Ft</span><span class="hs-lbl">gyűjtőszámla egyenleg</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
-  { id: "grades", label: "Átlag / kreditindex", desc: "A korrigált kreditindexed egy pillantásra.", render(host) { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; if (!i || i.korrigalt == null) return; const el = hubCard("hub-stat"); el.onclick = () => pushScreen("tab-grades"); el.innerHTML = `<span class="hs-ic">${icon("note")}</span><span class="hs-main"><span class="hs-val">${esc(String(i.korrigalt))}</span><span class="hs-lbl">korrigált kreditindex${i.termName ? " · " + esc(i.termName) : ""}</span></span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } },
-  { id: "sync", label: "Adatok állapota", desc: "Jelzi, ha adat hiányzik, és egy gombbal frissít.", render(host) { if (!canAutoLogin()) return; const missing = DATA_TASKS.filter((t) => !t.has()); const el = hubCard("next-card"); const row = (ic, head, title, meta) => `<div class="nc-row"><span class="nc-time nc-ic">${icon(ic)}</span><div class="nc-body"><div class="nc-head">${head}</div><div class="nc-title">${title}</div><div class="nc-meta">${meta}</div></div><span class="nc-chev">${icon("chev")}</span></div>`; if (missing.length) { el.classList.add("sync-cta"); el.innerHTML = row("down", "Adatok", "Szükséges adatok beolvasása", "Hiányzik: " + esc(missing.map((t) => t.label).join(", "))); el.onclick = () => openDataSync(missing.map((t) => t.id)); } else { el.innerHTML = row("refresh", "Adatok", "Adatok frissítése", "Órarend, félévek, kredit, tárgyak"); el.onclick = () => openDataSync(null); } host.appendChild(el); } },
+  { id: "current-class", label: "Jelenlegi óra", desc: "A most zajló órád, amíg tart.", render(host) { renderTodayTimeline(host); } },
+  { id: "next-class", label: "Következő óra", desc: "A soron következő órád ideje és terme.", render(host) { renderTodayTimeline(host); } },
+  { id: "next-exam", label: "Következő számonkérés", desc: "A legközelebbi ZH vagy vizsga, hátralévő napokkal.", render(host) { const e = nextAssessment(); if (!e) return; const t = classTitle(e); maSection(host, "exam", "Hamarosan").appendChild(maRow({ t: esc(railWhen(e.S)), n: esc(t.name), m: esc([countdownPhrase(e.S), hm(e.S), e.location].filter(Boolean).join(" · ")), onclick: () => navTo("tab-exams") })); } },
+  { id: "credit", label: "Kreditek", desc: "Teljesített kreditek aránya és mérősávja.", render(host) { const p = state.progress; if (!p || !p.total) return; statRow(host, "Teljesített kredit", `${p.done} / ${p.total}`, Math.round(p.done / p.total * 100) + "%", () => pushScreen("tab-credit")); } },
+  { id: "messages", label: "Olvasatlan üzenetek", desc: "Hány olvasatlan Neptun üzeneted van.", render(host) { const m = state.messages; if (!m || !m.fetchedAt) return; statRow(host, "Olvasatlan üzenet", String(m.unread || 0), "", () => pushScreen("tab-messages")); } },
+  { id: "balance", label: "Egyenleg", desc: "A gyűjtőszámlád aktuális egyenlege.", render(host) { const f = state.finance; const a = f && f.accounts && (f.accounts.find((x) => x.currency === "HUF") || f.accounts[0]); if (!a || a.balance == null) return; statRow(host, "Gyűjtőszámla", a.balance.toLocaleString("hu") + " Ft", "egyenleg", () => pushScreen("tab-finance")); } },
+  { id: "grades", label: "Átlag / kreditindex", desc: "A korrigált kreditindexed egy pillantásra.", render(host) { const gr = state.grades; const i = gr && gr.averages && gr.averages.indices; if (!i || i.korrigalt == null) return; statRow(host, "Korrigált kreditindex", huDec(i.korrigalt), i.termName || "", () => pushScreen("tab-grades")); } },
+  { id: "sync", label: "Adatok állapota", desc: "Jelzi, ha adat hiányzik, és egy gombbal frissít.", render(host) { if (!canAutoLogin()) return; const missing = DATA_TASKS.filter((t) => !t.has()); const rows = maSection(host, "sync", "Adatok"); if (missing.length) rows.appendChild(maRow({ kv: true, cls: "r-cta", n: "Szükséges adatok beolvasása", m: "Hiányzik: " + esc(missing.map((t) => t.label).join(", ")), x: icon("down"), onclick: () => openDataSync(missing.map((t) => t.id)) })); else rows.appendChild(maRow({ kv: true, n: "Adatok frissítése", m: "Órarend, félévek, kredit, tárgyak", x: icon("refresh"), onclick: () => openDataSync(null) })); } },
 ];
 [["courses", "Tárgyak", "book", "tab-courses"], ["timetable", "Órarend", "calendar", "tab-timetable"], ["credit", "Kredit", "chart", "tab-credit"], ["messages", "Üzenetek", "mail", "tab-messages"], ["finance", "Pénzügyek", "wallet", "tab-finance"]]
-  .forEach(([id, label, ic, tab]) => HUB_WIDGETS.push({ id: "sc-" + id, label: label + " gomb", desc: "Gyors ugrás a " + label + " oldalra.", render(host) { const el = hubCard("hub-shortcut"); el.onclick = () => openTab(tab); el.innerHTML = `<span class="row-ic">${icon(ic)}</span><span class="row-title">${esc(label)}</span><span class="row-chev">${icon("chev")}</span>`; host.appendChild(el); } }));
+  .forEach(([id, label, ic, tab]) => HUB_WIDGETS.push({ id: "sc-" + id, label: label + " gomb", desc: "Gyors ugrás a " + label + " oldalra.", render(host) { maSection(host, "go", "Ugrás").appendChild(maRow({ kv: true, n: esc(label), x: icon("chev"), onclick: () => openTab(tab) })); } }));
 const DEFAULT_HUB = ["current-class", "next-class", "next-exam", "sync"];
 function hubLayout() { const l = Array.isArray(state.hubLayout) ? state.hubLayout : DEFAULT_HUB; return l.filter((id) => HUB_WIDGETS.some((w) => w.id === id)); }
+// Egy mondat a napról, csak tényekből (órarend + számonkérések). Ha nincs órarend, nincs mondat.
+function dayLede() {
+  const parts = [];
+  if ((state.ics && (state.ics.events || []).length)) {
+    const list = todaysClasses(), now = Date.now();
+    const live = list.find((e) => e.S.getTime() <= now && e.E.getTime() > now);
+    const next = list.find((e) => e.S.getTime() > now);
+    if (!list.length) parts.push("Ma nincs órád.");
+    else if (live) parts.push(`${capFirst(huNum(list.length))} órád van ma, <b>${list.length === 1 ? "éppen most tart" : "egy éppen most tart"}.</b>`);
+    else if (next) parts.push(`${capFirst(huNum(list.length))} órád van ma, a következő <b>${hm(next.S)}-kor</b> kezdődik.`);
+    else parts.push(`Mára végeztél, ${huNum(list.length)} órád volt.`);
+  }
+  const ex = nextAssessment();
+  if (ex) parts.push(`A következő számonkérés ${daysUntil(ex.S) <= 1 ? "<b>" + countdownPhrase(ex.S) + "</b>" : countdownPhrase(ex.S)}.`);
+  return parts.join(" ");
+}
 function renderHub() {
   const host = $("hub-widgets"); if (!host) return;
-  host.innerHTML = "";
+  const d = new Date();
+  host.innerHTML = `<div class="ma-date">${capFirst(TT_DAYS[d.getDay()])}<span>${HU_MONTHS[d.getMonth()]} ${d.getDate()}.</span></div>`;
+  const lede = dayLede(); if (lede) host.insertAdjacentHTML("beforeend", `<p class="ma-lede">${lede}</p>`);
+  const before = host.children.length;
   hubLayout().forEach((id) => { const w = HUB_WIDGETS.find((x) => x.id === id); try { if (w) w.render(host); } catch (e) {} });
-  // Egymás utáni lista-jellegű widgetek egy közös, halvány felületre kerülnek (belül vonalakkal), nem külön kártyákba.
-  let group = null;
-  [...host.children].forEach((el) => {
-    if (!el.matches(".next-card, .hub-stat, .hub-shortcut")) { group = null; return; }
-    if (!group) { group = document.createElement("div"); group.className = "hub-group"; host.insertBefore(group, el); }
-    el.classList.remove("card"); group.appendChild(el);
-  });
-  if (!host.children.length) host.innerHTML = `<div class="dash-empty" style="padding:24px 20px 6px">Nincs megjeleníthető adat. Olvasd be a Neptunból, vagy szabd testre a kezdőlapot.</div>`;
+  if (host.children.length === before) host.insertAdjacentHTML("beforeend", `<div class="dash-empty">Nincs megjeleníthető adat. Olvasd be a Neptunból, vagy szabd testre a kezdőlapot a ceruzával.</div>`);
 }
 // Staged editing: `hubEdit` is a working copy; only Save writes state.hubLayout. Reorder by dragging
 // the grip; a floating Mégse/Mentés bar appears while the working copy differs from what's saved.
@@ -94,7 +161,7 @@ function renderHubEdit() {
 // or by LONG-PRESSING anywhere on the row (~350ms; cancelled if the finger moves first, so normal
 // scrolling still works). The lifted row live-swaps past neighbours as the finger crosses their
 // midpoints; on release the working copy is rebuilt from the DOM order.
-function attachHubDrag(card) {
+function attachHubDrag(card, onDone) { // onDone(order) → a hívó kezeli; nélküle a Kezdőlap szerkesztője
   let active = false, startY = 0, row = null, moveDoc = null, endDoc = null;
   const swap = (y) => {
     for (const sib of card.querySelectorAll(".hub-ed")) {
@@ -109,7 +176,7 @@ function attachHubDrag(card) {
     if (moveDoc) document.removeEventListener("touchmove", moveDoc, { passive: false });
     document.removeEventListener("touchend", endDoc); document.removeEventListener("touchcancel", endDoc);
     if (row) { row.classList.remove("drag-lift"); row.style.transform = ""; }
-    if (active) { hubEdit = [...card.querySelectorAll(".hub-ed")].map((r) => r.dataset.id); updateHubBar(); }
+    if (active) { const order = [...card.querySelectorAll(".hub-ed")].map((r) => r.dataset.id); if (onDone) onDone(order); else { hubEdit = order; updateHubBar(); } }
     active = false; row = null; moveDoc = null; endDoc = null;
   };
   const begin = (r, y) => {

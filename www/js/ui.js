@@ -215,3 +215,5 @@ function attachSegSwipe(el, order, getCur, setCur) {
   }, { passive: true });
   el.addEventListener("touchcancel", () => { ok = false; }, { passive: true });
 }
+// Egységes félév-felirat mindenhol (Jegyek, Órarend, Tárgyak, szűrők): "2025/26/2", zárójeles toldás nélkül.
+function fmtTerm(t) { return String(t || "").replace(/\s*\(.*\)\s*$/, "").trim(); }

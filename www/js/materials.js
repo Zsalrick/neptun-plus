@@ -135,7 +135,7 @@ function renderMats() {
   mvClose();
   if (!matSem) matSem = currentSemesterKey();
   const subs = matSubjects(matSem);
-  let h = `<button class="row period-btn" id="mat-sem" type="button" style="width:100%;margin-bottom:14px"><span>Félév: ${esc(matSem)}</span>${icon("down")}</button>`;
+  let h = `<div class="controls dd-row"><button class="period-btn dd" id="mat-sem" type="button"><span>${esc(fmtTerm(matSem))}</span>${icon("down")}</button></div>`;
   if (!subs.length) h += `<div class="dash-empty" style="padding:24px 2px">Ehhez a félévhez nem találtam tárgyat. Olvasd be a tárgyaidat vagy az órarendet a Neptunból.</div>`;
   else h += `<div class="card">` + subs.map((s) => {
     const list = matOf(matSem, s.key), n = list.length;
@@ -162,14 +162,14 @@ function renderMatSubject() {
   const ttl = $("mat-subject-title"); if (ttl) ttl.textContent = matSubjCur.name;
   const sub = $("mat-subject-sub"); if (sub) sub.textContent = matSem + (matSubjCur.code ? " · " + matSubjCur.code : "");
   const list = matOf(matSem, matSubjCur.key);
-  let h = `<div class="detail-add" style="margin-bottom:8px"><button class="btn tonal" id="mat-import" type="button">${icon("download")} PDF importálása</button></div>`
-    + `<div class="detail-add" style="margin-bottom:14px"><button class="btn tonal" id="mat-note" type="button">${icon("pencil")} Új jegyzet</button></div>`;
-  if (!list.length) h += `<div class="dash-empty" style="padding:24px 2px">Még nincs anyag ehhez a tárgyhoz. Importálj egy PDF-et, vagy kezdj egy üres jegyzetet.</div>`;
+  // Importálás és új jegyzet: ikonok a fejléc jobb oldalán (#mat-import, #mat-note).
+  let h = "";
+  if (!list.length) h += `<div class="dash-empty" style="padding:24px 2px">Még nincs anyag ehhez a tárgyhoz. Importálj egy PDF-et, vagy kezdj egy üres jegyzetet a jobb felső gombokkal.</div>`;
   else h += `<div class="card">` + list.map((m) => {
     const meta = [m.kind === "pdf" ? "PDF" : "Jegyzet", m.pages + " oldal", m.size ? matFmtSize(m.size) : "", fmtWhen(new Date(m.upd))].filter(Boolean).join(" · ");
     return `<div class="row mat-row" data-id="${esc(m.id)}" style="cursor:pointer"><span class="row-ic">${icon(m.kind === "pdf" ? "doc" : "note")}</span>`
       + `<span class="row-main"><span class="row-title">${esc(m.title)}</span><span class="row-sub">${esc(meta)}</span></span>`
-      + `<button class="mat-more" data-id="${esc(m.id)}" type="button" aria-label="Műveletek" style="background:none;border:0;padding:6px;cursor:pointer;color:var(--ink-2)">${icon("more")}</button></div>`;
+      + `<button class="iconbtn plain mat-more" data-id="${esc(m.id)}" type="button" aria-label="Műveletek">${icon("more")}</button></div>`;
   }).join("") + `</div>`;
   host.innerHTML = h;
   $("mat-import").onclick = () => { const f = $("mat-file"); f.value = ""; f.click(); };
@@ -292,32 +292,56 @@ async function matProcessIncoming() {
     if (matIncoming.length) matProcessIncoming();
   }
 }
-// Tárgyválasztó a beérkezett PDF-ekhez: a félév tárgyai, félévváltás, vagy új tárgy név szerint.
-async function matAssignIncoming(files) {
-  let sem = currentSemesterKey();
-  const label = files.length === 1 ? files[0].name : files.length + " PDF";
-  for (;;) {
-    const opts = matSubjects(sem).map((s) => { const n = matOf(sem, s.key).length; return { label: s.name, sub: n ? n + " anyag" : "", value: { subj: s } }; });
-    opts.push({ label: "Másik félév", sub: "Most: " + sem, value: { pickSem: true } });
-    opts.push({ label: "Új tárgy megadása", sub: "Ha a tárgy nincs a listában", value: { custom: true } });
-    const v = await askPick({ title: "Melyik tárgyhoz tegyem?", body: `<b>${esc(label)}</b><br>${esc(sem)} félév`, options: opts });
-    if (!v) return;
-    if (v.pickSem) {
-      const s2 = await askPick({ title: "Félév", options: matSemesters().map((k) => ({ label: k, sub: k === currentSemesterKey() ? "Aktuális félév" : "", value: k })) });
-      if (s2) sem = s2;
-      continue;
-    }
-    let subj = v.subj;
-    if (v.custom) {
-      const t = await askText({ title: "Tárgy neve", placeholder: "Például: Statisztika", body: "A tárgy ezzel a névvel jelenik meg az Anyagok között." });
-      if (t == null || !t.trim()) continue;
-      subj = { key: matSubjKey(t), name: t.trim(), code: "" };
-    }
-    for (const f of files) await matImportPdf(f, sem, subj);
-    openMatSubject(sem, subj.name, subj.code);
-    return;
-  }
+// Tárgyválasztó al-oldal a beérkezett PDF-ekhez: fent félévválasztó (alapból a legújabb), alatta a félév tárgyai.
+// A visszaadott Promise a választáskor (true) vagy elvetéskor (false) teljesül; elvetés = Mégse, vissza nyíl vagy hardveres vissza.
+let matShare = null; // { files, sem, resolve }
+function matAssignIncoming(files) {
+  return new Promise((resolve) => {
+    matShare = { files, sem: matSemesters()[0] || currentSemesterKey(), resolve };
+    renderMatShare();
+    pushScreen("tab-mat-share");
+  });
 }
+function matShareFinish(result) { const s = matShare; if (!s) return; matShare = null; s.resolve(result); }
+function renderMatShare() {
+  const host = $("mat-share-scroll"); if (!host || !matShare) return;
+  const { files, sem } = matShare, cur = currentSemesterKey();
+  $("mat-share-sub").textContent = files.length === 1 ? files[0].name : files.length + " PDF";
+  const subs = matSubjects(sem);
+  let h = `<div class="dash-label" style="margin-top:2px">Félév</div>`
+    + `<button class="period-btn" id="mat-share-sem" type="button" style="width:100%"><span>${esc(sem)}${sem === cur ? " · aktuális" : ""}</span>${icon("down")}</button>`
+    + `<div class="dash-label">Tárgy</div>`;
+  if (!subs.length) h += `<div class="hint" style="margin:0 2px 10px">Ebben a félévben nem találtam tárgyat. Válassz másik félévet, vagy add meg a tárgy nevét.</div>`;
+  h += `<div class="card">` + subs.map((s) => {
+    const n = matOf(sem, s.key).length;
+    return `<button class="row" type="button" data-share-subj="${esc(s.key)}"><span class="row-ic">${icon("book")}</span>`
+      + `<span class="row-main"><span class="row-title">${esc(s.name)}</span><span class="row-sub">${n ? n + " anyag" : "Még nincs anyag"}</span></span><span class="row-chev">${icon("chev")}</span></button>`;
+  }).join("")
+    + `<button class="row" type="button" id="mat-share-custom"><span class="row-ic">${icon("plus")}</span>`
+    + `<span class="row-main"><span class="row-title">Új tárgy megadása</span><span class="row-sub">Ha a tárgy nincs a listában</span></span><span class="row-chev">${icon("chev")}</span></button></div>`;
+  host.innerHTML = h;
+  $("mat-share-sem").onclick = () => openList({ title: "Félév", selected: sem,
+    items: matSemesters().map((k) => ({ value: k, label: k, sub: k === cur ? "Aktuális félév" : "" })),
+    onPick: (v) => { if (matShare) { matShare.sem = v; renderMatShare(); } } });
+  host.querySelectorAll("[data-share-subj]").forEach((b) => b.onclick = () => { const s = subs.find((x) => x.key === b.dataset.shareSubj); if (s) matShareImport(s); });
+  $("mat-share-custom").onclick = async () => {
+    const t = await askText({ title: "Tárgy neve", placeholder: "Például: Statisztika", body: "A tárgy ezzel a névvel jelenik meg az Anyagok között." });
+    if (t == null || !t.trim()) return;
+    matShareImport({ key: matSubjKey(t), name: t.trim(), code: "" });
+  };
+}
+async function matShareImport(subj) {
+  const s = matShare; if (!s) return;
+  matShare = null; // innen az oldal elhagyása már nem elvetés
+  for (const f of s.files) await matImportPdf(f, s.sem, subj);
+  openMatSubject(s.sem, subj.name, subj.code);
+  navStack = navStack.filter((id) => id !== "tab-mat-share"); // a tárgy oldaláról vissza ne a megosztás-oldalra vigyen
+  s.resolve(true);
+}
+$("mat-share-cancel").onclick = () => popScreen();
+// Ha a megosztás-oldal bármiként bezárul (Mégse, vissza nyíl, hardveres vissza) választás nélkül, az elvetés.
+new MutationObserver(() => { if (!$("tab-mat-share").classList.contains("active")) matShareFinish(false); })
+  .observe($("tab-mat-share"), { attributes: true, attributeFilter: ["class"] });
 (function matInitShareReceiver() {
   const P = matShareReceiver();
   if (!isNative || !P || !P.addListener) return;

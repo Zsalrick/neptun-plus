@@ -384,7 +384,7 @@ function renderNotifDetail() {
     h += `<div class="card" style="padding:16px"><div class="msg-text" style="white-space:pre-line">${esc(n.detail)}</div></div>`;
   }
   h += matLink;
-  h += (n.target ? `<button class="btn primary lg" id="notif-open" style="margin-top:16px">${icon("chev")} Megnyitás</button>` : "");
+  h += (n.target ? `<button class="btn primary lg" id="notif-open" style="margin-top:16px">Megnyitás</button>` : "");
   host.innerHTML = h;
   { const o = $("notif-open"); if (o) o.onclick = () => openNotifTarget(n.target); }
   { const ml = $("dn-mats"); if (ml) ml.onclick = () => openMatSubject(ml.dataset.sem, ml.dataset.name, ""); }

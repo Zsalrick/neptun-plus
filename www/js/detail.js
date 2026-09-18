@@ -43,8 +43,10 @@ function tutorAvatar(t) {
 function renderDetail() {
   const e = detailEvent; if (!e) return;
   const body = $("detail-body"), footer = $("event-footer"); if (!body) return;
-  let html = `${e.subject ? `<div class="detail-subj">${esc(e.subject)}</div>` : ""}<div class="sheet-title">${esc(e.summary || "Esemény")}</div>
-    <div class="detail-meta">${icon("clock")} ${esc(dayHeading(e.S))} · ${hm(e.S)}${e.E > e.S ? "–" + hm(e.E) : ""}${e.location ? ` &nbsp;·&nbsp; ${icon("pin")} ${esc(e.location)}` : ""}</div>`;
+  const pp = !e.manual ? parseClassSummary(e.summary) : null; // "Tárgy ( - KÓD) - Oktató - Típus" → név a címben
+  const sub = e.subject || (pp ? [pp.type, pp.teacher].filter(Boolean).join(" · ") : "");
+  let html = `${sub ? `<div class="detail-subj">${esc(sub)}</div>` : ""}<div class="sheet-title">${esc((pp && pp.name) || e.summary || "Esemény")}</div>
+    <div class="detail-meta">${icon("clock")} ${esc(dayHeading(e.S))} · ${hm(e.S)}${e.E > e.S ? "-" + hm(e.E) : ""}${e.location ? ` &nbsp;·&nbsp; ${icon("pin")} ${esc(e.location)}` : ""}</div>`;
   if (e.manual) {
     const notes = e.note ? [{ text: e.note }] : [];
     html += `<div class="detail-notes">${notes.length ? notes.map((n) => `<div class="note-row"><span class="note-ic">${icon("note")}</span><span class="note-t">${esc(n.text)}</span></div>`).join("") : `<div class="dash-empty" style="padding:18px 2px">Nincs megjegyzés.</div>`}</div>`;
@@ -123,7 +125,7 @@ function renderCourseSeg(e) {
       const f = isFriend(s), k = friendId(s);
       const self = !!(opts && opts.self);
       return `<div class="row${self ? "" : " st-row"}"${self ? "" : ` data-fk="${esc(k)}" style="cursor:pointer"`}><span class="row-ic">${icon("user")}</span>`
-        + `<span class="row-main"><span class="row-title">${f ? `<span style="color:#5fa878">● </span>` : ""}${esc(studentName(s))}</span>`
+        + `<span class="row-main"><span class="row-title">${f ? `<span style="color:var(--ok)">● </span>` : ""}${esc(studentName(s))}</span>`
         + (s.nickname && !self && searchNorm(s.nickname) !== searchNorm(studentName(s)) ? `<span class="row-sub">${esc(s.nickname)}</span>` : "")
         + `</span>${self ? "" : icon("chev")}</div>`;
     };

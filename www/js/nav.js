@@ -39,7 +39,7 @@ function renderForTab(id) {
   else if (id === "tab-timetable") renderTimetable();
   else if (id === "tab-exams") renderExams();
   else if (id === "tab-more") renderMore();
-  else if (id === "tab-more-cat") renderMoreCat();
+  else if (id === "tab-more-edit") renderMoreEdit();
   else if (id === "tab-hub-edit") renderHubEdit();
   else if (id === "tab-courses") renderCourses();
   else if (id === "tab-subject") renderSubject();

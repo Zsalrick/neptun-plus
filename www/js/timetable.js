@@ -38,7 +38,7 @@ async function fetchTimetable() {
 // Generic agenda for either classes or exams, with a period dropdown.
 let ttFilter = "upcoming", exFilter = "upcoming";
 function periodBtn(cur) {
-  return `<button class="period-btn" type="button"><span>${esc(cur === "upcoming" ? "Közelgő" : cur)}</span>${icon("down")}</button>`;
+  return `<button class="period-btn dd" type="button"><span>${esc(cur === "upcoming" ? "Közelgő" : fmtTerm(cur))}</span>${icon("down")}</button>`;
 }
 // Defensive parse of a Neptun class summary like "Tárgy ( - KÓD) - Oktató - Típus".
 // Returns null unless it clearly matches, so a differently-formatted feed just shows the raw text.
@@ -54,21 +54,6 @@ function parseClassSummary(summary) {
   // Only treat as parsed if we actually gained structure (name + at least one of code/teacher/type).
   if (!name || (!code && !teacher && !type)) return null;
   return { name, code, teacher, type };
-}
-// Structured inner HTML for a class event (falls back to raw summary for non-matching feeds).
-function classInfoHtml(e, examMode) {
-  const p = (!examMode && !e.manual) ? parseClassSummary(e.summary) : null;
-  if (!p) {
-    return `<div class="tt-title">${esc(e.summary || (examMode ? "Számonkérés" : "Óra"))}</div>`
-      + (e.manual && e.note ? `<div class="tt-loc">${icon("note")} ${esc(e.note)}</div>` : "")
-      + (e.location ? `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>` : "");
-  }
-  let h = `<div class="tt-title">${esc(p.name)}</div>`;
-  const meta = [p.code ? `<span class="tt-code">${esc(p.code)}</span>` : "", p.type ? `<span>${esc(p.type)}</span>` : ""].filter(Boolean).join("");
-  if (meta) h += `<div class="tt-meta">${meta}</div>`;
-  if (p.teacher) h += `<div class="tt-loc">${icon("user")} ${esc(p.teacher)}</div>`;
-  if (e.location) h += `<div class="tt-loc">${icon("pin")} ${esc(e.location)}</div>`;
-  return h;
 }
 function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, extraCtrl) {
   if (!scroll) return;
@@ -92,67 +77,61 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, ext
   if (filter === "upcoming") list = items.filter((e) => e.E.getTime() >= now).sort((a, b) => a.S - b.S);
   else { const s = sems.find((x) => x.key === filter); list = s ? items.filter((e) => e.S >= s.start && e.S < s.end).sort((a, b) => a.S - b.S) : []; }
   subEl.textContent = list.length + (examMode ? " számonkérés" : " óra");
-  // Highlight the ongoing class ("Jelenleg") and the soonest upcoming one ("Következő") — only in the
-  // Közelgő view for the timetable (not for exams / past semesters). Computed over VISIBLE (non-hidden)
-  // classes so hiding a conflict promotes the remaining one.
-  const showFlags = filter === "upcoming" && !examMode;
-  let nowKey = "", nextKey = "", conflictSet = new Set();
+  // Conflicts are computed over VISIBLE (non-hidden) classes, so hiding one of a clash clears it.
+  // (The ongoing class is marked per row from the clock, in every filter.)
+  const conflictSet = new Set();
   if (!examMode) {
     const vis = list.filter((e) => !isHiddenOcc(e));
-    if (showFlags) {
-      const on = vis.find((e) => e.S.getTime() <= now && e.E.getTime() > now);
-      const nx = vis.find((e) => e.S.getTime() > now);
-      nowKey = on ? occKey(on) : ""; nextKey = nx ? occKey(nx) : "";
-    }
     // Two visible classes whose time ranges overlap are a real conflict.
     for (let a = 0; a < vis.length; a++) for (let b = a + 1; b < vis.length; b++) {
       if (vis[a].S < vis[b].E && vis[b].S < vis[a].E) { conflictSet.add(occKey(vis[a])); conflictSet.add(occKey(vis[b])); }
     }
   }
 
-  let html = `<div class="controls">${periodBtn(filter)}${extraCtrl}${examMode ? `<button class="btn tonal narrow" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
-  if (hasFeed) html += `<div class="tt-updated" style="margin:2px 4px 12px">${esc(freshText(state.ics && state.ics.fetchedAt))}</div>`;
-  else html += `<div style="height:10px"></div>`;
+  let html = `<div class="controls dd-row">${periodBtn(filter)}${extraCtrl}${examMode ? `<button class="btn tonal narrow dd-add" id="add-exam">${icon("plus")} ZH</button>` : ""}</div>`;
+  if (hasFeed) html += `<div class="tt-updated">${esc(freshText(state.ics && state.ics.fetchedAt))}</div>`;
   if (!list.length) {
     html += `<div class="hint center" style="margin-top:20px">${filter === "upcoming" ? (examMode ? "Nincs közelgő számonkérés." : "Nincs közelgő óra.") : "Nincs esemény ebben az időszakban."}</div>`;
   } else {
-    // Group events by day into a bounded block with a left "spine" so day boundaries are obvious.
-    const now = new Date(), tmr = new Date(now); tmr.setDate(now.getDate() + 1);
-    const dayMain = (d) => sameDay(d, now) ? "Ma" : sameDay(d, tmr) ? "Holnap" : (TT_DAYS[d.getDay()].charAt(0).toUpperCase() + TT_DAYS[d.getDay()].slice(1));
-    const dayDate = (d) => TT_MON[d.getMonth()] + " " + d.getDate() + ".";
+    // Idővonal (B+C koncepció): naponként egy függőleges vonal pöttyökkel, az órák halvány blokkokban.
+    // Lezajlott = tömör szürke pötty, blokk nélkül · most = akcentus pötty + vonalszakasz, kiemelt blokk,
+    // hátralévő idő és haladásjelző · következő = üres karika. A szünet szaggatott vonalszakasz.
+    const today = new Date(), tmr = new Date(today), nowMs = today.getTime(); tmr.setDate(today.getDate() + 1);
+    const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+    const dayMain = (d) => sameDay(d, today) ? "Ma" : sameDay(d, tmr) ? "Holnap" : cap(TT_DAYS[d.getDay()]);
+    const daySub = (d) => (sameDay(d, today) || sameDay(d, tmr) ? TT_DAYS[d.getDay()] + ", " : "") + TT_MON[d.getMonth()] + " " + d.getDate() + ".";
     let lastDay = "", prevEnd = null, open = false;
     list.forEach((e, i) => {
-      const dh = dayHeading(e.S);
+      const dh = dayHeading(e.S), isToday = sameDay(e.S, today);
       if (dh !== lastDay) {
-        if (open) html += `</div></div>`; // close previous .tt-daybody + .tt-daygroup
-        html += `<div class="tt-daygroup${sameDay(e.S, now) ? " today" : ""}">
-          <div class="tt-day"><span class="tt-day-main">${esc(dayMain(e.S))}</span><span class="tt-day-date">${esc(dayDate(e.S))}</span></div>
-          <div class="tt-daybody">`;
+        if (open) html += `</div>`;
+        const due = examMode && e.S.getTime() > nowMs && !isToday ? " · " + countdownPhrase(e.S) : "";
+        html += `<div class="tl-dh${isToday ? " today" : ""}"><b>${esc(dayMain(e.S))}</b><i>${esc(daySub(e.S) + due)}</i></div><div class="tl">`;
         open = true; lastDay = dh; prevEnd = null;
       }
-      // A gap between two classes on the same day reads as an inset "break", never a new day.
+      // A break between two classes is a dashed stretch of the line, never a new day.
       if (!examMode && prevEnd) {
         const gap = e.S.getTime() - prevEnd.getTime();
-        if (gap >= (state.breakMin || 20) * 60000) html += `<div class="tt-gap"><span class="tt-gap-label">Szünet · ${fmtDur(gap)} · ${hm(prevEnd)}–${hm(e.S)}</span></div>`;
+        if (gap >= (state.breakMin || 20) * 60000) html += `<div class="tl-gap"><span></span><span class="tl-rail"></span><span>Szünet · ${fmtDur(gap)}</span></div>`;
       }
       if (!examMode) prevEnd = (!prevEnd || e.E > prevEnd) ? e.E : prevEnd;
       const k = occKey(e);
-      let flagCls = "", flagText = "";
-      if (!examMode && isHiddenOcc(e)) { flagCls = " muted"; flagText = "Rejtve"; }
-      else if (!examMode && conflictSet.has(k)) { flagCls = " conflict"; flagText = "Ütközés"; }
-      else if (k === nowKey && nowKey) { flagCls = " now"; flagText = "Jelenleg"; }
-      else if (k === nextKey && nextKey) { flagCls = " next"; flagText = "Következő"; }
+      const hidden = !examMode && isHiddenOcc(e), conflict = !examMode && conflictSet.has(k);
+      const past = e.E.getTime() <= nowMs, live = !examMode && !hidden && !past && e.S.getTime() <= nowMs; // minden szűrőnél az idő dönt
+      const p = !e.manual ? parseClassSummary(e.summary) : null; // exams too: "Tárgy ( - KÓD) - Oktató - Típus"
+      const title = p ? p.name : (e.summary || (examMode ? "Számonkérés" : "Óra"));
       const noteCount = e.manual ? (e.note ? 1 : 0) : notesForEvent(e).length;
-      html += `<div class="tt-event${flagCls}" data-idx="${i}">
-        <div class="tt-time"><span>${hm(e.S)}</span>${examMode ? "" : `<span class="tt-time-e">${hm(e.E)}</span>`}</div>
-        <div class="tt-info">
-          ${e.subject && e.subject !== e.summary ? `<div class="tt-subj">${esc(e.subject)}</div>` : ""}
-          ${classInfoHtml(e, examMode)}
-          <div class="tt-tags">${e.manual ? `<span class="tag">saját</span>` : ""}${!e.manual && noteCount ? `<span class="tag note">${icon("note")} ${noteCount}</span>` : ""}</div>
-        </div>
-        ${flagText ? `<span class="tt-flag">${flagText}</span>` : ""}</div>`;
+      const state1 = hidden ? `<span class="r-flag">Rejtve</span>` : conflict ? `<span class="r-flag bad">Ütközés</span>` : live ? `<span class="live">Most tart</span>` : "";
+      const bits = [p ? p.type : "", e.location, p ? p.teacher : "", e.subject && e.subject !== e.summary ? e.subject : "",
+        e.manual ? "saját" : "", noteCount ? noteCount + " jegyzet" : "", e.manual && e.note ? e.note : "", live ? "még " + fmtDur(e.E.getTime() - nowMs) : ""].filter(Boolean).map(esc);
+      const meta = [state1].concat(bits).filter(Boolean).join(" · ");
+      const pct = live ? Math.max(2, Math.min(100, Math.round((nowMs - e.S.getTime()) / (e.E.getTime() - e.S.getTime()) * 100))) : 0;
+      html += `<button class="tl-r tt-event${past ? " past" : ""}${live ? " live" : ""}${hidden ? " muted" : ""}${conflict ? " conflict" : ""}" data-idx="${i}" type="button">`
+        + `<span class="tl-tm"><b>${hm(e.S)}</b>${examMode ? "" : `<small>${hm(e.E)}</small>`}</span><span class="tl-rail"></span>`
+        + `<span class="tl-blk"><span class="tl-n">${esc(title)}</span>${meta ? `<span class="tl-m">${meta}</span>` : ""}`
+        + (live ? `<span class="tl-prog"><i style="width:${pct}%"></i></span>` : "") + `</span></button>`;
     });
-    if (open) html += `</div></div>`;
+    if (open) html += `</div>`;
   }
   scroll.innerHTML = html;
   const pb = scroll.querySelector(".period-btn");
@@ -166,7 +145,7 @@ function renderAgenda(scroll, subEl, refreshBtn, examMode, filter, onFilter, ext
 // ---- View selector (Lista / Heti) — a dropdown next to the period one, timetable only ----
 let ttView = "list", ttWeekStart = null; // ttWeekStart = Monday 00:00 of the shown week
 function viewBtn() {
-  return `<button class="period-btn view-btn" id="tt-viewbtn" type="button"><span>${ttView === "week" ? "Heti" : "Lista"}</span>${icon("down")}</button>`;
+  return `<button class="period-btn dd view-btn" id="tt-viewbtn" type="button"><span>${ttView === "week" ? "Heti nézet" : "Lista"}</span>${icon("down")}</button>`;
 }
 function wireViewBtn(scroll) {
   const b = scroll.querySelector("#tt-viewbtn"); if (!b) return;
@@ -174,6 +153,7 @@ function wireViewBtn(scroll) {
     items: [{ value: "list", label: "Lista" }, { value: "week", label: "Heti" }],
     onPick: (v) => { ttView = v; renderTimetable(); } });
 }
+function isoWeek(d) { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const dn = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dn); const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil(((t - y0) / 864e5 + 1) / 7); }
 function mondayOf(d) { const x = new Date(d); const off = (x.getDay() + 6) % 7; x.setDate(x.getDate() - off); x.setHours(0, 0, 0, 0); return x; }
 // Assign side-by-side columns to overlapping events within one day (interval graph, per cluster).
 function layoutOverlaps(dayEvs) {
@@ -208,9 +188,10 @@ function renderTimetableWeek() {
   evs.forEach((e) => { minH = Math.min(minH, e.S.getHours()); maxH = Math.max(maxH, e.E.getHours() + (e.E.getMinutes() > 0 ? 1 : 0)); });
   const rowH = 46, hours = maxH - minH, today = new Date(), now = Date.now();
   const wkEnd = new Date(weekStart); wkEnd.setDate(wkEnd.getDate() + nDays - 1);
-  const wkLabel = weekStart.getMonth() === wkEnd.getMonth()
-    ? `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}–${wkEnd.getDate()}.`
-    : `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}. – ${TT_MON[wkEnd.getMonth()]} ${wkEnd.getDate()}.`;
+  const wkRange = weekStart.getMonth() === wkEnd.getMonth()
+    ? `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}-${wkEnd.getDate()}.`
+    : `${TT_MON[weekStart.getMonth()]} ${weekStart.getDate()}. - ${TT_MON[wkEnd.getMonth()]} ${wkEnd.getDate()}.`;
+  const wkLabel = isoWeek(weekStart) + ". hét · " + wkRange;
   const TT_DAY_SHORT = ["V", "H", "K", "Sze", "Cs", "P", "Szo"]; // getDay() 0=V..6=Szo — distinct (Szerda≠Szombat)
   let daysHead = "";
   for (let d = 0; d < nDays; d++) { const dd = new Date(weekStart); dd.setDate(dd.getDate() + d);
@@ -234,11 +215,10 @@ function renderTimetableWeek() {
     const dd = new Date(weekStart); dd.setDate(dd.getDate() + d);
     cols += `<div class="wk-col${sameDay(dd, today) ? " today" : ""}" style="height:${hours * rowH}px">${blocks}</div>`;
   }
-  scroll.innerHTML = `<div class="controls">`
-    + `<div class="wk-nav"><button class="wk-navbtn" id="wk-prev" type="button">${icon("back")}</button>`
+  scroll.innerHTML = `<div class="controls dd-row">` + viewBtn() + `</div>`
+    + `<div class="wk-nav"><button class="wk-navbtn" id="wk-prev" type="button" aria-label="Előző hét">${icon("back")}</button>`
     +   `<button class="wk-today" id="wk-today" type="button">${esc(wkLabel)}</button>`
-    +   `<button class="wk-navbtn" id="wk-next" type="button">${icon("chev")}</button></div>`
-    + viewBtn() + `</div>`
+    +   `<button class="wk-navbtn" id="wk-next" type="button" aria-label="Következő hét">${icon("chev")}</button></div>`
     + `<div class="wk-head"><div class="wk-head-corner"></div><div class="wk-head-days" style="grid-template-columns:repeat(${nDays},1fr)">${daysHead}</div></div>`
     + `<div class="wk-grid"><div class="wk-times">${times}</div>`
     + `<div class="wk-body" style="grid-template-columns:repeat(${nDays},1fr);background-image:repeating-linear-gradient(to bottom,var(--line) 0,var(--line) 1px,transparent 1px,transparent ${rowH}px)">${cols}</div></div>`;

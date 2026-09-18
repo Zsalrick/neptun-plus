@@ -36,25 +36,28 @@ function updateStatWidgets() {
     const idx = state.grades && state.grades.averages && state.grades.averages.indices;
     if (idx && (idx.korrigalt != null || idx.kreditIndex != null)) {
       const v = idx.korrigalt != null ? idx.korrigalt : idx.kreditIndex;
-      stats.credit = { l: idx.korrigalt != null ? "KORRIGÁLT KREDITINDEX" : "KREDITINDEX", v: String(v), s: idx.termName || "" };
-    } else stats.credit = { l: "KREDITINDEX", v: "-", s: "Nincs adat" };
+      stats.credit = { l: idx.korrigalt != null ? "Korrigált kreditindex" : "Kreditindex", v: isNaN(+v) ? String(v) : (+v).toFixed(2).replace(".", ","), s: fmtTerm(idx.termName || "") };
+    } else stats.credit = { l: "Kreditindex", v: "-", s: "Nincs adat" };
     // Egyenleg (fő HUF számla)
     const accts = (state.finance && state.finance.accounts) || [];
     const main = accts.find((a) => a.currency === "HUF") || accts[0];
-    if (main) stats.balance = { l: "EGYENLEG", v: ftFt(main.balance, main.currency), s: main.label || "" };
-    else stats.balance = { l: "EGYENLEG", v: "-", s: "Nincs adat" };
+    if (main) stats.balance = { l: "Egyenleg", v: ftFt(main.balance, main.currency), s: main.label || "Gyűjtőszámla" };
+    else stats.balance = { l: "Egyenleg", v: "-", s: "Nincs adat" };
     // Mai órák száma + a következő ma
     const nowD = new Date(), t0 = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime(), t1 = t0 + 86400000;
     const todays = (visibleClassEvents() || []).filter((e) => e.S.getTime() >= t0 && e.S.getTime() < t1).sort((a, b) => a.S - b.S);
     if (todays.length) {
       const nx = todays.find((e) => e.E && e.E.getTime() > nowD.getTime());
       const p = nx ? (parseClassSummary(nx.summary) || {}) : null;
-      stats.today = { l: "MAI ÓRÁK", v: String(todays.length), s: nx ? ("Következő " + hm(nx.S) + " · " + (p.name || nx.summary || "")) : "Ma már nincs több óra" };
-    } else stats.today = { l: "MAI ÓRÁK", v: "0", s: "Nincs órád ma" };
+      stats.today = { l: "Mai órák", v: String(todays.length), s: nx ? ("Következő " + hm(nx.S) + " · " + (p.name || nx.summary || "")) : "Ma már nincs több óra" };
+    } else stats.today = { l: "Mai órák", v: "0", s: "Nincs órád ma" };
     // Következő számonkérés
     const ex = (typeof nextAssessment === "function") ? nextAssessment() : null;
-    if (ex) { const p = ex.manual ? null : parseClassSummary(ex.summary); stats.exam = { l: "KÖVETKEZŐ SZÁMONKÉRÉS", t: (p && p.name) || ex.summary || "Számonkérés", s: [dayHeading(ex.S), hm(ex.S)].filter(Boolean).join(" · ") }; }
-    else stats.exam = { l: "KÖVETKEZŐ SZÁMONKÉRÉS", t: "Nincs közelgő", s: "" };
+    if (ex) { const p = ex.manual ? null : parseClassSummary(ex.summary), n = daysUntil(ex.S);
+      // b/bs: the big left column of the widget ("12" / "nap múlva", or "Ma" / "16:00")
+      stats.exam = { l: "Következő számonkérés", t: (p && p.name) || ex.summary || "Számonkérés", s: [dayHeading(ex.S), hm(ex.S), ex.location].filter(Boolean).join(" · "),
+        b: n <= 0 ? "Ma" : n === 1 ? "Holnap" : String(n), bs: n > 1 ? "nap múlva" : hm(ex.S) }; }
+    else stats.exam = { l: "Következő számonkérés", t: "Nincs közelgő", s: "" };
     W.setStats({ stats: JSON.stringify(stats), accent: widgetAccentHex() });
   } catch (e) {}
 }
