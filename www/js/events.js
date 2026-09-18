@@ -90,8 +90,10 @@ function visibleClassEvents() { return classEvents().filter((e) => !isHiddenOcc(
 function manualExamEvents() {
   return (state.manualExams || []).map((m) => {
     const p = m.subject ? parseClassSummary(m.subject) : null, subj = (p && p.name) || m.subject || "";
+    // A ZH-hozzáadó a címbe is a tárgyat menti: ilyenkor (vagy ha a cím is Neptun-szöveg) a tiszta név a cím.
+    const own = m.title && m.title !== m.subject && !parseClassSummary(m.title) ? m.title : "";
     return { S: new Date(m.start), E: new Date(m.end || m.start), s: m.start, e: m.end || m.start,
-      summary: m.title || subj || "Számonkérés", location: m.location || "", subject: subj, code: (p && p.code) || "", teacher: (p && p.teacher) || "",
+      summary: own || subj || "Számonkérés", location: m.location || "", subject: subj, code: (p && p.code) || "", teacher: (p && p.teacher) || "",
       note: m.note || "", exam: true, manual: true, id: m.id };
   });
 }
