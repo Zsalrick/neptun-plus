@@ -84,9 +84,16 @@ function semKeyFor(d) { return semObj(d).key; }
 function hideKey(e) { return (e.summary || "") + "|" + e.S.getDay() + "|" + hm(e.S) + "|" + semKeyFor(e.S); }
 function isHiddenOcc(e) { return (state.hiddenOcc || []).indexOf(hideKey(e)) >= 0; }
 function visibleClassEvents() { return classEvents().filter((e) => !isHiddenOcc(e)); }
+// Saját ZH: a tárgy gyakran a teljes Neptun-szöveg ("Tárgy ( - KÓD) - Oktató - Típus"), mert az óralistából
+// választják. Ezt itt bontjuk szét, így minden képernyő (kezdőlap, órarend, widget, értesítés, anyagok) a
+// tiszta tárgynevet kapja. A saját cím (ha van) marad a cím; a kód és az oktató külön mezőben.
 function manualExamEvents() {
-  return (state.manualExams || []).map((m) => ({ S: new Date(m.start), E: new Date(m.end || m.start), s: m.start, e: m.end || m.start,
-    summary: m.title || m.subject || "Számonkérés", location: m.location || "", subject: m.subject || "", note: m.note || "", exam: true, manual: true, id: m.id }));
+  return (state.manualExams || []).map((m) => {
+    const p = m.subject ? parseClassSummary(m.subject) : null, subj = (p && p.name) || m.subject || "";
+    return { S: new Date(m.start), E: new Date(m.end || m.start), s: m.start, e: m.end || m.start,
+      summary: m.title || subj || "Számonkérés", location: m.location || "", subject: subj, code: (p && p.code) || "", teacher: (p && p.teacher) || "",
+      note: m.note || "", exam: true, manual: true, id: m.id };
+  });
 }
 function examEvents() { return allEvents().filter((e) => e.exam).concat(manualExamEvents()); }
 function currentClass() { const now = Date.now(); return visibleClassEvents().filter((e) => e.S.getTime() <= now && e.E.getTime() > now).sort((a, b) => a.S - b.S)[0] || null; }
