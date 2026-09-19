@@ -1558,3 +1558,26 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .qa-ais .btn { width: 100%; padding: 10px 8px; }
 /* Onboarding: az előfizetés rövid leírása (AI-kredit) a csomagválasztó fölött */
 .ob-tier-note { font-size: 13px; line-height: 1.45; color: var(--ink-2); margin: 0 0 16px; }
+
+/* ---------- Partnerajánlatok a Kezdőlap alján (MAIN v0.318, promos.js; a frontend átszabhatja) ---------- */
+/* Visszafogott, egyértelműen jelölt ("Partnerajánlat") kártya; több ajánlat vízszintesen lapozható. */
+.home-promos { margin: 4px 0 14px; }
+.home-promos[hidden] { display: none; }
+.promo-track { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.promo-track::-webkit-scrollbar { display: none; }
+.promo { flex: 0 0 100%; box-sizing: border-box; scroll-snap-align: start; padding: 12px 14px 14px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--surface); }
+.promo-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px -8px 2px 0; }
+.promo-lab { font-size: 12px; color: var(--ink-3); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.promo-x { width: 36px; height: 36px; color: var(--ink-3); }
+.promo-x svg.ic { width: 16px; height: 16px; }
+.promo-t { font-size: 16px; font-weight: 650; line-height: 1.3; }
+.promo-d { margin-top: 4px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.promo-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.promo-deal { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0; border: 0; background: transparent; color: var(--ink);
+  font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer; }
+.promo-deal:disabled { cursor: default; }
+.promo-deal svg.ic { width: 15px; height: 15px; color: var(--ink-3); }
+.promo-go { flex: none; }
+.promo-dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+.promo-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
+.promo-dots i.on { background: var(--ink-2); }

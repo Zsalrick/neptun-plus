@@ -37,7 +37,7 @@ async function promptSaveAccount() {
   const prev = navStack.pop() || lastMainTab; showTab(prev, -1);
 }
 function renderForTab(id) {
-  if (id === "tab-home") renderHome();
+  if (id === "tab-home") { renderHome(); promoRender(); promoFetch(); } // partnerajánlatok: 6 óránként frissül
   else if (id === "tab-timetable") renderTimetable();
   else if (id === "tab-exams") renderExams();
   else if (id === "tab-more") renderMore();
