@@ -5,37 +5,33 @@ Cél: a website agent fel tudja építeni a Cloudflare oldalt (infra + deploy), 
 (MAIN) API-igényeivel** tökéletesen illeszkedjen. Az API-szerződés itt van rögzítve — mindkét track
 ehhez épít.
 
-> Rövid üzleti cél (2026-09-19): **nincs ingyenes szint.** Két előfizetési szint van, a **Standard** és a
-> **Prémium**, mindkettő havi, féléves és éves számlázással, **14 napos ingyenes próbával**. Aki **ajánlói
+> Rövid üzleti cél (2026-09-19): **nincs ingyenes szint, egyetlen előfizetés van** (a Prémium szintet a
+> tulajdonos elvetette): havi, féléves vagy éves számlázással, **14 napos ingyenes próbával**. Aki **ajánlói
 > kóddal** regisztrál, 14 helyett **31 nap** próbát kap, a **kód gazdája +10 AI-kreditet** kap. Az
-> előfizetéshez **AI-kredit** jár (Kredit+ AI quiz-készítés), havi feltöltéssel és plafonnal (§12).
+> előfizetéshez **havi 5 AI-kredit** jár (Kredit+ AI quiz-készítés), legfeljebb 15 gyűlhet össze (§12).
 > Fizetés és azonosítás a **Google Play Billing**-en keresztül, ezért **nincs saját jelszavas fiók**.
 
 ---
 
-## 0. Csomagok / árazás (FONTOS: a website mindkét szintet és mindhárom időszakot mutassa)
+## 0. Csomagok / árazás (FONTOS: a website mindhárom időszakot mutassa)
 
-**Nincs ingyenes szint.** Új felhasználó 14 napos próbát kap (ajánlói kóddal 31 napot), utána Standard vagy
-Prémium előfizetés kell. Két szint, mindkettő három számlázási időszakkal:
+**Nincs ingyenes szint, és egy előfizetés van** (a 2026-09-19-i kétszintes terv Prémiuma elvetve). Új
+felhasználó 14 napos próbát kap (ajánlói kóddal 31 napot), utána előfizetés kell:
 
-| Szint | Havi (`monthly`, P1M) | Féléves (`semester`, P6M, −10%) | Éves (`yearly`, P1Y, −25%) | AI-kredit | Kredit-plafon |
-|---|---|---|---|---|---|
-| **Standard** | **299 Ft / hó** | **1 615 Ft / félév** (kb. 269 Ft/hó) | **2 691 Ft / év** (kb. 224 Ft/hó) | 5 / hó | 15 |
-| **Prémium** | **799 Ft / hó** | **4 315 Ft / félév** (kb. 719 Ft/hó) | **7 191 Ft / év** (kb. 599 Ft/hó) | 20 / hó | 60 |
-| Próba (14 / 31 nap) | 0 Ft | | | 3, egyszer | |
+| Csomag | Számlázási időszak | Play base plan | Ár |
+|---|---|---|---|
+| Havi | 1 hónap (P1M) | `monthly` | **299 Ft / hó** |
+| Féléves | 6 hónap (P6M) | `semester` | **1 615 Ft / félév** (−10%, kb. 269 Ft/hó) |
+| Éves | 12 hónap (P1Y) | `yearly` | **2 691 Ft / év** (−25%, kb. 224 Ft/hó) |
 
-- A Prémium ára **előzetes** (a tulajdonos döntése: 799 Ft; a MAIN javaslata 499-599 Ft, a tesztelőkkel
-  érdemes ellenőrizni). A féléves és éves ár mindkét szinten ugyanazzal a képlettel: havi × 6 × 0,9 és
-  havi × 12 × 0,75, egész forintra kerekítve.
-- **Mit ad a Prémium a Standardon felül:** 20 kredit/hó (plafon 60) az 5 (plafon 15) helyett, 50 kérdéses
-  AI-quiz (Standard: 30), hosszabb anyag egyszerre (kb. 120 oldal, Standard: kb. 60), a jobb AI-modell, és
-  elsőként az új funkciók. Minden más funkció mindkét szinten elérhető.
-- **Google Play felépítés:** KÉT előfizetési termék, `kreditplus_standard` és `kreditplus_premium`, mindkettő
-  alatt három base plan (`monthly`, `semester`, `yearly`). Szintváltás (Standard ↔ Prémium) a Play
-  csere-móddal (upgrade: azonnal, arányos jóváírással; downgrade: a következő megújuláskor).
-- Az app onboarding csomagválasztója (index.html `#ob-plans`, `onboarding.js` `PRICING`) ugyanezeket az
-  árakat mutatja. **A weboldal, az app és az ÁSZF ugyanezekkel egyezzen.**
-- Az app és a backend a productId-ból tudja a szintet, a lejárati dátumból (`play_until`) a jogosultságot.
+- **AI-kredit:** az előfizetéshez havi **5** jár, legfeljebb **15** gyűlhet össze; a próbában egyszer **3**.
+  Részletek: §12.
+- **Google Play felépítés:** EGY előfizetési termék (`kreditplus`), alatta három base plan (monthly /
+  semester / yearly). A 6 hónap (P6M) és az 1 év (P1Y) is támogatott Play billing-időszak.
+- Az app onboarding csomagválasztója (index.html `#ob-plans`) ugyanezeket az árakat mutatja. **A weboldal,
+  az app és az ÁSZF ugyanezekkel egyezzen.**
+- A féléves/éves csomagnál mutasd a **megtakarítást** (−10% / −25%, illetve a havi egyenérték 269 / 224
+  Ft/hó).
 
 **Lejárt próba vagy előfizetés után** az app nem töröl semmit. Ami ilyenkor is elérhető: az előfizetés
 oldal, a beállítások, és az **adatok mentése** (Anyagok .zip, mentés/export), hogy a felhasználó ne
@@ -123,8 +119,7 @@ CREATE TABLE users (
   code          TEXT UNIQUE,           -- ennek a usernek a SAJÁT ajánlói kódja
   referred_by   TEXT,                  -- milyen kódot használt (nullable)
   referral_done INTEGER DEFAULT 0,     -- a referral jóváírás megtörtént-e (0/1)
-  lifetime      INTEGER DEFAULT 0,     -- 1 = ÖRÖKÖS Prémium (tesztelők), sose jár le
-  play_product  TEXT,                  -- kreditplus_standard | kreditplus_premium (a szint)
+  lifetime      INTEGER DEFAULT 0,     -- 1 = ÖRÖKÖS előfizetés (tesztelők), sose jár le
   trial_until   TEXT,                  -- ISO — a próbaidő vége
   bonus_until   TEXT,                  -- ISO — ajándék/ajánlói napok vége
   play_token    TEXT,                  -- utolsó ellenőrzött purchase token
@@ -160,9 +155,6 @@ CREATE INDEX idx_ref_referrer ON referrals(referrer_id);
 active  = (lifetime === 1)                                 // tesztelők: örökös, sose jár le
           OR play_state ∈ {active,in_grace}
           OR max(trial_until, bonus_until, play_until) > now
-tier    = lifetime === 1 ? "premium"
-        : play aktív ? (play_product === "kreditplus_premium" ? "premium" : "standard")
-        : trial/bonus aktív ? "trial" : "none"
 activeUntil = (lifetime === 1) ? "lifetime" : max(trial_until, bonus_until, play_until)
 ```
 
@@ -206,17 +198,16 @@ Szerver teendő:
    - a **gazdának +31 nap** `bonus_until` (lásd 6. anti-abuse: mikor).
 4. Ha `purchaseToken` van: **ellenőrzés a Google Play Developer API-val** (lásd 7.), majd
    `play_until` / `play_state` / `play_token` frissítése.
-5. `premiumUntil`, `premium` kiszámítása, `updated_at` frissítése.
+5. `activeUntil`, `active` kiszámítása, `updated_at` frissítése.
 
 Válasz:
 ```jsonc
 {
   "active": true,
-  "tier": "standard",           // trial | standard | premium | none
   "activeUntil": "2026-11-14T00:00:00Z",
   "source": "play",             // trial | bonus | play | lifetime | none
   "credits": 7,                 // AI-kredit egyenleg (§12)
-  "creditsMonthly": 5, "creditsCap": 15, "creditsNextRefill": "2026-10-14T00:00:00Z",
+  "creditsCap": 15, "creditsNextRefill": "2026-10-14T00:00:00Z",
   "code": "K7F2Q9",             // a user SAJÁT ajánlói kódja (ezt oszthatja meg)
   "referralApplied": true,      // most alkalmaztuk-e a beírt kódot
   "serverTime": "2026-10-14T09:00:00Z"
@@ -227,7 +218,7 @@ Válasz:
 ```jsonc
 { "installId":"...", "neptunHash":"...", "code":"ABC123" }
 ```
-Válasz: mint a session `premium*` + `{ "ok": true|false, "reason": "invalid|self|already|ok" }`.
+Válasz: mint a session `active*` + `{ "ok": true|false, "reason": "invalid|self|already|ok" }`.
 
 ### 5.3 `GET /v1/referral` — a saját kód + statisztika
 Kérés: identity mezők query-ben vagy POST-ként. Válasz:
@@ -261,8 +252,8 @@ visszatérítéskor a bónusz visszavonása. Nem kötelező az MVP-hez, de a hel
 
 ### Tesztelők → ÖRÖKÖS (lifetime) fiók
 A tesztelők (a Play production előtti kb. 20 tesztelő, akik a website `tester-signup`-on / a Play
-license-tesztelő listán vannak) **élethosszig tartó Prémium fiókot** kapnak: `lifetime = 1`, sose jár
-le, nem kell fizetniük, és a Prémium havi 20 kreditje nekik is jár (plafon 60).
+license-tesztelő listán vannak) **élethosszig tartó előfizetést** kapnak: `lifetime = 1`, sose jár
+le, nem kell fizetniük, és a havi 5 AI-kredit nekik is jár (plafon 15).
 - **Mechanizmus (ajánlott, mert nincs saját login):** minden tesztelő kap egy **egyszer beváltható
   tesztelői kódot**, amit az appban beír (ugyanaz a `/v1/redeem` folyamat, csak a kód típusa „tester").
   Beváltáskor a szerver `lifetime = 1`-et állít az adott `neptun_hash`-re. A kódok listáját te tartod
@@ -270,7 +261,7 @@ le, nem kell fizetniük, és a Prémium havi 20 kreditje nekik is jár (plafon 6
 - **Alternatíva:** ha a tesztelő Neptun-kódját előre ismered, közvetlenül is beállíthatod
   `lifetime = 1`-re a D1-ben. Play license-tesztelőként a tesztidőszakban amúgy sem fizet, de a
   `lifetime` biztosítja, hogy **élesben, örökre** is prémium maradjon.
-- Fontos: a lifetime a Play-előfizetéstől független (a `premium` képlet első ága), így a tesztelőnek
+- Fontos: a lifetime a Play-előfizetéstől független (az `active` képlet első ága), így a tesztelőnek
   soha nem kell előfizetnie.
 
 ---
@@ -284,7 +275,7 @@ le, nem kell fizetniük, és a Prémium havi 20 kreditje nekik is jár (plafon 6
 3. Előfizetés lekérése:
    `GET androidpublisher/v3/applications/{PLAY_PACKAGE}/purchases/subscriptionsv2/tokens/{purchaseToken}`
    → `subscriptionState`, `lineItems[].expiryTime`, linkelt azonosítók. Ebből `play_until` + `play_state`.
-4. Csak a **szerver** hisz a Play-nek; a kliens által küldött "premium" sosem megbízható.
+4. Csak a **szerver** hisz a Play-nek; a kliens által küldött "active" sosem megbízható.
 
 ---
 
@@ -294,7 +285,8 @@ le, nem kell fizetniük, és a Prémium havi 20 kreditje nekik is jár (plafon 6
   után; az entitlement **cache-elése** (offline türelmi idő: ha a szerver elérhetetlen, az utolsó ismert
   jogosultság még N napig él, hogy offline se zárjuk ki a fizető usert).
 - **Play Billing** kliens (natív, APK): előfizetés indítása, `purchaseToken` átadása a szervernek.
-- Prémium-gate az appban (mely funkciók zártak próba/előfizetés nélkül).
+- Előfizetés-kapu az appban: lejárt próba/előfizetés után csak az előfizetés oldal, a beállítások és az
+  adatok mentése érhető el (§0).
 - Ajánlói kód UI: saját kód mutatása/megosztása, kód beírása első indításkor.
 
 ---
@@ -306,13 +298,10 @@ le, nem kell fizetniük, és a Prémium havi 20 kreditje nekik is jár (plafon 6
    Integrity-vel.*
 2. **Van felső korlát** az ajánlásból szerezhető napokra? (pl. max 12 hónap). *Ajánlásom: igen, pl. 365 nap.*
 3. **Trial hossz** kód nélkül: 14 nap, kóddal 31 nap — fix? *Igen, hacsak nem akarsz kampányt.*
-4. **Előfizetés termék(ek):** rögzítve a §0-ban. KÉT termék (`kreditplus_standard`, `kreditplus_premium`),
-   mindkettő három base plannel. Standard árak véglegesek; a **Prémium 799 Ft/hó előzetes** (MAIN javaslat:
-   499-599 Ft, tesztelőkkel ellenőrizni).
-7. **Lifetime tesztelő szintje:** Prémium (a weboldal és az e-mail „örökös prémiumot” ígért). *Ajánlásom: Prémium.*
-8. **Kredit-plafon:** Standard 15, Prémium 60 (a havi keret háromszorosa). A tulajdonos eredetileg 100-at
-   mondott; a kisebb plafon kiszámíthatóbb havi költséget ad. *Ajánlásom: 15 / 60.*
-9. **Kreditcsomag külön vásárlásra** (pl. 10 kredit 490 Ft, Play egyszeri termék): csak ha a „tesztgomb”
+4. **Előfizetés termék(ek):** rögzítve a §0-ban. EGY `kreditplus` termék, három base plan: monthly
+   299 Ft, semester 1 615 Ft (−10%), yearly 2 691 Ft (−25%). Árak véglegesek. (A kétszintes, Prémiumos
+   terv 2026-09-19-én elvetve.)
+7. **Kreditcsomag külön vásárlásra** (pl. 10 kredit 490 Ft, Play egyszeri termék): csak ha a „tesztgomb”
    mérés igazolja a keresletet (a kifogyottak legalább 10-15%-a rányom). *Ajánlásom: előbb mérni.*
 5. **API domain:** `api.<domain>` szub-domain vagy `/api/*` a Pages-en? *Ajánlásom: külön `api.` szub.*
 6. **Tesztelői lifetime kód vs. előre beállított Neptun-kód?** *Ajánlásom: egyszer beváltható tesztelői
@@ -386,14 +375,13 @@ leiratkozási/adatkezelési lábléc (GDPR).
 ## 12. AI-kreditek és a Kredit+ AI (quiz-készítés)
 
 Az app Quiz-lapján a „Kredit+ AI” gomb a szerverünkön generál quizt (a külső AI-s út továbbra is elérhető,
-kredit nélkül). Formátum: QUIZ-FORMAT.md. 1 kredit = 1 quiz (Standard: legfeljebb 30 kérdés és kb. 60
-oldalnyi szöveg, Prémium: 50 kérdés és kb. 120 oldal). A nagyobb anyag 2 kredit.
+kredit nélkül). Formátum: QUIZ-FORMAT.md. 1 kredit = 1 quiz (legfeljebb 30 kérdés és kb. 60 oldalnyi
+szöveg). A nagyobb anyag (legfeljebb kb. 120 oldal vagy 50 kérdés) 2 kredit.
 
 **Jóváírás (a Worker írja a `credits` naplóba):**
 - **Próba:** új usernek egyszer +3 (`trial`).
-- **Havi feltöltés:** előfizetőnek a Play megújulás napján (vagy az első session-hívás a hónapban) +5
-  (Standard) / +20 (Prémium), `monthly`. Utána az egyenleg a plafonig vágódik (`cap` sor a különbözettel):
-  Standard 15, Prémium 60. Lejárt előfizetésnél nincs feltöltés; a meglévő kredit megmarad, de csak aktív
+- **Havi feltöltés:** előfizetőnek a Play megújulás napján (vagy az első session-hívás a hónapban) +5,
+  `monthly`. Utána az egyenleg a plafonig (15) vágódik (`cap` sor a különbözettel). Lejárt előfizetésnél nincs feltöltés; a meglévő kredit megmarad, de csak aktív
   előfizetéssel költhető.
 - **Ajánlás:** a gazda +10 (`referral`), a §6 szabály szerint.
 - **Csomag** (később, ha lesz): `pack`, a purchaseToken a `ref`-ben.
@@ -419,7 +407,7 @@ oldalnyi szöveg, Prémium: 50 kérdés és kb. 120 oldal). A nagyobb anyag 2 kr
 - **Globális napi plafon** a Workerben (pl. napi 2 USD becsült költség), felette `busy`; és **keményen a
   Google-fiókon** is (havi költségkeret és riasztás).
 - **Korlátok:** IP-nként és `neptun_hash`-enként óránként legfeljebb néhány kérés; a szöveg legfeljebb kb.
-  150 000 / 300 000 karakter (Standard / Prémium).
+  300 000 karakter.
 - **Secret:** `GEMINI_API_KEY` (fizetős beállítás, hogy a Google ne tanuljon az adatokból). Cloudflare AI
   Gateway a költségkövetéshez és a szolgáltató-cseréhez (tartalom-naplózás KI).
 - **2. fázis:** Play Integrity token minden `/v1/ai/*` híváshoz.
@@ -432,7 +420,7 @@ oldalnyi szöveg, Prémium: 50 kérdés és kb. 120 oldal). A nagyobb anyag 2 kr
 
 ## 13. Jogi teendők (a legal szálnak)
 
-- **ÁSZF:** két szint és az árak (§0); az AI-kredit (mire jó, havi feltöltés, plafon, nem pénz, nem
+- **ÁSZF:** az árak (§0, változatlanok); az AI-kredit (mire jó, havi feltöltés, plafon, nem pénz, nem
   váltható vissza, előfizetés nélkül nem költhető); a próba 3 kreditje; ajánlásért 10 kredit; mi marad
   elérhető lejárt előfizetésnél (§0). Most az ÁSZF (legal/aszf.md) és az appba ágyazott ÁSZF egyetlen
   csomagot és 299 / 1 615 / 2 691 Ft-ot ír.

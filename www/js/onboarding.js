@@ -109,12 +109,9 @@ let obMode = "";                // "" normal setup, "add" adding another profile
 let obSel = null; // university object, or "custom", or null
 let obPin = "", obFirst = null, obPinDone = false;
 let obPlan = null; // "monthly" | "semester" | "annual" — placeholder plan pick (not persisted yet)
-let obTier = "standard"; // "standard" | "premium"
-// Árak és kreditek: EGY helyen (BACKEND.md §0, a weboldal és az ÁSZF is ezt mutatja). A Prémium ára előzetes.
-const PRICING = {
-  standard: { name: "Standard", monthly: 299, semester: 1615, annual: 2691, credits: 5, cap: 15, note: "A teljes alkalmazás. Havi 5 AI-kredit a quizekhez, legfeljebb 15 gyűlhet össze." },
-  premium: { name: "Prémium", monthly: 799, semester: 4315, annual: 7191, credits: 20, cap: 60, note: "Havi 20 AI-kredit (legfeljebb 60 gyűlhet össze), 50 kérdéses quizek, hosszabb anyagok, a jobb AI-modell." },
-};
+// Árak és kreditek EGY helyen (BACKEND.md §0; a weboldal és az ÁSZF is ezt mutatja).
+const PRICING = { monthly: 299, semester: 1615, annual: 2691, credits: 5, cap: 15,
+  note: "A teljes alkalmazás, és havi 5 AI-kredit a quizekhez (legfeljebb 15 gyűlhet össze). A próbaidőben 3 kredit jár." };
 
 function updateObProgress() {
   $("ob-bar").style.width = ((obPos + 1) / obSeq.length * 100) + "%";
@@ -208,14 +205,13 @@ function renderObTwoFA() {
 }
 function renderObPlan() {
   if (obPlan === null) obPlan = "annual"; // preselect the best-value plan
-  const P = PRICING[obTier], ft = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " Ft"; // 1 615 Ft, mint a weboldalon és az ÁSZF-ben
+  const P = PRICING, ft = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " Ft"; // 1 615 Ft, mint a weboldalon és az ÁSZF-ben
   const rows = [["monthly", "Havi", "", "Havonta " + ft(P.monthly), P.monthly],
     ["semester", "Féléves", `<span class="plan-tag">−10%</span>`, "Félévente " + ft(P.semester), Math.round(P.semester / 6)],
     ["annual", "Éves", `<span class="plan-tag gold">−25%</span>`, "Évente " + ft(P.annual), Math.round(P.annual / 12)]];
   $("ob-plans").innerHTML = rows.map(([k, name, tag, bill, mo]) => `<button class="plan${k === obPlan ? " selected" : ""}" data-plan="${k}" type="button">`
     + `<span class="plan-main"><span class="plan-name">${name}${tag}</span><span class="plan-bill">${bill}</span></span><span class="plan-mo">${ft(mo)}<small>/hó</small></span></button>`).join("");
   $("ob-tier-note").textContent = P.note;
-  document.querySelectorAll("#ob-tier [data-tier]").forEach((b) => b.classList.toggle("active", b.dataset.tier === obTier));
   document.querySelectorAll("#ob-plans .plan").forEach((b) => b.onclick = () => { obPlan = b.dataset.plan; renderObPlan(); updateObFooter(); });
 }
 function commitObStep1() {
@@ -283,7 +279,6 @@ function initOnboarding() {
   $("ob-bio-yes").onclick = () => { if (!bioOK) return; state.biometric = true; saveState(); renderObBio(); };
   $("ob-bio-no").onclick = () => { state.biometric = false; saveState(); renderObBio(); };
   $("ob-show-pass").onclick = async () => { const el = $("ob-password"); if (el.type !== "password") { el.type = "password"; return; } if (!(await requireAuthFor("sensitive"))) return; el.type = "text"; };
-  document.querySelectorAll("#ob-tier [data-tier]").forEach((b) => b.onclick = () => { obTier = b.dataset.tier; renderObPlan(); });
   $("ob-2fa-no").onclick = () => { ob2faChoice = "no"; state.no2fa = true; saveState(); renderObTwoFA(); updateObFooter(); };
   $("ob-2fa-yes").onclick = () => { ob2faChoice = "yes"; state.no2fa = false; saveState(); renderObTwoFA(); updateObFooter(); };
   const obAfter2fa = () => { renderObStatus(); updateObFooter(); };
