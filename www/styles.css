@@ -1556,3 +1556,6 @@ body.native .ob-top { padding-top: calc(20px + env(safe-area-inset-top)); }
 .qp-wr-x { font-size: 13px; color: var(--ink-3); margin-top: 4px; white-space: pre-wrap; }
 .qa-ais { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .qa-ais .btn { width: 100%; padding: 10px 8px; }
+/* Onboarding: Standard / Prémium váltó a csomagválasztó fölött (MAIN v0.316) */
+.ob-tier { margin-bottom: 8px; }
+.ob-tier-note { font-size: 13px; line-height: 1.45; color: var(--ink-2); margin: 0 0 16px; }
