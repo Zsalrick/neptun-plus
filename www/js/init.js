@@ -106,8 +106,9 @@ function onBackNav() {
 // silently on resume — fast because we hold the credentials + TOTP.
 (function setupResumeWarm() {
   const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
-  if (App && App.addListener) { try { App.addListener("appStateChange", (s) => { if (s && s.isActive) warmSession("resume"); }); } catch (e) {} }
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") warmSession("resume"); });
+  const onResume = () => { Promise.resolve(warmSession("resume")).catch(() => {}).then(() => { try { resumeRefresh(); } catch (e) {} }); };
+  if (App && App.addListener) { try { App.addListener("appStateChange", (s) => { if (s && s.isActive) onResume(); }); } catch (e) {} }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") onResume(); });
 })();
 
 // A tiny synthesized chime for the boot logo — one soft pluck per letter (ascending pentatonic),

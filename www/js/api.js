@@ -179,7 +179,7 @@ function bootVisible() { const b = $("boot"); return !!(b && !b.hidden && !b.cla
 async function autoRefreshAll(reason) {
   if (!isNative || !state.setupComplete || !canAutoLogin()) return;
   if (autoRefreshing || flowActive) return;
-  autoRefreshing = true; try { renderHome(); } catch (e) {}
+  autoRefreshing = true; state.lastAutoRefresh = Date.now(); try { renderHome(); } catch (e) {}
   const onBoot = bootVisible();
   const fresh = missingTaskIds().length >= DATA_TASKS.length; // nothing cached yet → first fetch
   if (onBoot) { setBootText(fresh ? "Adatok lekérdezése" : "Adatok frissítése"); bootProgress(0, DATA_TASKS.length); }
@@ -190,7 +190,7 @@ async function autoRefreshAll(reason) {
     for (const t of DATA_TASKS) {
       // On auto-start, skip rarely-changing topics (félévek/tárgyak/mintatanterv) if still fresh — big speedup.
       const stamp = t.maxAge && t.stamp && t.stamp();
-      const skip = reason === "start" && t.maxAge && t.has() && stamp && (Date.now() - Date.parse(stamp) < t.maxAge);
+      const skip = (reason === "start" || reason === "resume") && t.maxAge && t.has() && stamp && (Date.now() - Date.parse(stamp) < t.maxAge);
       if (!skip) { try { await totpTick(); await t.run(); } catch (e) { dbg("autoRefresh " + t.id + ": " + (e && e.message ? e.message : e)); } }
       done++; if (onBoot) bootProgress(done, DATA_TASKS.length);
       try { renderHome(); } catch (e) {}
@@ -200,6 +200,14 @@ async function autoRefreshAll(reason) {
     try { catchUpBrief(); } catch (e) {} // a reggeli összefoglaló bekerül az Értesítésekbe (frissen)
   } catch (e) { dbg("autoRefreshAll: " + (e && e.message ? e.message : e)); } // never reject → boot can't hang on us
   finally { autoRefreshing = false; try { renderHome(); } catch (e) {} }
+}
+// Visszatéréskor (az Android az appot többnyire a memóriában tartja, így ritka a hideg indítás) is frissítünk,
+// ha a legutóbbi teljes frissítés 20 percnél régebbi. Enélkül a változás-értesítők (órarend, jegy, üzenet)
+// csak hideg indításkor futottak le, vagyis napokig nem vettek észre semmit.
+function resumeRefresh() {
+  if (!state.setupComplete || autoRefreshing) return;
+  if (state.lastAutoRefresh && Date.now() - state.lastAutoRefresh < 20 * 60e3) return;
+  autoRefreshAll("resume");
 }
 // Show the boot/splash screen (Kredit+ logo + loading bar) and run a full data fetch on it, then hide it.
 // Used right after onboarding / adding a profile so the first read has the same clean full-screen loader

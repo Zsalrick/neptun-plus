@@ -42,7 +42,7 @@ function syncProgStatus() {
   el.textContent = (p && p.total) ? (p.done + "/" + p.total + " kredit · " + fmtWhen(p.fetchedAt)) : "Nincs beolvasva";
 }
 // Per-category reminder settings (Órák / ZH / Vizsgák), each: on/off + up to 3 lead times.
-const NOTIFY_CATS = [["classes", "Órák", "Emlékeztető óra előtt."], ["zh", "ZH", "Emlékeztető ZH előtt."], ["vizsga", "Vizsgák", "Emlékeztető vizsga előtt."], ["periods", "Időszakok", "Nyitás és zárulás előtt (pl. tárgyfelvétel, vizsgajelentkezés)."], ["changes", "Változások", "Új jegy, üzenet, befizetendő vagy órarend-változás. Megnyitáskor részletesen, a háttérben pedig kb. félóránként ellenőrzi (ezt a telefon energiakezelése lassíthatja).", true]];
+const NOTIFY_CATS = [["classes", "Órák", "Emlékeztető óra előtt."], ["zh", "ZH", "Emlékeztető ZH előtt."], ["vizsga", "Vizsgák", "Emlékeztető vizsga előtt."], ["periods", "Időszakok", "Nyitás és zárulás előtt (pl. tárgyfelvétel, vizsgajelentkezés)."], ["changes", "Változások", "Új jegy, üzenet, befizetendő vagy órarend-változás a következő 4 hétben. Megnyitáskor és visszatéréskor ellenőrzi, az Értesítések között mindig megjelenik. Ez a kapcsoló a telefonos értesítést szabályozza.", true]];
 const CLASS_LEADS = [5, 10, 15, 20, 30, 45, 60, 90, 120];
 const EXAM_LEADS = [10, 30, 60, 120, 180, 360, 720, 1440, 2880, 4320, 10080];
 function syncNotifySettings() {

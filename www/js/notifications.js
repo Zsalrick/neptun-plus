@@ -108,7 +108,7 @@ function changeSnapshot() {
   const g = state.grades || {}, m = state.messages || {}, f = state.finance || {};
   const gradeKeys = [];
   (g.terms || []).forEach((t) => (t.subjects || []).forEach((s) => { if (s.value || s.result) gradeKeys.push((s.code || s.subject || "?") + "|" + (s.value || s.result)); }));
-  const now = Date.now(), wEnd = now + 7 * 864e5;
+  const now = Date.now(), wEnd = now + TT_WATCH_DAYS * 864e5;
   let classes = [];
   try { classes = (visibleClassEvents() || []).filter((e) => e.S && e.S.getTime() > now && e.S.getTime() < wEnd).map((e) => ({ sk: classSeriesKey(e), k: occKey(e), t: e.S.getTime(), te: e.E ? e.E.getTime() : 0, sum: e.summary || "", loc: e.location || "" })); } catch (e) {}
   return {
@@ -117,8 +117,28 @@ function changeSnapshot() {
     msgs: (m.received || []).map((x) => x.id).filter(Boolean),
     toPay: (f.toPay || []).map((x) => x.id).filter(Boolean),
     schols: (f.scholarships || []).map(scholKey),
-    classes, at: now,
+    classes, at: now, wEnd,
   };
+}
+// Órarend-figyelés: a következő 4 hét (korábban 7 nap, így a távolabbi változások kimaradtak).
+const TT_WATCH_DAYS = 28;
+// Két pillanatkép órarend-különbsége. TISZTA függvény (tesztelhető). null = a friss adat hibásnak tűnik
+// (üres lett, pedig volt jövőbeli óra): ilyenkor nem riasztunk, és a régi baseline marad.
+// Csak a két figyelt ablak ÁTFEDÉSÉT hasonlítjuk: ami most került be az ablak végére, az nem "új óra".
+function ttDiff(prevClasses, prevEnd, curClasses, now) {
+  const prevFuture = (prevClasses || []).filter((c) => c.t > now);
+  if (!curClasses.length && prevFuture.length) return null;
+  const prevBy = {}; (prevClasses || []).forEach((c) => { if (c.sk) prevBy[c.sk] = c; });
+  const curBy = {}; curClasses.forEach((c) => { curBy[c.sk] = c; });
+  const added = [], time = [], room = [], removed = [];
+  curClasses.forEach((c) => {
+    const p = prevBy[c.sk];
+    if (!p) { if (c.t < prevEnd) added.push(c); } // az ablak új végén lévő óra nem változás
+    else if (p.t !== c.t) time.push({ c, from: p.t });
+    else if ((p.loc || "") !== (c.loc || "") && (p.loc || c.loc)) room.push({ c, from: p.loc || "?" });
+  });
+  prevFuture.forEach((c) => { if (!curBy[c.sk]) removed.push(c); });
+  return { added, time, room, removed };
 }
 // Fire a local notification for anything new since we last looked. First run only records the baseline.
 // Every fired change is ALSO written to the in-app notification centre (state.notifLog) with a detailed
@@ -130,9 +150,14 @@ async function notifyChanges() {
   // Ha egy kategória adata most üres (nem töltött be / hibázott a sync), NE írjuk felül a korábbi baseline-t
   // — különben egy üres pillanatkép után minden réginek tűnő elem "újként" jönne vissza (a 201-es hamis riasztás).
   if (prev) ["gradeKeys", "offered", "msgs", "toPay", "schols"].forEach((k) => { if ((!cur[k] || !cur[k].length) && prev[k] && prev[k].length) cur[k] = prev[k].slice(); });
-  state.seen = cur; saveState();
   const cat = (state.notify && state.notify.changes) || {};
-  if (!prev || !cat.enabled) return; // no baseline yet, or category off → just record
+  // Órarend: ha a friss adat hibásnak tűnik (üres), a régi baseline marad (lásd ttDiff).
+  const tt = prev && Array.isArray(prev.classes) && prev.classes[0] && prev.classes[0].sk
+    ? ttDiff(prev.classes, prev.wEnd || (prev.at + 7 * 864e5), cur.classes, Date.now()) : undefined;
+  if (tt === null) { cur.classes = prev.classes; cur.wEnd = prev.wEnd; }
+  state.seen = cur; saveState();
+  if (!prev) return; // első futás: csak rögzítjük az állapotot
+  // A kapcsoló csak a telefonos (push) értesítést szabályozza; az app értesítési központjába mindig bekerül.
   const setOf = (a) => new Set(a || []);
   const had = (a) => Array.isArray(a) && a.length > 0; // csak akkor riasztunk, ha volt korábbi, nem üres baseline
   const CAP = 15; // ekkora vagy nagyobb "új" tömeg baseline-hiba, nem valódi újdonság → elnyomjuk
@@ -176,27 +201,20 @@ async function notifyChanges() {
   }
   // Órarend változott (következő 7 nap): új / elmaradó óra + IDŐPONT- és TEREMVÁLTOZÁS (miből → mire).
   // Az órát a kurzus+nap (sk) köti össze, így az időpont-változás nem új+elmaradó óraként jelenik meg.
-  if (had(prev.classes) && prev.classes[0] && prev.classes[0].sk) { // csak ha a régi baseline már az új (sk) formátumú
-    const prevBy = {}; (prev.classes || []).forEach((c) => { if (c.sk) prevBy[c.sk] = c; });
-    const curBy = {}; cur.classes.forEach((c) => { curBy[c.sk] = c; });
+  if (tt) {
     const nm = (c) => { const p = parseClassSummary(c.sum || ""); return (p && p.name) || c.sum || "Óra"; };
-    const addedL = [], timeL = [], roomL = [], removedL = [];
-    cur.classes.forEach((c) => {
-      const p = prevBy[c.sk];
-      if (!p) { addedL.push(c); }
-      else if (p.t !== c.t) { timeL.push({ c, from: p.t }); }
-      else if ((p.loc || "") !== (c.loc || "") && (p.loc || c.loc)) { roomL.push({ c, from: p.loc || "?" }); }
-    });
-    (prev.classes || []).forEach((c) => { if (c.t > Date.now() && !curBy[c.sk]) removedL.push(c); });
+    const addedL = tt.added, timeL = tt.time, roomL = tt.room, removedL = tt.removed;
     const total = addedL.length + timeL.length + roomL.length + removedL.length;
-    if (total && total <= CAP) {
+    // Nincs felső korlát: ha sok órád változik, épp akkor kell szólni (a hibás adatot a ttDiff szűri).
+    if (total) {
       const body = [addedL.length ? addedL.length + " új óra" : "", timeL.length ? timeL.length + " időpont-változás" : "", roomL.length ? roomL.length + " teremváltozás" : "", removedL.length ? removedL.length + " elmaradó óra" : ""].filter(Boolean).join(" · ");
       const lines = [];
       addedL.forEach((c) => { const d = new Date(c.t); lines.push("Új óra: " + nm(c) + " · " + dayHeading(d) + " " + hm(d) + (c.loc ? " · " + c.loc : "")); });
       timeL.forEach((mv) => { const d = new Date(mv.c.t), o = new Date(mv.from); lines.push("Időpont változott: " + nm(mv.c) + " · " + dayHeading(d) + " · " + dayHeading(o) + " " + hm(o) + " → " + dayHeading(d) + " " + hm(mv.c.t) + (mv.c.loc ? " · " + mv.c.loc : "")); });
       roomL.forEach((mv) => { const d = new Date(mv.c.t); lines.push("Terem változott: " + nm(mv.c) + " · " + dayHeading(d) + " " + hm(d) + " · " + mv.from + " → " + (mv.c.loc || "?")); });
       removedL.forEach((c) => { const d = new Date(c.t); lines.push("Elmaradó óra: " + nm(c) + " · " + dayHeading(d) + " " + hm(d)); });
-      const detail = "Változott az órarended:\n" + lines.join("\n");
+      const MAXL = 25; // a részletekben legfeljebb ennyi sor, a többi összesítve
+      const detail = "Változott az órarended:\n" + lines.slice(0, MAXL).join("\n") + (lines.length > MAXL ? "\n… és még " + (lines.length - MAXL) + " változás" : "");
       let target = { tab: "tab-timetable" };
       const only = (addedL.length === 1 && !timeL.length && !roomL.length && !removedL.length) ? addedL[0]
         : (timeL.length === 1 && !addedL.length && !roomL.length && !removedL.length) ? timeL[0].c
@@ -211,9 +229,15 @@ async function notifyChanges() {
   // 1) In-app értesítési központ — mindig, akkor is, ha az OS push tiltva van. Megjegyezzük az id-t,
   //    hogy a push megnyomásakor pont ezt a bejegyzést tudjuk megnyitni.
   const logged = news.slice(0, 6).map((n) => ({ n, id: logNotif({ kind: n.kind, title: n.title, body: n.body, detail: n.detail, target: n.target, data: n.data }) }));
-  // 2) OS push — csak ha van engedély. A push a saját napló-bejegyzését nyitja meg (extra.notifId).
+  // 2) OS push — csak ha a Változások kapcsoló be van kapcsolva és van engedély. A push a saját napló-bejegyzését
+  //    nyitja meg (extra.notifId). Ha még nem kértünk engedélyt (a v0.319 bekapcsolás után), egyszer kérünk.
+  if (!cat.enabled) return;
   const ln = LN(); if (!ln) return;
-  try { const p = await ln.checkPermissions(); if (p.display !== "granted") return; } catch (e) { return; }
+  try {
+    let p = await ln.checkPermissions();
+    if (p.display !== "granted" && p.display !== "denied" && !state.notifPermAsked) { state.notifPermAsked = 1; saveState(); p = await ln.requestPermissions(); }
+    if (p.display !== "granted") return;
+  } catch (e) { return; }
   const notifs = logged.map((L, i) => ({ id: 1300000000 + i, title: L.n.title, body: L.n.body, schedule: { at: new Date(Date.now() + 1500 + i * 400), allowWhileIdle: true }, smallIcon: "ic_stat_neptun", extra: { changeKind: L.n.kind, notifId: L.id } }));
   try { await ln.schedule({ notifications: notifs }); } catch (e) { /* ignore */ }
 }

@@ -3,7 +3,7 @@
 "use strict";
 
 const STORE_KEY = "neptun-plus";
-const APP_VERSION = "v0.318";
+const APP_VERSION = "v0.319";
 const $ = (id) => document.getElementById(id);
 
 // ---------- icons (line SVG, no emoji) ----------
@@ -114,7 +114,7 @@ function defaultState() {
       zh: { enabled: false, leads: [1440, 120] },
       vizsga: { enabled: false, leads: [1440] },
       periods: { enabled: false, leads: [1440, 60] }, // időszak nyitása/zárulása előtt (1 nap + 1 óra)
-      changes: { enabled: false }, // új jegy / üzenet / befizetendő / órarend-változás appnyitáskor (nincs lead)
+      changes: { enabled: true }, // új jegy / üzenet / befizetendő / órarend-változás (push); a központba mindig bekerül
       brief: { enabled: false, time: "07:00" }, // reggeli összefoglaló egy adott időpontban
     },
     seen: null, // { gradeKeys, offered, msgs, toPay, classes:[{k,t}], at } — a legutóbb "látott" állapot a változás-értesítőkhöz
@@ -150,7 +150,9 @@ function migrate(s) {
   }
   ["classes", "zh", "vizsga", "periods"].forEach((c) => { if (!s.notify[c]) s.notify[c] = { enabled: d.notify[c].enabled, leads: d.notify[c].leads.slice() }; if (!Array.isArray(s.notify[c].leads)) s.notify[c].leads = d.notify[c].leads.slice(); });
   if (!Array.isArray(s.notifLog)) s.notifLog = [];
-  if (!s.notify.changes) s.notify.changes = { enabled: false };
+  if (!s.notify.changes) s.notify.changes = { enabled: true };
+  // v0.319: a változás-értesítő alapból BE (korábban ki volt, és így senki nem kapott órarend-riasztást). Egyszer.
+  if (!s.notifyChangesOn) { s.notify.changes.enabled = true; s.notifyChangesOn = 1; }
   if (!s.notify.brief) s.notify.brief = { enabled: false, time: "07:00" };
   if (!s.calcGoals || typeof s.calcGoals !== "object") s.calcGoals = {};
   if (!s.calcPreds || typeof s.calcPreds !== "object") s.calcPreds = {};
