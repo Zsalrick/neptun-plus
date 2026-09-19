@@ -171,6 +171,7 @@ async function bookMenu(id) {
   if (subj) opts.push({ icon: "x", label: "Leválasztás tárgyról", sub: subj, value: "unassign" });
   opts.push({ icon: "pencil", label: "Átnevezés", value: "rename" });
   if (b.src && b.src.page) opts.push({ icon: "ext", label: "Forrás megnyitása", sub: bookHostName(b.src.page), value: "src" });
+  opts.push({ icon: "download", label: "Letöltés a telefonra", sub: "A Letöltések mappába, a jegyzeteiddel együtt", value: "dl" });
   opts.push({ icon: "send", label: "Megosztás jegyzetekkel", sub: "PDF-ként, a rajzokkal és szövegekkel együtt", value: "share" });
   opts.push({ icon: "trash", label: "Törlés", danger: true, value: "del" });
   const a = await askPick({ title: b.title, body: `<div class="hint">${esc([b.author, b.pages + " oldal", b.size ? matFmtSize(b.size) : ""].filter(Boolean).join(" · "))}</div>`, options: opts });
@@ -186,6 +187,7 @@ async function bookMenu(id) {
     if (t != null && t.trim()) { b.title = t.trim(); saveState(); renderBooks(); }
   } else if (a === "src") openWeb(b.src.page);
   else if (a === "share") matSharePdf(b.id);
+  else if (a === "dl") matDownloadPdfs([b.id]);
   else if (a === "del") {
     const ok = await ask({ title: "Könyv törlése", okText: "Törlés", cancelText: "Mégse", danger: true,
       body: `Biztosan törlöd erről a telefonról? A benne lévő jegyzeteid és kiemeléseid is elvesznek.<br><b>${esc(b.title)}</b>` });

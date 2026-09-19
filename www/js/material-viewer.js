@@ -1545,21 +1545,43 @@ async function matSharePdf(id) {
   const m = matById(id); if (!m) return;
   showBusy("PDF készítése…");
   try {
+    const blob = await matBuildPdf(id);
+    hideBusy();
+    await matShareBlob(blob, slugName(m.title) + ".pdf", "application/pdf", "PDF");
+  } catch (e) { hideBusy(); await ask({ title: "Nem sikerült a PDF", okText: "OK", body: esc(String(e && e.message || e)) }); }
+}
+// A PDF a jegyzetekkel együtt (Blob). Ha nincs rajta semmi módosítás, az eredeti fájl megy (gyors, kisebb).
+async function matBuildPdf(id) {
+  const m = matById(id); if (!m) throw new Error("Az anyag már nincs meg.");
+  const doc = (mv && mv.id === id && mv.doc) || await matGetDoc(id);
+  if (m.kind === "pdf" && doc) {
+    const untouched = doc.pages.every((p, i) => p.kind === "pdf" && p.n === i + 1) && !Object.values(doc.items || {}).some((a) => a && a.length);
+    const orig = await matGetFile(id);
+    if (untouched && orig) { // a végéről törölt oldal is "érintetlennek" tűnne: az oldalszámot a fájlból ellenőrizzük
+      let n = 0; try { const d = await (await matPdfjs()).getDocument(matPdfOpts(new Uint8Array(await orig.arrayBuffer()))).promise; n = d.numPages; d.destroy(); } catch (e) {}
+      if (n === doc.pages.length) return orig;
+    }
+  }
+  {
     const PDFLib = await matScript("lib/pdf-lib.min.js", "PDFLib");
-    const doc = (mv && mv.id === id && mv.doc) || await matGetDoc(id);
     const out = await PDFLib.PDFDocument.create();
     let src = null, pdfjsDoc = null;
     if (m.kind === "pdf") {
       const bytes = new Uint8Array(await (await matGetFile(id)).arrayBuffer());
       src = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
     }
+    // Az oldalakat EGYETLEN copyPages hívással másoljuk: így a közös betűtípusok és képek egyszer kerülnek át.
+    // (Oldalanként másolva egy 3 MB-os, 250 oldalas könyvből 60 MB lett.)
+    const flat = src ? doc.pages.filter((pg) => pg.kind === "pdf" && src.getPage(pg.n - 1).getRotation().angle % 360 === 0) : [];
+    const copied = flat.length ? await out.copyPages(src, flat.map((pg) => pg.n - 1)) : [];
+    const copiedOf = new Map(flat.map((pg, k) => [pg, copied[k]]));
     for (let i = 0; i < doc.pages.length; i++) {
       $("busy-text").textContent = "PDF készítése… " + (i + 1) + " / " + doc.pages.length;
       const pg = doc.pages[i], items = doc.items[pg.id] || [];
       let page;
       if (pg.kind === "pdf" && src) {
         const rot = src.getPage(pg.n - 1).getRotation().angle % 360;
-        if (rot === 0) { const [cp] = await out.copyPages(src, [pg.n - 1]); page = out.addPage(cp); }
+        if (rot === 0) page = out.addPage(copiedOf.get(pg));
         else {
           // ponytail: elforgatott oldalt képként teszünk át (a jegyzetekkel együtt), a vektoros forgatás-számolás helyett.
           if (!pdfjsDoc) pdfjsDoc = await (await matPdfjs()).getDocument(matPdfOpts(new Uint8Array(await (await matGetFile(id)).arrayBuffer()))).promise;
@@ -1582,10 +1604,8 @@ async function matSharePdf(id) {
       }
     }
     try { pdfjsDoc && pdfjsDoc.destroy(); } catch (e) {}
-    const blob = new Blob([await out.save()], { type: "application/pdf" });
-    hideBusy();
-    await matShareBlob(blob, slugName(m.title) + ".pdf", "application/pdf", "PDF");
-  } catch (e) { hideBusy(); await ask({ title: "Nem sikerült a PDF", okText: "OK", body: esc(String(e && e.message || e)) }); }
+    return new Blob([await out.save()], { type: "application/pdf" });
+  }
 }
 async function mvComposePage(pdfjsDoc, pg, items) {
   const page = await pdfjsDoc.getPage(pg.n);

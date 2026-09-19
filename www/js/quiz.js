@@ -305,9 +305,10 @@ document.addEventListener("visibilitychange", async () => {
 });
 
 // ---- Quiz készítése AI-jal: prompt összeállítása ----
-const QZ = { subject: "", mid: "", n: 20, types: new Set(["single"]), level: "kozepes", extra: "" };
+const QZ = { subject: "", mid: "", n: 20, types: new Set(["single"]), level: "kozepes", extra: "", from: null, to: null };
 const QZ_LEVELS = [["konnyu", "Könnyű"], ["kozepes", "Közepes"], ["nehez", "Nehéz"]];
-function quizPrompt() {
+// withText: az anyag szövegét a prompt után illesztjük be (oldalanként jelölve), ezért nem "csatolt" anyagról beszélünk.
+function quizPrompt(withText) {
   const src = QZ.mid && matById(QZ.mid);
   const types = [...QZ.types];
   const lvl = { konnyu: "könnyű (alapfogalmak, definíciók)", kozepes: "közepes (fogalmak és összefüggések, egyszerű számolás)", nehez: "nehéz (alkalmazás, számolás, összetett összefüggések)" }[QZ.level];
@@ -325,7 +326,8 @@ function quizPrompt() {
   if (!ex.length && QZ.types.has("multi")) ex.push(`    { "type": "multi", "q": "Melyek a termelési tényezők?", "options": ["Munka", "Tőke", "Infláció", "Föld"], "answer": ["A", "B", "D"], "explain": "A klasszikus termelési tényezők a munka, a tőke és a föld.", "page": 3 }`);
   if (!ex.length) ex.push(`    { "type": "text", "q": "Hogy nevezzük azt az állapotot, amikor senki helyzete nem javítható más rontása nélkül?", "answer": ["Pareto-hatékonyság", "Pareto-optimum"], "explain": "Ez a Pareto-hatékonyság definíciója.", "page": 22 }`);
   return [
-    `Készíts egy gyakorló quizt a Kredit+ egyetemi app számára a csatolt anyagból${src ? ` (${src.title})` : ""}.`,
+    withText ? `Készíts egy gyakorló quizt a Kredit+ egyetemi app számára az alábbi anyagból (${src.title}). Az anyag szövege a prompt végén van, oldalanként jelölve, pl. "=== 12. oldal ===".`
+      : `Készíts egy gyakorló quizt a Kredit+ egyetemi app számára a csatolt anyagból${src ? ` (${src.title})` : ""}.`,
     ``,
     `Beállítások:`,
     QZ.subject ? `- Tárgy: ${QZ.subject}` : null,
@@ -335,10 +337,11 @@ function quizPrompt() {
     QZ.extra.trim() ? `- Kérés: ${QZ.extra.trim()}` : null,
     ``,
     `Szabályok:`,
-    `1. Csak a csatolt anyag tartalmából kérdezz, ne találj ki tényeket. A kérdések a teljes anyagot fedjék le, ne csak az elejét.`,
+    `1. Csak ${withText ? "a megadott" : "a csatolt"} anyag tartalmából kérdezz, ne találj ki tényeket. A kérdések a teljes anyagot fedjék le, ne csak az elejét.`,
     `2. Minden kérdésnek egyértelmű, az anyag alapján ellenőrizhető helyes válasza legyen.`,
     `3. A rossz válaszok legyenek hihetők, de egyértelműen rosszak. A helyes válasz betűje legyen változatos.`,
-    `4. Minden kérdéshez írj rövid magyarázatot ("explain"), és add meg a PDF-fájl oldalszámát ("page", az 1 a fájl első oldala), ahol a válasz megtalálható.`,
+    withText ? `4. Minden kérdéshez írj rövid magyarázatot ("explain"), és add meg az oldalszámot ("page"): annak a "=== N. oldal ===" jelölésnek a számát, amelyik alatt a válasz található.`
+      : `4. Minden kérdéshez írj rövid magyarázatot ("explain"), és add meg a PDF-fájl oldalszámát ("page", az 1 a fájl első oldala), ahol a válasz megtalálható.`,
     `5. A válaszod CSAK egy JSON kódblokk legyen, pontosan az alábbi formátumban, előtte és utána semmilyen szöveg nélkül.`,
     `6. Ha nem tudsz ennyi jó kérdést írni az anyagból, írj kevesebbet.`,
     ``,
@@ -360,39 +363,49 @@ function quizPrompt() {
     `A formátum teljes leírása: ${QUIZ_URL}`,
   ].filter((x) => x != null).join("\n");
 }
+// Az AI-ok webcímei: telepített appnál az Android az appot nyitja meg (App Links), különben a böngészőt.
+// Belépést és beillesztést NEM automatizálunk (a szolgáltatók tiltják, és a beágyazott Google-belépés sem működik):
+// a prompt és az anyag szövege a vágólapra kerül, a felhasználó beilleszti.
+const QUIZ_AIS = [["ChatGPT", "https://chatgpt.com/"], ["Claude", "https://claude.ai/new"], ["Gemini", "https://gemini.google.com/app"]];
 function renderQuizAi() {
   const host = $("quiz-ai-scroll"); if (!host) return;
   const src = QZ.mid && matById(QZ.mid);
   if (QZ.mid && !src) QZ.mid = "";
   const seg = (id, items, cur) => `<div class="seg" id="${id}">` + items.map(([k, l]) => `<button type="button" class="seg-btn${String(cur) === String(k) ? " active" : ""}" data-v="${k}">${l}</button>`).join("") + `</div>`;
   const row = (id, ic, title, sub) => `<button class="row" type="button" id="${id}"><span class="row-ic">${icon(ic)}</span><span class="row-main"><span class="row-title">${title}</span><span class="row-sub">${sub}</span></span><span class="row-chev">${icon("chev")}</span></button>`;
-  host.innerHTML = `<div class="qa-steps">`
-    + `<div class="qa-step"><b>1.</b> Állítsd be, milyen quizt szeretnél, és másold ki a promptot.</div>`
-    + `<div class="qa-step"><b>2.</b> Nyisd meg a ChatGPT-t, a Geminit vagy a Claude-ot, csatold a PDF-et, és illeszd be a promptot.</div>`
-    + `<div class="qa-step"><b>3.</b> Az AI válaszát másold ki (a kódblokk Másolás gombjával), gyere vissza, és nyomd meg a Beillesztést.</div></div>`
-    + `<div class="card">` + row("qa-subj", "book", "Tárgy", esc(QZ.subject || "Nincs megadva")) + row("qa-src", "doc", "Anyag (PDF)", esc(src ? src.title : "Nincs kiválasztva, az AI-appban csatolod")) + `</div>`
+  const steps = src ? ["Állítsd be a quizt, és koppints az AI nevére lent.", "A prompt és az anyag szövege a vágólapra kerül, és megnyílik az AI. Illeszd be, és küldd el. Csatolni semmit nem kell.", "Az AI válaszát másold ki (a kódblokk Másolás gombjával), gyere vissza, és nyomd meg a Beillesztést."]
+    : ["Válassz anyagot a PDF-jeid közül, így a szövegét az app illeszti a prompt mellé. Vagy hagyd üresen, és a PDF-et az AI-ban csatolod.", "Koppints az AI nevére: a prompt a vágólapra kerül, és megnyílik az AI. Illeszd be (és csatold a PDF-et).", "Az AI válaszát másold ki (a kódblokk Másolás gombjával), gyere vissza, és nyomd meg a Beillesztést."];
+  host.innerHTML = `<div class="qa-steps">` + steps.map((t, i) => `<div class="qa-step"><b>${i + 1}.</b> ${t}</div>`).join("") + `</div>`
+    + `<div class="card">` + row("qa-subj", "book", "Tárgy", esc(QZ.subject || "Nincs megadva")) + row("qa-src", "doc", "Anyag", esc(src ? src.title + " · " + src.pages + " oldal" : "Nincs kiválasztva")) + `</div>`
+    + (src ? `<div class="field"><label for="qa-from">Oldalak (nem kötelező)</label><div class="bks-yr">`
+      + `<input class="input" id="qa-from" inputmode="numeric" autocomplete="off" placeholder="Ettől: 1" value="${QZ.from || ""}" aria-label="Első oldal">`
+      + `<input class="input" id="qa-to" inputmode="numeric" autocomplete="off" placeholder="Eddig: ${src.pages}" value="${QZ.to || ""}" aria-label="Utolsó oldal"></div></div>` : "")
     + `<div class="field"><label>Kérdések száma</label>${seg("qa-n", [[10, "10"], [20, "20"], [30, "30"], [50, "50"]], QZ.n)}</div>`
     + `<div class="field"><label>Kérdéstípusok</label><div class="bks-src">` + Object.keys(QUIZ_TYPES).map((k) => `<button type="button" class="check${QZ.types.has(k) ? " on" : ""}" data-t="${k}" aria-pressed="${QZ.types.has(k)}"><span class="box">${icon("check")}</span><span><span class="c-t">${QUIZ_TYPES[k]}</span></span></button>`).join("") + `</div></div>`
     + `<div class="field"><label>Nehézség</label>${seg("qa-lvl", QZ_LEVELS, QZ.level)}</div>`
     + `<div class="field"><label for="qa-extra">Külön kérés (nem kötelező)</label><input class="input" id="qa-extra" placeholder="Például: csak a 3. fejezetből" autocomplete="off" value="${esc(QZ.extra)}"></div>`
-    + `<div class="qa-btns"><button class="btn primary lg" type="button" id="qa-copy">${icon("copy")}Prompt másolása</button>`
-    + `<button class="btn tonal lg" type="button" id="qa-send">${icon("send")}${src ? "Küldés AI-appnak a PDF-fel" : "Küldés AI-appnak"}</button>`
-    + `<button class="btn tonal lg" type="button" id="qa-paste">${icon("clip")}AI válaszának beillesztése</button></div>`
+    + `<div class="field"><label>${src ? "Prompt és anyag másolása, majd" : "Prompt másolása, majd"}</label><div class="qa-ais">`
+    + QUIZ_AIS.map(([n], i) => `<button class="btn tonal lg" type="button" data-ai="${i}">${esc(n)}</button>`).join("") + `</div></div>`
+    + `<div class="qa-btns"><button class="btn tonal lg" type="button" id="qa-copy">${icon("copy")}${src ? "Csak másolás" : "Prompt másolása"}</button>`
+    + (src ? `<button class="btn tonal lg" type="button" id="qa-dl">${icon("download")}PDF mentése a Letöltésekbe</button>` : "")
+    + `<button class="btn primary lg" type="button" id="qa-paste">${icon("clip")}AI válaszának beillesztése</button></div>`
     + `<button class="bks-adv-t" type="button" id="qa-prev-t" aria-expanded="false"><span>A prompt megtekintése</span>${icon("down")}</button><pre class="qa-prev" id="qa-prev" hidden></pre>`
-    + `<div class="hint" style="margin:10px 2px 16px">A quizt a te AI-od készíti, a Kredit+ nem küld sehova semmit. Az AI tévedhet: ha egy válasz gyanús, nézd meg az oldalszámnál, és javítsd a Szerkesztésben.</div>`;
-  const remember = () => { state.quizCtx = { subject: QZ.subject, mid: QZ.mid, at: Date.now() }; saveState(); };
+    + `<div class="hint" style="margin:10px 2px 16px">A quizt a te AI-od készíti, a Kredit+ nem küld sehova semmit, csak a vágólapra másol. Az AI tévedhet: ha egy válasz gyanús, nézd meg az oldalszámnál, és javítsd a Szerkesztésben.</div>`;
   $("qa-subj").onclick = () => bookPickSubject("Tárgy", (name) => { QZ.subject = name; renderQuizAi(); });
   $("qa-src").onclick = async () => {
-    const keyS = matSubjKey(QZ.subject), pdfs = mats().filter((x) => x.kind === "pdf").concat(books());
+    const keyS = matSubjKey(QZ.subject), pdfs = mats().filter((x) => x.kind === "pdf" || x.kind === "note").concat(books());
     pdfs.sort((a, b) => ((b.subj === keyS || (b.subjects || []).some((s) => s.key === keyS)) ? 1 : 0) - ((a.subj === keyS || (a.subjects || []).some((s) => s.key === keyS)) ? 1 : 0));
-    if (!pdfs.length) { toast("Még nincs PDF az Anyagok vagy a Könyvek között. Az AI-appban is csatolhatod."); return; }
-    const v = await askPick({ title: "Melyik anyagból?", options: [{ label: "Nincs kiválasztva", sub: "A PDF-et az AI-appban csatolod", value: "-" }].concat(pdfs.slice(0, 40).map((x) => ({ icon: x.book ? "books" : "doc", label: x.title, sub: x.book ? "Könyv" : (x.subjName || "Anyag"), value: x.id }))) });
+    if (!pdfs.length) { toast("Még nincs PDF az Anyagok vagy a Könyvek között. Az AI-ban is csatolhatod."); return; }
+    const v = await askPick({ title: "Melyik anyagból?", options: [{ label: "Nincs kiválasztva", sub: "A PDF-et az AI-ban csatolod", value: "-" }]
+      .concat(pdfs.slice(0, 40).map((x) => ({ icon: x.book ? "books" : x.kind === "note" ? "note" : "doc", label: x.title, sub: (x.book ? "Könyv" : (x.subjName || "Anyag")) + " · " + x.pages + " oldal", value: x.id }))) });
     if (!v) return;
-    QZ.mid = v === "-" ? "" : v;
+    QZ.mid = v === "-" ? "" : v; QZ.from = QZ.to = null;
     const m = QZ.mid && matById(QZ.mid);
     if (m && !QZ.subject) QZ.subject = m.subjName || ((m.subjects || [])[0] || {}).name || "";
     renderQuizAi();
   };
+  const num = (id) => { const n = parseInt(($(id) || {}).value, 10); return n > 0 ? n : null; };
+  if (src) { $("qa-from").oninput = () => { QZ.from = num("qa-from"); }; $("qa-to").oninput = () => { QZ.to = num("qa-to"); }; }
   host.querySelectorAll("#qa-n [data-v]").forEach((b) => b.onclick = () => { QZ.n = +b.dataset.v; renderQuizAi(); });
   host.querySelectorAll("#qa-lvl [data-v]").forEach((b) => b.onclick = () => { QZ.level = b.dataset.v; renderQuizAi(); });
   host.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => {
@@ -400,37 +413,68 @@ function renderQuizAi() {
     renderQuizAi();
   });
   $("qa-extra").oninput = (e) => { QZ.extra = e.target.value; };
-  $("qa-copy").onclick = async () => {
-    remember();
-    try { await navigator.clipboard.writeText(quizPrompt()); toast("Prompt kimásolva. Illeszd be az AI-ba a PDF mellé."); }
-    catch (e) { await askLong({ title: "Másold ki a promptot", value: quizPrompt(), okText: "Kész" }); }
-  };
-  $("qa-send").onclick = () => { remember(); quizSendToAi(); };
+  host.querySelectorAll("[data-ai]").forEach((b) => b.onclick = async () => { const [, url] = QUIZ_AIS[+b.dataset.ai]; if (await quizCopyAll()) openWeb(url); });
+  $("qa-copy").onclick = () => quizCopyAll();
+  const dl = $("qa-dl"); if (dl) dl.onclick = () => matDownloadPdfs([src.id]);
   $("qa-paste").onclick = () => quizPasteFlow();
-  $("qa-prev-t").onclick = () => { const p = $("qa-prev"), open = p.hidden; p.hidden = !open; if (open) p.textContent = quizPrompt(); $("qa-prev-t").classList.toggle("open", open); $("qa-prev-t").setAttribute("aria-expanded", String(open)); };
+  $("qa-prev-t").onclick = () => { const p = $("qa-prev"), open = p.hidden; p.hidden = !open; if (open) p.textContent = quizPrompt(!!src) + (src ? "\n\n---\nANYAG: " + src.title + "\n\n(itt következik az anyag szövege oldalanként)" : ""); $("qa-prev-t").classList.toggle("open", open); $("qa-prev-t").setAttribute("aria-expanded", String(open)); };
 }
-// Küldés a telefon AI-appjának: ha a rendszer engedi, a PDF-fel és a prompttal együtt (Android megosztás).
-// Ha nem (a WebView nem minden telefonon tud megosztani), a prompt a vágólapra kerül, a PDF a Letöltésekbe.
-async function quizSendToAi() {
-  const text = quizPrompt(), src = QZ.mid && matById(QZ.mid);
-  try { await navigator.clipboard.writeText(text); } catch (e) {}
-  let file = null;
-  if (src) { try { const b = await matGetFile(src.id); if (b) file = new File([b], slugName(src.title) + ".pdf", { type: "application/pdf" }); } catch (e) {} }
+// Az anyag szövege oldalszámokkal ("=== 12. oldal ===", a PDF-fájl oldalszáma, erre ugrik a "Megnézem" gomb) és a saját
+// szövegdobozokkal együtt. from/to a megjelenítő oldalsorszáma (ahogy a felhasználó látja).
+async function quizMaterialText(mid, from, to) {
+  const m = matById(mid), doc = m && await matGetDoc(mid);
+  if (!doc) throw new Error("Az anyag nem található.");
+  let pdf = null;
+  if (m.kind === "pdf") { const f = await matGetFile(mid); if (f) pdf = await (await matPdfjs()).getDocument(matPdfOpts(new Uint8Array(await f.arrayBuffer()))).promise; }
+  const parts = [], a = Math.max(1, from || 1), b = Math.min(doc.pages.length, to || doc.pages.length);
+  let pdfPages = 0, textPages = 0;
   try {
-    if (navigator.share) {
-      if (file && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text }); return; }
-      if (!file) { await navigator.share({ text }); return; }
+    for (let i = a - 1; i < b; i++) {
+      const pg = doc.pages[i];
+      if (i % 10 === 0) { const t = $("busy-text"); if (t) t.textContent = "Az anyag szövegének kiolvasása… " + (i + 1) + " / " + b; }
+      let t = "";
+      if (pg.kind === "pdf" && pdf) {
+        pdfPages++;
+        const tc = await (await pdf.getPage(pg.n)).getTextContent();
+        t = tc.items.map((it) => (it.str || "") + (it.hasEOL ? "\n" : " ")).join("").replace(/[ \t ]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+        if (t.replace(/\s/g, "").length > 20) textPages++;
+      }
+      const own = ((doc.items || {})[pg.id] || []).filter((it) => it.t === "text" && String(it.text || "").trim()).map((it) => "[Saját jegyzet] " + String(it.text).trim());
+      if (!t && !own.length) continue;
+      parts.push((pg.kind === "pdf" ? `=== ${pg.n}. oldal ===` : `=== Saját jegyzetoldal (${i + 1}. a sorban) ===`) + "\n" + [t].concat(own).filter(Boolean).join("\n"));
     }
-  } catch (e) { if (e && e.name === "AbortError") return; }
-  if (file) {
-    const dl = DLP();
-    if (isNative && dl && dl.saveToDownloads) {
-      try { await dl.saveToDownloads({ base64: b64(await file.arrayBuffer()), fileName: file.name, mime: "application/pdf" }); } catch (e) {}
-      await ask({ title: "Prompt kimásolva", okText: "Rendben", cancelText: "Bezárás", body: `A PDF-et elmentettem a Letöltések közé (<b>${esc(file.name)}</b>). Nyisd meg az AI-appot, csatold onnan a PDF-et, és illeszd be a promptot.` });
-      return;
-    }
+  } finally { try { pdf && pdf.destroy(); } catch (e) {} }
+  return { text: parts.join("\n\n"), pdfPages, textPages };
+}
+async function quizClip(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch (e) { await askLong({ title: "Másold ki", value: text, okText: "Kész", body: `<div class="hint">Nem tudtam automatikusan kimásolni. Jelöld ki az egészet, és másold ki.</div>` }); return false; }
+}
+// Prompt (és ha van kiválasztott anyag, a szövege) a vágólapra. Igaz, ha sikerült, és mehet az AI megnyitása.
+async function quizCopyAll() {
+  state.quizCtx = { subject: QZ.subject, mid: QZ.mid, at: Date.now() }; saveState(); // a beillesztéskor ehhez rendeljük
+  const src = QZ.mid && matById(QZ.mid);
+  if (!src) { const ok = await quizClip(quizPrompt(false)); if (ok) toast("Prompt kimásolva. Az AI-ban csatold mellé a PDF-et."); return ok; }
+  showBusy("Az anyag szövegének kiolvasása…");
+  let r;
+  try { r = await quizMaterialText(src.id, QZ.from, QZ.to); }
+  catch (e) { hideBusy(); toast("Nem sikerült kiolvasni: " + (e && e.message || e)); return false; }
+  hideBusy();
+  if (!r.text || (r.pdfPages && r.textPages < r.pdfPages * 0.3)) { // szkennelt PDF: nincs benne szöveg
+    const go = await ask({ title: "Ebben a PDF-ben alig van szöveg", okText: "PDF a Letöltésekbe", cancelText: "Mégse",
+      body: "Valószínűleg szkennelt képekből áll, ezért a szövegét nem tudom kimásolni. Mentsd a Letöltésekbe, és csatold fájlként az AI-ban. A prompt a vágólapra kerül." });
+    await quizClip(quizPrompt(false));
+    if (go) await matDownloadPdfs([src.id]);
+    return false;
   }
-  await ask({ title: "Prompt kimásolva", okText: "Rendben", cancelText: "Bezárás", body: "Nyisd meg a ChatGPT-t, a Geminit vagy a Claude-ot, csatold a PDF-et, és illeszd be a promptot." });
+  if (r.text.length > 150000) {
+    const go = await ask({ title: "Nagyon hosszú anyag", okText: "Másolás így is", cancelText: "Mégse",
+      body: `Kb. ${Math.round(r.text.length / 1000)} ezer karakter. Az ingyenes AI-k ekkora szöveget gyakran nem dolgoznak fel teljesen. Érdemes oldaltartományt megadni (pl. egy fejezetet).` });
+    if (!go) return false;
+  }
+  const ok = await quizClip(quizPrompt(true) + "\n\n---\nANYAG: " + src.title + "\n\n" + r.text);
+  if (ok) toast("A prompt és az anyag szövege kimásolva (" + Math.max(1, Math.round(r.text.length / 1000)) + " ezer karakter). Illeszd be az AI-ba.");
+  return ok;
 }
 
 // ---- Kézi szerkesztő ----

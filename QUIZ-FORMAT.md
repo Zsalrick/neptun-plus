@@ -144,6 +144,8 @@ A weboldalon `kreditplus.hu/quiz/schema.json` címen kell közzétenni.
 
 A weboldalon `kreditplus.hu/quiz/prompt.txt` címen, UTF-8 sima szövegként kell közzétenni. Az app ugyanezt állítja össze, a felhasználó beállításaival kiegészítve (tárgy, kérdésszám, típusok, nehézség, külön kérés).
 
+**Szöveges változat (v0.315).** Ha az appban anyagot választanak, a PDF szövegét az app olvassa ki. A szöveget a prompt után illeszti be `ANYAG:` címkével, oldalanként `=== 12. oldal ===` jelöléssel (ez a PDF-fájl oldalszáma), a felhasználó saját szövegdobozait pedig `[Saját jegyzet]` jelöléssel. Ilyenkor a prompt 1. mondata és 4. szabálya erre a jelölésre hivatkozik, csatolni nem kell. Szkennelt PDF-nél (az oldalak kevesebb mint 30%-án van szöveg) marad a csatolás.
+
 ```text
 Készíts egy gyakorló quizt a Kredit+ egyetemi app számára a csatolt anyagból.
 

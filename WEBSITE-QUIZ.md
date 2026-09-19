@@ -37,8 +37,8 @@ Szerkezet, sorrendben:
 
 1. **Cím és egy mondat:** „Quiz a jegyzetedből, a saját AI-oddal”. Utána egy mondat arról, mire jó: gyakorlás ZH-ra és vizsgára, azonnali visszajelzés, ugrás a PDF oldalára.
 2. **Hogyan működik, 3 lépés** (számozva, mert tényleg sorrend):
-   1. A Kredit+-ban: Több, Quizek, „+”, „Quiz készítése AI-jal”. Válaszd ki a tárgyat és a PDF-et, állítsd be a kérdések számát, a típusokat és a nehézséget, majd „Prompt másolása”.
-   2. Nyisd meg a ChatGPT-t, a Geminit vagy a Claude-ot, csatold a PDF-et, és illeszd be a promptot.
+   1. A Kredit+-ban: Több, Quizek, „+”, „Quiz készítése AI-jal”. Válaszd ki a tárgyat és az anyagot (PDF az Anyagok vagy a Könyvek közül), ha kell, az oldalakat, és állítsd be a kérdések számát, a típusokat és a nehézséget.
+   2. Koppints az AI nevére (ChatGPT, Claude vagy Gemini). A prompt és az anyag szövege, oldalszámokkal jelölve, egyben a vágólapra kerül, és megnyílik az AI. Illeszd be és küldd el, csatolni nem kell. (Szkennelt, szöveg nélküli PDF-nél az app a Letöltésekbe menti a PDF-et, azt csatold.)
    3. Az AI válaszánál nyomd meg a kódblokk Másolás gombját, térj vissza a Kredit+-ba, és nyomd meg: „AI válaszának beillesztése”. Az app felismeri és elmenti a quizt.
 3. **Tippek:**
    - Egyszerre legfeljebb 30-50 kérdést kérj. Ha a válasz félbeszakad, írd az AI-nak, hogy „folytasd”, vagy kérj kevesebbet.

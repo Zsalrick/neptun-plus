@@ -172,6 +172,8 @@ function renderMatSubject() {
       + `<span class="row-main"><span class="row-title">${esc(m.title)}</span><span class="row-sub">${esc(meta)}</span></span>`
       + `<button class="iconbtn plain mat-more" data-id="${esc(m.id)}" type="button" aria-label="Műveletek">${icon("more")}</button></div>`;
   }).join("") + `</div>`;
+  if (list.length) h += `<div class="card"><button class="row" type="button" id="mat-dl-all"><span class="row-ic">${icon("download")}</span><span class="row-main">`
+    + `<span class="row-title">${list.length === 1 ? "Anyag letöltése a telefonra" : "Anyagok letöltése a telefonra"}</span><span class="row-sub">${list.length === 1 ? "PDF" : list.length + " PDF"} a Letöltések mappába, a jegyzeteiddel együtt</span></span><span class="row-chev">${icon("chev")}</span></button></div>`;
   // A tárgyhoz rendelt könyvek (books.js): félévtől függetlenül, a tárgy neve alapján.
   const bks = (state.books || []).filter((b) => (b.subjects || []).some((s) => s.key === matSubjCur.key));
   if (bks.length) h += `<div class="dash-label">Könyvek</div><div class="card">` + bks.map((b) => bookRow(b, false)).join("") + `</div>`;
@@ -180,6 +182,7 @@ function renderMatSubject() {
   host.innerHTML = h;
   host.querySelectorAll(".bk-row").forEach((b) => b.onclick = () => openMaterial(b.dataset.id));
   host.querySelectorAll(".qz-row").forEach((b) => b.onclick = () => quizStartMenu(b.dataset.id));
+  const dla = $("mat-dl-all"); if (dla) dla.onclick = () => matDownloadPdfs(list.map((m) => m.id));
   $("mat-import").onclick = () => { const f = $("mat-file"); f.value = ""; f.click(); };
   $("mat-note").onclick = () => matNewNote(matSem, matSubjCur);
   host.querySelectorAll(".mat-row").forEach((b) => b.onclick = (ev) => { if (!ev.target.closest(".mat-more")) openMaterial(b.dataset.id); });
@@ -187,10 +190,12 @@ function renderMatSubject() {
     const m = matById(b.dataset.id); if (!m) return;
     const act = await askPick({ title: m.title, options: [
       { label: "Megnyitás", value: "open" }, { label: "Átnevezés", value: "rename" },
+      { label: "Letöltés a telefonra", sub: "A Letöltések mappába, a jegyzeteiddel együtt", value: "dl" },
       { label: "Megosztás jegyzetekkel", sub: "PDF-ként, a rajzokkal és szövegekkel együtt", value: "share" }, { label: "Törlés", value: "delete" }] });
     if (act === "open") openMaterial(m.id);
     else if (act === "rename") { const t = await askText({ title: "Átnevezés", value: m.title }); if (t != null && t.trim()) { m.title = t.trim(); saveState(); renderMatSubject(); } }
     else if (act === "share") matSharePdf(m.id);
+    else if (act === "dl") matDownloadPdfs([m.id]);
     else if (act === "delete") matDelete(m.id);
   });
 }
@@ -221,6 +226,28 @@ async function matShareBlob(blob, name, mime, what) {
   }
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+// Letöltés a telefon Letöltések mappájába, a jegyzetekkel és szerkesztésekkel együtt (matBuildPdf), hogy más appban
+// (pl. egy AI-ban) csatolni lehessen. Böngészőben sima letöltés.
+async function matDownloadPdfs(ids) {
+  const list = ids.map(matById).filter(Boolean); if (!list.length) return;
+  const dl = DLP(), saved = [];
+  showBusy("PDF készítése…");
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i], name = slugName(m.title) + ".pdf";
+      const blob = await matBuildPdf(m.id);
+      $("busy-text").textContent = list.length > 1 ? "Mentés… " + (i + 1) + " / " + list.length : "Mentés…";
+      if (isNative && dl && dl.saveToDownloads) { const r = await dl.saveToDownloads({ base64: b64(await blob.arrayBuffer()), fileName: name, mime: "application/pdf" }); saved.push({ name, uri: r && r.uri }); }
+      else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); saved.push({ name }); }
+    }
+    hideBusy();
+  } catch (e) { hideBusy(); await ask({ title: "Nem sikerült menteni", okText: "OK", cancelText: "Bezárás", body: esc(String(e && e.message || e)) }); return; }
+  const one = saved.length === 1 ? saved[0] : null;
+  const open = await ask({ title: one ? "PDF mentve" : saved.length + " PDF mentve", okText: one && one.uri ? "Megnyitás" : "Rendben", cancelText: "Kész",
+    body: "A Letöltések mappába" + (one ? `: <b>${esc(one.name)}</b>` : ":<br>" + saved.map((s) => esc(s.name)).join("<br>")) + "<br><br>Más appban (pl. egy AI-ban) innen csatolhatod. A jegyzeteid és a szerkesztéseid is benne vannak." });
+  if (open && one && one.uri) { try { await dl.open({ uri: one.uri, mime: "application/pdf" }); } catch (e) {} }
 }
 
 // ---- Mentés és visszaállítás (.zip) ----
